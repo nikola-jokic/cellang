@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-chumsky = "1.0.0-alpha.7"
 serde = { version = "^1" }
+miette = "^7"
