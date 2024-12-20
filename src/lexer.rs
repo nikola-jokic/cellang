@@ -327,11 +327,7 @@ impl<'src> Iterator for Lexer<'src> {
                     }
                 }
                 '0'..='9' => {
-                    if c == '0'
-                        && self.rest.len() > 2
-                        && self.rest.starts_with("x")
-                        && self.rest[2..].starts_with(|c: char| c.is_ascii_hexdigit())
-                    {
+                    if c == '0' && self.rest.starts_with("x") {
                         Started::HexNumber
                     } else {
                         Started::DecimalNumber
@@ -524,7 +520,31 @@ impl<'src> Iterator for Lexer<'src> {
                     }
                 }
                 Started::HexNumber => {
-                    todo!()
+                    let rest = &c_onwards[2..];
+                    if rest.is_empty() {
+                        let line = self.line;
+                        return Some(Err(miette::miette! {
+                            labels = vec![LabeledSpan::at(
+                                c_at..self.byte,
+                                "Unexpected character"
+                            )],
+                            help = "Expected a number",
+                            "[line {line}] Error: Unexpected character: {c}",
+                        }));
+                    }
+                    let end = rest
+                        .find(|c: char| !c.is_ascii_hexdigit())
+                        .unwrap_or(rest.len());
+
+                    let literal = &c_onwards[..end + 2]; // + starting 0x
+                    let extra_bytes = literal.len() - c.len_utf8();
+                    self.read_extra(extra_bytes);
+                    Some(Ok(Token {
+                        kind: TokenKind::Int(i64::from_str_radix(&literal[2..], 16).unwrap()),
+                        line: self.line,
+                        offset: c_at,
+                        origin: literal,
+                    }))
                 }
                 Started::OrEqual(token, or_else) => {
                     if self.rest.starts_with('=') {
@@ -618,6 +638,12 @@ mod tests {
 
     #[test]
     fn test_decimal_parsing() {
+        let mut lexer = Lexer::new("0");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Int(0));
+        let token = lexer.next();
+        assert!(token.is_none());
+
         let mut lexer = Lexer::new("123");
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Int(123));
@@ -695,5 +721,24 @@ mod tests {
         assert_eq!(token.kind, TokenKind::Double(0.2e3));
         let token = lexer.next();
         assert!(token.is_none());
+    }
+
+    #[test]
+    fn test_hex_parsing() {
+        let mut lexer = Lexer::new("0x123");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Int(0x123));
+        let token = lexer.next();
+        assert!(token.is_none());
+
+        let mut lexer = Lexer::new("0x123.");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Int(0x123));
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Dot);
+
+        let mut token = Lexer::new("0x");
+        let token = token.next().unwrap();
+        assert!(token.is_err(), "{:?}", token);
     }
 }
