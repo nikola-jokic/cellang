@@ -49,8 +49,11 @@ pub enum TokenKind {
     LessEqual,
     Slash,
     String,
+    Bytes,
     Ident,
-    Number(f64),
+    Int(i64),
+    Uint(u64),
+    Double(f64),
     And,
     As,
     Break,
@@ -77,7 +80,6 @@ pub enum TokenKind {
     Namespace,
     Void,
     While,
-    Eof,
 }
 
 fn keywords() -> &'static HashMap<&'static str, TokenKind> {
@@ -136,13 +138,10 @@ impl fmt::Display for Token<'_> {
             TokenKind::Semicolon => write!(f, "SEMICOLON {origin} nil"),
             TokenKind::String => write!(f, "STRING {origin} {}", Token::unescape(origin)),
             TokenKind::Ident => write!(f, "IDENTIFIER {origin} nil"),
-            TokenKind::Number(n) => {
-                if n.fract() == 0.0 {
-                    write!(f, "NUMBER {origin} {n}.0")
-                } else {
-                    write!(f, "NUMBER {origin} {n}")
-                }
-            }
+            TokenKind::Int(n) => write!(f, "INT {origin} {n}"),
+            TokenKind::Uint(n) => write!(f, "UINT {origin} {n}"),
+            TokenKind::Double(n) => write!(f, "DOUBLE {origin} {n}"),
+            TokenKind::Bytes => write!(f, "BYTES {origin} nil"),
             TokenKind::And => write!(f, "AND {origin} nil"),
             TokenKind::Class => write!(f, "CLASS {origin} nil"),
             TokenKind::Else => write!(f, "ELSE {origin} nil"),
@@ -168,7 +167,6 @@ impl fmt::Display for Token<'_> {
             TokenKind::Less => write!(f, "LESS {origin} nil"),
             TokenKind::LessEqual => write!(f, "LESS_EQUAL {origin} nil"),
             TokenKind::Slash => write!(f, "SLASH {origin} nil"),
-            TokenKind::Eof => write!(f, "EOF  nil"),
         }
     }
 }
@@ -247,7 +245,8 @@ impl<'src> Iterator for Lexer<'src> {
             enum Started {
                 Slash,
                 String,
-                Number,
+                DecimalNumber,
+                HexNumber,
                 Ident,
                 OrEqual(TokenKind, TokenKind),
             }
@@ -279,9 +278,51 @@ impl<'src> Iterator for Lexer<'src> {
                 '!' => Started::OrEqual(TokenKind::Not, TokenKind::NotEqual),
                 '=' => Started::OrEqual(TokenKind::Equal, TokenKind::EqualEqual),
                 '"' => Started::String,
-                '0'..='9' => Started::Number,
+                '&' => {
+                    if self.rest.starts_with('&') {
+                        self.byte += 1;
+                        self.rest = &self.rest[1..];
+                        return just(TokenKind::And);
+                    } else {
+                        return Some(Err(miette::miette! {
+                            labels = vec![LabeledSpan::at(
+                                c_at..self.byte,
+                                "Unexpected character"
+                            )],
+                            help = "Expected `&&`",
+                            "[line {line}] Error: Unexpected character: {c}",
+                        }));
+                    }
+                }
+                '|' => {
+                    if self.rest.starts_with('|') {
+                        self.byte += 1;
+                        self.rest = &self.rest[1..];
+                        return just(TokenKind::Or);
+                    } else {
+                        return Some(Err(miette::miette! {
+                            labels = vec![LabeledSpan::at(
+                                c_at..self.byte,
+                                "Unexpected character"
+                            )],
+                            help = "Expected ||",
+                            "[line {line}] Error: Unexpected character: {c}",
+                        }));
+                    }
+                }
+                '0'..='9' => {
+                    if c == '0'
+                        && self.rest.len() > 2
+                        && self.rest.starts_with("x")
+                        && self.rest[2..].starts_with(|c: char| c.is_ascii_hexdigit())
+                    {
+                        Started::HexNumber
+                    } else {
+                        Started::DecimalNumber
+                    }
+                }
                 'a'..='z' | 'A'..='Z' | '_' => Started::Ident,
-                '\n' => {
+                '\n' | '\r' => {
                     self.line += 1;
                     continue;
                 }
@@ -302,7 +343,7 @@ impl<'src> Iterator for Lexer<'src> {
             break match started {
                 Started::Slash => {
                     if self.rest.starts_with('/') {
-                        let comment_end = self.rest.find('\n').unwrap_or(self.rest.len());
+                        let comment_end = self.rest.find(['\n', '\r']).unwrap_or(self.rest.len());
                         self.byte += comment_end;
                         self.rest = &self.rest[comment_end..];
                         continue;
@@ -364,38 +405,127 @@ impl<'src> Iterator for Lexer<'src> {
                         origin: literal,
                     }))
                 }
-                Started::Number => {
-                    let mut found_dot = false;
+                Started::DecimalNumber => {
                     let first_non_digit = c_onwards
-                        .find(|c| match c {
-                            '.' => {
-                                if !found_dot {
-                                    found_dot = true;
-                                    false
-                                } else {
-                                    true
-                                }
-                            }
-                            '0'..='9' => false,
-                            _ => true,
-                        })
+                        .find(|c: char| !c.is_ascii_digit())
                         .unwrap_or(c_onwards.len());
-
-                    // if first_non_digit != 0 && c_onwards[..first_non_digit].ends_with('.') {
-                    //     first_non_digit -= 1;
-                    // }
-
-                    self.byte += first_non_digit;
-                    self.rest = &self.rest[first_non_digit - 1..];
-
                     let literal = &c_onwards[..first_non_digit];
-                    let number = literal.parse().expect("number");
-                    Some(Ok(Token {
-                        kind: TokenKind::Number(number),
-                        line: self.line,
-                        offset: c_at,
-                        origin: literal,
-                    }))
+                    let extra_bytes = first_non_digit - c.len_utf8();
+                    if first_non_digit == c_onwards.len() {
+                        self.byte += extra_bytes;
+                        self.rest = &self.rest[extra_bytes..];
+                        return Some(Ok(Token {
+                            kind: TokenKind::Int(literal.parse().unwrap()),
+                            line: self.line,
+                            offset: c_at,
+                            origin: literal,
+                        }));
+                    }
+
+                    let rest = &c_onwards[first_non_digit..];
+                    if rest.starts_with(['u', 'U']) {
+                        // Eat the "u"
+                        let extra_bytes = extra_bytes + 1;
+                        self.byte += extra_bytes;
+                        self.rest = &self.rest[extra_bytes..];
+                        return Some(Ok(Token {
+                            kind: TokenKind::Uint(literal.parse().unwrap()),
+                            line: self.line,
+                            offset: c_at,
+                            origin: literal,
+                        }));
+                    } else if rest.starts_with('.') {
+                        let rest = &rest[1..];
+                        let fractional = rest
+                            .find(|c: char| !c.is_ascii_digit())
+                            .unwrap_or(rest.len());
+                        if fractional == 0 {
+                            // ignore dot since it is a call on int type
+                            self.byte += extra_bytes;
+                            self.rest = &self.rest[extra_bytes..];
+                            return Some(Ok(Token {
+                                kind: TokenKind::Int(literal.parse().unwrap()),
+                                line: self.line,
+                                offset: c_at,
+                                origin: literal,
+                            }));
+                        } else {
+                            let take = first_non_digit + fractional + 1;
+                            let literal = &c_onwards[..take];
+                            let extra_bytes = literal.len() - c.len_utf8();
+                            if take == c_onwards.len() {
+                                self.byte += extra_bytes;
+                                self.rest = &self.rest[extra_bytes..];
+                                return Some(Ok(Token {
+                                    kind: TokenKind::Double(literal.parse().unwrap()),
+                                    line: self.line,
+                                    offset: c_at,
+                                    origin: literal,
+                                }));
+                            }
+
+                            let rest = &c_onwards[take..];
+                            if !rest.starts_with(['e', 'E']) {
+                                self.byte += extra_bytes;
+                                self.rest = &self.rest[extra_bytes..];
+                                return Some(Ok(Token {
+                                    kind: TokenKind::Double(literal.parse().unwrap()),
+                                    line: self.line,
+                                    offset: c_at,
+                                    origin: literal,
+                                }));
+                            }
+
+                            let mut eat = 1;
+                            let rest = &rest[eat..];
+                            if rest.is_empty() {
+                                return Some(Err(miette::miette! {
+                                    labels = vec![LabeledSpan::at(
+                                        c_at..self.byte,
+                                        "Unexpected character"
+                                    )],
+                                    help = "Expected exponent",
+                                    "[line {line}] Error: Unexpected character: {c}",
+                                }));
+                            }
+
+                            // eat the sign
+                            let rest = if rest.starts_with(['+', '-']) {
+                                eat += 1;
+                                &rest[1..]
+                            } else {
+                                rest
+                            };
+
+                            let exponent = rest
+                                .find(|c: char| !c.is_ascii_digit())
+                                .unwrap_or(rest.len());
+
+                            let literal =
+                                &c_onwards[..first_non_digit + fractional + exponent + 1 + eat];
+                            let extra_bytes = literal.len() - c.len_utf8();
+                            self.byte += extra_bytes;
+                            self.rest = &self.rest[extra_bytes..];
+                            return Some(Ok(Token {
+                                kind: TokenKind::Double(literal.parse().unwrap()),
+                                line: self.line,
+                                offset: c_at,
+                                origin: literal,
+                            }));
+                        }
+                    } else {
+                        return Some(Err(miette::miette! {
+                            labels = vec![LabeledSpan::at(
+                                c_at..self.byte,
+                                "Unexpected character"
+                            )],
+                            help = "Expected `.` or `u`",
+                            "[line {line}] Error: Unexpected character: {c}",
+                        }));
+                    }
+                }
+                Started::HexNumber => {
+                    todo!()
                 }
                 Started::OrEqual(token, or_else) => {
                     if self.rest.starts_with('=') {
@@ -444,8 +574,14 @@ mod tests {
         let bad = vec!["123", "123foo", "123_foo", "123_FOO"];
         for t in bad {
             let mut lexer = Lexer::new(t);
-            let token = lexer.next().unwrap().unwrap();
-            assert_ne!(token.kind, TokenKind::Ident);
+            let token = lexer.next().unwrap();
+            assert!(!matches!(
+                token,
+                Ok(Token {
+                    kind: TokenKind::Ident,
+                    ..
+                })
+            ));
         }
     }
 
@@ -457,5 +593,90 @@ mod tests {
             let token = lexer.next().unwrap().unwrap();
             assert_eq!(token.kind, *keywords().get(t).unwrap());
         }
+    }
+
+    #[test]
+    fn test_and() {
+        let mut lexer = Lexer::new("&&");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::And);
+
+        let mut lexer = Lexer::new("&|");
+        let token = lexer.next().unwrap();
+        assert!(token.is_err());
+    }
+
+    #[test]
+    fn test_or() {
+        let mut lexer = Lexer::new("||");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Or);
+
+        let mut lexer = Lexer::new("|&");
+        let token = lexer.next().unwrap();
+        assert!(token.is_err());
+    }
+
+    #[test]
+    fn test_decimal_parsing() {
+        let mut lexer = Lexer::new("123");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Int(123));
+        let token = lexer.next();
+        assert!(token.is_none());
+
+        let mut lexer = Lexer::new("123u");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Uint(123));
+        let token = lexer.next();
+        assert!(token.is_none());
+
+        let mut lexer = Lexer::new("123.");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Int(123));
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Dot);
+
+        let mut lexer = Lexer::new("123u.");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Uint(123));
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Dot);
+
+        let mut lexer = Lexer::new("123.123");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Double(123.123));
+        let token = lexer.next();
+        assert!(token.is_none());
+
+        let mut lexer = Lexer::new("123.123.");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Double(123.123));
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Dot);
+
+        let mut lexer = Lexer::new("1.2e3");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Double(1.2e3));
+        let token = lexer.next();
+        assert!(token.is_none());
+
+        let mut lexer = Lexer::new("1.2e+3");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Double(1.2e+3));
+        let token = lexer.next();
+        assert!(token.is_none());
+
+        let mut lexer = Lexer::new("1.2e-3");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Double(1.2e-3));
+        let token = lexer.next();
+        assert!(token.is_none());
+
+        let mut lexer = Lexer::new("1.2e3.");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Double(1.2e3));
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Dot);
     }
 }
