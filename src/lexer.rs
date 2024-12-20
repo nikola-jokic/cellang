@@ -224,6 +224,16 @@ impl<'src> Lexer<'src> {
         }
         self.peeked.as_ref()
     }
+
+    #[inline]
+    fn read_extra(&mut self, n: usize) {
+        self.byte += n;
+        if n == self.rest.len() {
+            self.rest = "";
+        } else {
+            self.rest = &self.rest[n..];
+        }
+    }
 }
 
 impl<'src> Iterator for Lexer<'src> {
@@ -267,7 +277,13 @@ impl<'src> Iterator for Lexer<'src> {
                 '{' => return just(TokenKind::LeftBrace),
                 '}' => return just(TokenKind::RightBrace),
                 ',' => return just(TokenKind::Comma),
-                '.' => return just(TokenKind::Dot),
+                '.' => {
+                    if self.rest.starts_with(|c: char| c.is_ascii_digit()) {
+                        Started::DecimalNumber
+                    } else {
+                        return just(TokenKind::Dot);
+                    }
+                }
                 '-' => return just(TokenKind::Minus),
                 '+' => return just(TokenKind::Plus),
                 ';' => return just(TokenKind::Semicolon),
@@ -406,122 +422,105 @@ impl<'src> Iterator for Lexer<'src> {
                     }))
                 }
                 Started::DecimalNumber => {
-                    let first_non_digit = c_onwards
-                        .find(|c: char| !c.is_ascii_digit())
-                        .unwrap_or(c_onwards.len());
-                    let literal = &c_onwards[..first_non_digit];
-                    let extra_bytes = first_non_digit - c.len_utf8();
-                    if first_non_digit == c_onwards.len() {
-                        self.byte += extra_bytes;
-                        self.rest = &self.rest[extra_bytes..];
-                        return Some(Ok(Token {
-                            kind: TokenKind::Int(literal.parse().unwrap()),
-                            line: self.line,
-                            offset: c_at,
-                            origin: literal,
-                        }));
+                    enum State {
+                        Nil,
+                        Int,
+                        Uint,
+                        Dot,
+                        Fraction,
+                        Exp,
+                        ExpSign,
+                        ExpDigit,
                     }
 
-                    let rest = &c_onwards[first_non_digit..];
-                    if rest.starts_with(['u', 'U']) {
-                        // Eat the "u"
-                        let extra_bytes = extra_bytes + 1;
-                        self.byte += extra_bytes;
-                        self.rest = &self.rest[extra_bytes..];
-                        return Some(Ok(Token {
-                            kind: TokenKind::Uint(literal.parse().unwrap()),
-                            line: self.line,
-                            offset: c_at,
-                            origin: literal,
-                        }));
-                    } else if rest.starts_with('.') {
-                        let rest = &rest[1..];
-                        let fractional = rest
-                            .find(|c: char| !c.is_ascii_digit())
-                            .unwrap_or(rest.len());
-                        if fractional == 0 {
-                            // ignore dot since it is a call on int type
-                            self.byte += extra_bytes;
-                            self.rest = &self.rest[extra_bytes..];
-                            return Some(Ok(Token {
-                                kind: TokenKind::Int(literal.parse().unwrap()),
-                                line: self.line,
-                                offset: c_at,
-                                origin: literal,
-                            }));
-                        } else {
-                            let take = first_non_digit + fractional + 1;
-                            let literal = &c_onwards[..take];
-                            let extra_bytes = literal.len() - c.len_utf8();
-                            if take == c_onwards.len() {
-                                self.byte += extra_bytes;
-                                self.rest = &self.rest[extra_bytes..];
-                                return Some(Ok(Token {
-                                    kind: TokenKind::Double(literal.parse().unwrap()),
-                                    line: self.line,
-                                    offset: c_at,
-                                    origin: literal,
-                                }));
-                            }
+                    let mut state = State::Nil;
+                    let mut index = 0;
+                    for c in c_onwards.chars() {
+                        state = match (&state, c) {
+                            (State::Nil, '.') => State::Dot,
+                            (State::Nil, c) if c.is_ascii_digit() => State::Int,
+                            (State::Int, '.') => State::Dot,
+                            (State::Int, 'u') => State::Uint,
+                            (State::Int, 'e') | (State::Int, 'E') => State::Exp,
+                            (State::Int, c) if c.is_ascii_digit() => State::Int,
+                            (State::Dot, c) if c.is_ascii_digit() => State::Fraction,
+                            (State::Fraction, 'e') | (State::Fraction, 'E') => State::Exp,
+                            (State::Fraction, c) if c.is_ascii_digit() => State::Fraction,
+                            (State::Exp, '+') | (State::Exp, '-') => State::ExpSign,
+                            (State::Exp, c) if c.is_ascii_digit() => State::ExpDigit,
+                            (State::ExpSign, c) if c.is_ascii_digit() => State::ExpDigit,
+                            (State::ExpDigit, c) if c.is_ascii_digit() => State::ExpDigit,
+                            _ => break,
+                        };
+                        index += c.len_utf8();
+                    }
 
-                            let rest = &c_onwards[take..];
-                            if !rest.starts_with(['e', 'E']) {
-                                self.byte += extra_bytes;
-                                self.rest = &self.rest[extra_bytes..];
-                                return Some(Ok(Token {
-                                    kind: TokenKind::Double(literal.parse().unwrap()),
-                                    line: self.line,
-                                    offset: c_at,
-                                    origin: literal,
-                                }));
-                            }
-
-                            let mut eat = 1;
-                            let rest = &rest[eat..];
-                            if rest.is_empty() {
-                                return Some(Err(miette::miette! {
-                                    labels = vec![LabeledSpan::at(
-                                        c_at..self.byte,
-                                        "Unexpected character"
-                                    )],
-                                    help = "Expected exponent",
-                                    "[line {line}] Error: Unexpected character: {c}",
-                                }));
-                            }
-
-                            // eat the sign
-                            let rest = if rest.starts_with(['+', '-']) {
-                                eat += 1;
-                                &rest[1..]
-                            } else {
-                                rest
-                            };
-
-                            let exponent = rest
-                                .find(|c: char| !c.is_ascii_digit())
-                                .unwrap_or(rest.len());
-
-                            let literal =
-                                &c_onwards[..first_non_digit + fractional + exponent + 1 + eat];
-                            let extra_bytes = literal.len() - c.len_utf8();
-                            self.byte += extra_bytes;
-                            self.rest = &self.rest[extra_bytes..];
-                            return Some(Ok(Token {
-                                kind: TokenKind::Double(literal.parse().unwrap()),
-                                line: self.line,
-                                offset: c_at,
-                                origin: literal,
+                    match state {
+                        State::Nil => {
+                            let line = self.line;
+                            return Some(Err(miette::miette! {
+                                labels = vec![LabeledSpan::at(
+                                    c_at..self.byte,
+                                    "Unexpected character"
+                                )],
+                                help = "Expected a number",
+                                "[line {line}] Error: Unexpected character: {c}",
                             }));
                         }
-                    } else {
-                        return Some(Err(miette::miette! {
-                            labels = vec![LabeledSpan::at(
-                                c_at..self.byte,
-                                "Unexpected character"
-                            )],
-                            help = "Expected `.` or `u`",
-                            "[line {line}] Error: Unexpected character: {c}",
-                        }));
+                        State::Dot | State::Exp => {
+                            // unread the dot or exp
+                            let read = index - 1;
+                            let extra_bytes = read - c.len_utf8();
+                            self.read_extra(extra_bytes);
+                            Some(Ok(Token {
+                                kind: TokenKind::Int(c_onwards[..read].parse().unwrap()),
+                                line: self.line,
+                                offset: c_at,
+                                origin: &c_onwards[..read],
+                            }))
+                        }
+                        State::ExpSign => {
+                            // unread the exp sign
+                            let read = index - 2;
+                            let extra_bytes = index - 2 - c.len_utf8();
+                            self.read_extra(extra_bytes);
+                            Some(Ok(Token {
+                                kind: TokenKind::Int(c_onwards[..read].parse().unwrap()),
+                                line: self.line,
+                                offset: c_at,
+                                origin: &c_onwards[..read],
+                            }))
+                        }
+                        State::Int => {
+                            let extra_bytes = index - c.len_utf8();
+                            self.read_extra(extra_bytes);
+                            Some(Ok(Token {
+                                kind: TokenKind::Int(c_onwards[..index].parse().unwrap()),
+                                line: self.line,
+                                offset: c_at,
+                                origin: &c_onwards[..index],
+                            }))
+                        }
+                        State::Uint => {
+                            let extra_bytes = index - c.len_utf8();
+                            self.read_extra(extra_bytes);
+                            Some(Ok(Token {
+                                kind: TokenKind::Uint(c_onwards[..index - 1].parse().unwrap()),
+                                line: self.line,
+                                offset: c_at,
+                                origin: &c_onwards[..index],
+                            }))
+                        }
+                        State::Fraction | State::ExpDigit => {
+                            let extra_bytes = index - c.len_utf8();
+                            self.read_extra(extra_bytes);
+                            Some(Ok(Token {
+                                kind: TokenKind::Double(c_onwards[..index].parse().unwrap()),
+                                line: self.line,
+                                offset: c_at,
+                                origin: &c_onwards[..index],
+                            }))
+                        }
                     }
                 }
                 Started::HexNumber => {
@@ -647,7 +646,7 @@ mod tests {
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Double(123.123));
         let token = lexer.next();
-        assert!(token.is_none());
+        assert!(token.is_none(), "{:?}", token);
 
         let mut lexer = Lexer::new("123.123.");
         let token = lexer.next().unwrap().unwrap();
@@ -678,5 +677,23 @@ mod tests {
         assert_eq!(token.kind, TokenKind::Double(1.2e3));
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Dot);
+
+        let mut lexer = Lexer::new(".2");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Double(0.2));
+        let token = lexer.next();
+        assert!(token.is_none());
+
+        let mut lexer = Lexer::new(".2.");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Double(0.2));
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Dot);
+
+        let mut lexer = Lexer::new(".2e3");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Double(0.2e3));
+        let token = lexer.next();
+        assert!(token.is_none());
     }
 }
