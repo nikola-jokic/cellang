@@ -132,6 +132,7 @@ impl<'src> Parser<'src> {
                         | TokenKind::RightBracket
                         | TokenKind::RightBrace
                         | TokenKind::Comma
+                        | TokenKind::Colon
                         | TokenKind::Semicolon,
                     ..
                 }) => break,
@@ -191,10 +192,6 @@ impl<'src> Parser<'src> {
                     kind: TokenKind::Or,
                     ..
                 }) => Op::Or,
-                Some(Token {
-                    kind: TokenKind::Colon,
-                    ..
-                }) => Op::MapAssign,
 
                 Some(token) => return Err(miette::miette! {
                     labels = vec![
@@ -275,7 +272,7 @@ impl<'src> Parser<'src> {
                 }
             }
         }
-        Ok(TokenTree::Cons(Op::MapAssign, items))
+        Ok(TokenTree::Cons(Op::Map, items))
     }
 
     fn parse_list(&mut self) -> Result<TokenTree<'src>, Error> {
@@ -390,7 +387,7 @@ pub enum Op {
     Var,
     While,
     Group,
-    MapAssign,
+    Map,
     List,
 }
 
@@ -416,7 +413,7 @@ impl fmt::Display for Op {
             Op::Var => "var",
             Op::While => "while",
             Op::Group => "(",
-            Op::MapAssign => "{",
+            Op::Map => "{",
             Op::List => "[",
         };
         write!(f, "{}", s)
@@ -501,7 +498,7 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
         | Op::GreaterEqual => (7, 8),
         Op::Plus | Op::Minus => (9, 10),
         Op::Star | Op::Slash => (11, 12),
-        Op::Field | Op::MapAssign => (16, 15),
+        Op::Field => (16, 15),
         _ => return None,
     };
     Some(res)
@@ -626,7 +623,7 @@ mod tests {
         assert_eq!(
             tree,
             TokenTree::Cons(
-                Op::MapAssign,
+                Op::Map,
                 vec![
                     TokenTree::FieldInitialization {
                         key: Box::new(TokenTree::Atom(Atom::Ident("foo"))),
@@ -643,6 +640,6 @@ mod tests {
         let input = "{}";
         let mut parser = Parser::new(input);
         let tree = parser.parse().unwrap();
-        assert_eq!(tree, TokenTree::Cons(Op::MapAssign, vec![]));
+        assert_eq!(tree, TokenTree::Cons(Op::Map, vec![]));
     }
 }
