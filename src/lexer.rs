@@ -373,6 +373,13 @@ impl<'src> Iterator for Lexer<'src> {
                     'r' | 'R' => {
                         if self.rest.starts_with(['"', '\'']) {
                             Started::RawString
+                        } else if self.rest.starts_with(['b', 'B']) {
+                            let rest = &self.rest[1..];
+                            if rest.starts_with(['"', '\'']) {
+                                Started::RawBytes
+                            } else {
+                                Started::Ident
+                            }
                         } else {
                             Started::Ident
                         }
@@ -830,6 +837,7 @@ enum StrDelimiter {
     Tripple,
 }
 
+#[inline]
 fn read_str_delimiter(s: &str) -> StrDelimiter {
     if s.starts_with("'''") || s.starts_with(r#"""""#) {
         StrDelimiter::Tripple
@@ -1349,5 +1357,77 @@ test'case''
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
         assert_eq!(token.origin, input.trim_start_matches('b'));
+    }
+
+    #[test]
+    fn test_raw_tripple_quoted_bytes() {
+        let input = r#"rb"""""""#; // empty
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::RawBytes);
+        assert_eq!(token.origin, input.trim_start_matches("rb"));
+
+        let input = "rb''''''";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::RawBytes);
+        assert_eq!(token.origin, input.trim_start_matches("rb"));
+
+        let input = r#"rb"""foo""""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::RawBytes);
+        assert_eq!(token.origin, input.trim_start_matches("rb"));
+
+        let input = "rb'''foo'''";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::RawBytes);
+        assert_eq!(token.origin, input.trim_start_matches("rb"));
+
+        let input = r#"rb"""foo\nbar""""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::RawBytes);
+        assert_eq!(token.origin, input.trim_start_matches("rb"));
+
+        let input = r#"rb'''foo\nbar'''"#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::RawBytes);
+        assert_eq!(token.origin, input.trim_start_matches("rb"));
+
+        let input = r#"rb"""
+test"case""
+""""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::RawBytes);
+        assert_eq!(token.origin, input.trim_start_matches("rb"));
+
+        let input = r#"rb'''
+test'case''
+'''"#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::RawBytes);
+        assert_eq!(token.origin, input.trim_start_matches("rb"));
+    }
+
+    #[test]
+    fn test_raw_byte_combinations() {
+        let tt = vec![
+            "rb'foo'",
+            "rB'foo'",
+            "Rb'foo'",
+            "RB'foo'",
+        ];
+
+        for t in tt {
+            let mut lexer = Lexer::new(t);
+            let token = lexer.next().unwrap().unwrap();
+            assert_eq!(token.kind, TokenKind::RawBytes);
+            assert_eq!(token.origin, t.get(2..).unwrap());
+        }
     }
 }
