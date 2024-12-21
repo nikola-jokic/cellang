@@ -145,6 +145,10 @@ impl<'src> Parser<'src> {
                     ..
                 }) => Op::Call,
                 Some(Token {
+                    kind: TokenKind::LeftBracket,
+                    ..
+                }) => Op::Index,
+                Some(Token {
                     kind: TokenKind::Dot,
                     ..
                 }) => Op::Field,
@@ -204,6 +208,10 @@ impl<'src> Parser<'src> {
                     kind: TokenKind::Or,
                     ..
                 }) => Op::Or,
+                Some(Token {
+                    kind: TokenKind::QuestionMark,
+                    ..
+                }) => Op::IfTernary,
 
                 Some(token) => return Err(miette::miette! {
                     labels = vec![
@@ -228,6 +236,12 @@ impl<'src> Parser<'src> {
                             .parse_fn_call_args()
                             .wrap_err("in function call arguments")?,
                     },
+                    Op::Index => {
+                        let index = self.parse_expr(0).wrap_err("in index expression")?;
+                        self.lexer
+                            .expect(TokenKind::RightBracket, "Expected closing bracket")?;
+                        TokenTree::Cons(op, vec![lhs, index])
+                    }
                     _ => TokenTree::Cons(op, vec![lhs]),
                 };
                 continue;
@@ -238,12 +252,22 @@ impl<'src> Parser<'src> {
                 }
                 self.lexer.next();
 
-                lhs = {
-                    let rhs = self
-                        .parse_expr(r_bp)
-                        .wrap_err_with(|| format!("on the right-hand side of {lhs} {op}"))?;
-                    TokenTree::Cons(op, vec![lhs, rhs])
+                lhs = match op {
+                    Op::IfTernary => {
+                        let mhs = self.parse_expr(0)?;
+                        self.lexer
+                            .expect(TokenKind::Colon, "Expected colon after the condition")?;
+                        let rhs = self.parse_expr(r_bp)?;
+                        TokenTree::Cons(op, vec![lhs, mhs, rhs])
+                    }
+                    _ => {
+                        let rhs = self
+                            .parse_expr(r_bp)
+                            .wrap_err_with(|| format!("on the right-hand side of {lhs} {op}"))?;
+                        TokenTree::Cons(op, vec![lhs, rhs])
+                    }
                 };
+
                 continue;
             }
 
@@ -394,7 +418,9 @@ pub enum Op {
     And,
     In,
     Or,
+    IfTernary,
     Call,
+    Index,
     For,
     Field,
     Var,
@@ -408,6 +434,7 @@ pub enum Op {
 impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = match self {
+            Op::IfTernary => "?:",
             Op::Minus => "-",
             Op::Plus => "+",
             Op::Star => "*",
@@ -417,19 +444,20 @@ impl fmt::Display for Op {
             Op::GreaterEqual => ">=",
             Op::Less => "<",
             Op::Greater => ">",
+            Op::Index => "[]",
             Op::In => "in",
             Op::Slash => "/",
             Op::Not => "!",
             Op::And => "&&",
             Op::Or => "||",
-            Op::Call => "(",
+            Op::Call => "(args)",
             Op::For => "for",
             Op::Field => ".",
             Op::Var => "var",
             Op::While => "while",
             Op::Group => "(",
-            Op::Map => "{",
-            Op::List => "[",
+            Op::Map => "{map}",
+            Op::List => "[list]",
             Op::Mod => "%",
         };
         write!(f, "{}", s)
@@ -448,6 +476,7 @@ pub enum TokenTree<'src> {
         key: Box<TokenTree<'src>>,
         value: Box<TokenTree<'src>>,
     },
+    // TODO: Handle messages
 }
 
 impl fmt::Display for TokenTree<'_> {
@@ -484,7 +513,7 @@ fn prefix_binding_power(op: Op) -> ((), u8) {
 
 fn postfix_binding_power(op: Op) -> Option<(u8, ())> {
     match op {
-        Op::Call => Some((15, ())),
+        Op::Call | Op::Index => Some((15, ())),
         _ => None,
     }
 }
@@ -504,7 +533,7 @@ fn postfix_binding_power(op: Op) -> Option<(u8, ())> {
 fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
     let res = match op {
         // '=' => (2, 1),
-        // '?' => (4, 3),
+        Op::IfTernary => (2, 1),
         Op::Or => (3, 4),
         Op::And => (5, 6),
         Op::In
@@ -780,5 +809,82 @@ mod tests {
             let tree = tree.unwrap();
             assert_eq!(tree, expected);
         }
+    }
+
+    #[test]
+    fn test_indexing() {
+        let input = "foo[1]";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Index,
+                vec![
+                    TokenTree::Atom(Atom::Ident("foo")),
+                    TokenTree::Atom(Atom::Int(1)),
+                ]
+            )
+        );
+
+        let input = "foo[1][2]";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Index,
+                vec![
+                    TokenTree::Cons(
+                        Op::Index,
+                        vec![
+                            TokenTree::Atom(Atom::Ident("foo")),
+                            TokenTree::Atom(Atom::Int(1)),
+                        ]
+                    ),
+                    TokenTree::Atom(Atom::Int(2)),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_ternary_if() {
+        let input = "true ? 1 : 2";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::IfTernary,
+                vec![
+                    TokenTree::Atom(Atom::Bool(true)),
+                    TokenTree::Atom(Atom::Int(1)),
+                    TokenTree::Atom(Atom::Int(2)),
+                ]
+            )
+        );
+
+        let input = "true ? 1 : false ? 2 : 3";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::IfTernary,
+                vec![
+                    TokenTree::Atom(Atom::Bool(true)),
+                    TokenTree::Atom(Atom::Int(1)),
+                    TokenTree::Cons(
+                        Op::IfTernary,
+                        vec![
+                            TokenTree::Atom(Atom::Bool(false)),
+                            TokenTree::Atom(Atom::Int(2)),
+                            TokenTree::Atom(Atom::Int(3)),
+                        ]
+                    ),
+                ]
+            )
+        );
     }
 }

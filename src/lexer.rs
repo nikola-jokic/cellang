@@ -55,6 +55,7 @@ pub enum TokenKind {
     Greater,
     GreaterEqual,
     Less,
+    QuestionMark,
     LessEqual,
     Slash,
     Colon,
@@ -147,6 +148,7 @@ impl fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let origin = self.origin;
         match self.kind {
+            TokenKind::QuestionMark => write!(f, "QUESTIONMARK {origin} nil"),
             TokenKind::Star => write!(f, "STAR {origin} nil"),
             TokenKind::Colon => write!(f, "COLON {origin} nil"),
             TokenKind::In => write!(f, "IN {origin} nil"),
@@ -334,6 +336,7 @@ impl<'src> Iterator for Lexer<'src> {
                 '=' => Started::OrEqual(TokenKind::Equal, TokenKind::EqualEqual),
                 '"' => Started::String,
                 '\'' => Started::String,
+                '?' => return just(TokenKind::QuestionMark),
                 '&' => {
                     if self.rest.starts_with('&') {
                         self.byte += 1;
