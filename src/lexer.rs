@@ -27,7 +27,10 @@ pub struct Token<'src> {
 
 impl Token<'_> {
     pub fn unescape(s: &str) -> Cow<'_, str> {
-        Cow::Borrowed(s.trim_matches('"'))
+        match read_str_delimiter(s) {
+            StrDelimiter::Single => Cow::Borrowed(&s[1..s.len() - 1]),
+            StrDelimiter::Tripple => Cow::Borrowed(&s[3..s.len() - 3]),
+        }
     }
 }
 
@@ -37,7 +40,6 @@ pub enum TokenKind {
     RightParen,
     LeftBrace,
     RightBrace,
-    Star,
     Dot,
     Comma,
     Plus,
@@ -53,6 +55,7 @@ pub enum TokenKind {
     LessEqual,
     Slash,
     RawString,
+    Star,
     String,
     Bytes,
     RawBytes,
@@ -64,7 +67,6 @@ pub enum TokenKind {
     As,
     Break,
     Const,
-    Class,
     Else,
     False,
     For,
@@ -76,10 +78,6 @@ pub enum TokenKind {
     Null,
     In,
     Or,
-    Print,
-    Return,
-    Super,
-    This,
     True,
     Var,
     Package,
@@ -109,7 +107,6 @@ fn keywords() -> &'static HashMap<&'static str, TokenKind> {
         map.insert("loop", TokenKind::Loop);
         map.insert("package", TokenKind::Package);
         map.insert("namespace", TokenKind::Namespace);
-        map.insert("return", TokenKind::Return);
         map.insert("var", TokenKind::Var);
         map.insert("void", TokenKind::Void);
         map.insert("while", TokenKind::While);
@@ -146,6 +143,7 @@ impl fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let origin = self.origin;
         match self.kind {
+            TokenKind::Star => write!(f, "STAR {origin} nil"),
             TokenKind::In => write!(f, "IN {origin} nil"),
             TokenKind::Break => write!(f, "BREAK {origin} nil"),
             TokenKind::Const => write!(f, "CONST {origin} nil"),
@@ -160,7 +158,6 @@ impl fmt::Display for Token<'_> {
             TokenKind::RightParen => write!(f, "RIGHT_PAREN {origin} nil"),
             TokenKind::LeftBrace => write!(f, "LEFT_BRACE {origin} nil"),
             TokenKind::RightBrace => write!(f, "RIGHT_BRACE {origin} nil"),
-            TokenKind::Star => write!(f, "STAR {origin} nil"),
             TokenKind::Dot => write!(f, "DOT {origin} nil"),
             TokenKind::Comma => write!(f, "COMMA {origin} nil"),
             TokenKind::Plus => write!(f, "PLUS {origin} nil"),
@@ -175,7 +172,6 @@ impl fmt::Display for Token<'_> {
             TokenKind::Bytes => write!(f, "BYTES {origin} nil"),
             TokenKind::RawBytes => write!(f, "RAW_BYTES {origin} nil"),
             TokenKind::And => write!(f, "AND {origin} nil"),
-            TokenKind::Class => write!(f, "CLASS {origin} nil"),
             TokenKind::Else => write!(f, "ELSE {origin} nil"),
             TokenKind::False => write!(f, "FALSE {origin} nil"),
             TokenKind::For => write!(f, "FOR {origin} nil"),
@@ -183,10 +179,6 @@ impl fmt::Display for Token<'_> {
             TokenKind::If => write!(f, "IF {origin} nil"),
             TokenKind::Null => write!(f, "NIL {origin} nil"),
             TokenKind::Or => write!(f, "OR {origin} nil"),
-            TokenKind::Print => write!(f, "PRINT {origin} nil"),
-            TokenKind::Return => write!(f, "RETURN {origin} nil"),
-            TokenKind::Super => write!(f, "SUPER {origin} nil"),
-            TokenKind::This => write!(f, "THIS {origin} nil"),
             TokenKind::True => write!(f, "TRUE {origin} nil"),
             TokenKind::Var => write!(f, "VAR {origin} nil"),
             TokenKind::While => write!(f, "WHILE {origin} nil"),
@@ -319,10 +311,10 @@ impl<'src> Iterator for Lexer<'src> {
                         return just(TokenKind::Dot);
                     }
                 }
+                '*' => return just(TokenKind::Star),
                 '-' => return just(TokenKind::Minus),
                 '+' => return just(TokenKind::Plus),
                 ';' => return just(TokenKind::Semicolon),
-                '*' => return just(TokenKind::Star),
                 '/' => Started::Slash,
                 '<' => Started::OrEqual(TokenKind::Less, TokenKind::LessEqual),
                 '>' => Started::OrEqual(TokenKind::Greater, TokenKind::GreaterEqual),
@@ -1416,12 +1408,7 @@ test'case''
 
     #[test]
     fn test_raw_byte_combinations() {
-        let tt = vec![
-            "rb'foo'",
-            "rB'foo'",
-            "Rb'foo'",
-            "RB'foo'",
-        ];
+        let tt = vec!["rb'foo'", "rB'foo'", "Rb'foo'", "RB'foo'"];
 
         for t in tt {
             let mut lexer = Lexer::new(t);

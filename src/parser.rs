@@ -1,0 +1,419 @@
+use miette::{Context, Error, LabeledSpan};
+use std::borrow::Cow;
+use std::fmt;
+
+use crate::lexer::{Token, TokenKind};
+use crate::Lexer;
+
+pub struct Parser<'src> {
+    input: &'src str,
+    lexer: Lexer<'src>,
+}
+
+impl<'src> Parser<'src> {
+    pub fn new(input: &'src str) -> Self {
+        Self {
+            input,
+            lexer: Lexer::new(input),
+        }
+    }
+
+    pub fn parse(&mut self) -> Result<TokenTree<'src>, Error> {
+        self.parse_expr(0)
+    }
+
+    fn parse_expr(&mut self, min_bp: u8) -> Result<TokenTree<'src>, Error> {
+        let lhs = match self.lexer.next() {
+            Some(Ok(token)) => token,
+            None => return Ok(TokenTree::Atom(Atom::Null)), // todo: figure out this
+            Some(Err(e)) => return Err(e),
+        };
+
+        let mut lhs = match lhs {
+            // atoms
+            Token {
+                kind: TokenKind::Ident,
+                origin,
+                ..
+            } => TokenTree::Atom(Atom::Ident(origin)),
+            Token {
+                kind: TokenKind::Int(n),
+                ..
+            } => TokenTree::Atom(Atom::Int(n)),
+            Token {
+                kind: TokenKind::Uint(n),
+                ..
+            } => TokenTree::Atom(Atom::Uint(n)),
+            Token {
+                kind: TokenKind::Double(n),
+                ..
+            } => TokenTree::Atom(Atom::Double(n)),
+            Token {
+                kind: TokenKind::String,
+                origin,
+                ..
+            } => TokenTree::Atom(Atom::String(Token::unescape(origin))),
+            Token {
+                kind: TokenKind::True,
+                ..
+            } => TokenTree::Atom(Atom::Bool(true)),
+            Token {
+                kind: TokenKind::False,
+                ..
+            } => TokenTree::Atom(Atom::Bool(false)),
+
+            // groups
+            Token {
+                kind: TokenKind::LeftParen,
+                ..
+            } => {
+                let lhs = self.parse_expr(0)?;
+                self.lexer
+                    .expect(TokenKind::RightParen, "Expected closing parenthesis")?;
+                TokenTree::Cons(Op::Group, vec![lhs])
+            }
+
+            // unary operators
+            Token {
+                kind: TokenKind::Not | TokenKind::Minus,
+                ..
+            } => {
+                let op = match lhs.kind {
+                    TokenKind::Not => Op::Not,
+                    TokenKind::Minus => Op::Minus,
+                    _ => unreachable!(),
+                };
+                let ((), r_bp) = prefix_binding_power(op);
+                let rhs = self.parse_expr(r_bp)?;
+                TokenTree::Cons(op, vec![rhs])
+            }
+
+            token => {
+                return Err(miette::miette! {
+                    labels = vec![
+                        LabeledSpan::at(
+                            token.offset..token.offset + token.origin.len(),
+                            "here",
+                        ),
+                    ],
+                        help = format!("Unexpected token: {:?}", token.kind),
+                        "Unexpected token"
+                })
+            }
+        };
+
+        loop {
+            let op = self.lexer.peek();
+            if op.map_or(false, |op| op.is_err()) {
+                return Err(self
+                    .lexer
+                    .next()
+                    .expect("checked Some above")
+                    .expect_err("checked Err above"))
+                .wrap_err("in place of expected operator");
+            }
+
+            let op = match op.map(|res| res.as_ref().expect("handled Err above")) {
+                None => break,
+                Some(Token {
+                    kind:
+                        TokenKind::RightParen
+                        | TokenKind::Comma
+                        | TokenKind::Semicolon
+                        | TokenKind::RightBrace,
+                    ..
+                }) => break,
+                Some(Token {
+                    kind: TokenKind::LeftParen,
+                    ..
+                }) => Op::Call,
+                Some(Token {
+                    kind: TokenKind::Dot,
+                    ..
+                }) => Op::Field,
+                Some(Token {
+                    kind: TokenKind::Minus,
+                    ..
+                }) => Op::Minus,
+                Some(Token {
+                    kind: TokenKind::Plus,
+                    ..
+                }) => Op::Plus,
+                Some(Token {
+                    kind: TokenKind::Star,
+                    ..
+                }) => Op::Star,
+                Some(Token {
+                    kind: TokenKind::NotEqual,
+                    ..
+                }) => Op::NotEqual,
+                Some(Token {
+                    kind: TokenKind::EqualEqual,
+                    ..
+                }) => Op::EqualEqual,
+                Some(Token {
+                    kind: TokenKind::LessEqual,
+                    ..
+                }) => Op::LessEqual,
+                Some(Token {
+                    kind: TokenKind::GreaterEqual,
+                    ..
+                }) => Op::GreaterEqual,
+                Some(Token {
+                    kind: TokenKind::Less,
+                    ..
+                }) => Op::Less,
+                Some(Token {
+                    kind: TokenKind::Greater,
+                    ..
+                }) => Op::Greater,
+                Some(Token {
+                    kind: TokenKind::Slash,
+                    ..
+                }) => Op::Slash,
+                Some(Token {
+                    kind: TokenKind::And,
+                    ..
+                }) => Op::And,
+                Some(Token {
+                    kind: TokenKind::Or,
+                    ..
+                }) => Op::Or,
+
+                Some(token) => return Err(miette::miette! {
+                    labels = vec![
+                        LabeledSpan::at(token.offset..token.offset + token.origin.len(), "here"),
+                    ],
+                    help = format!("Unexpected {token:?}"),
+                    "Expected an infix operator",
+                }
+                .with_source_code(self.input.to_string())),
+            };
+
+            if let Some((l_bp, ())) = postfix_binding_power(op) {
+                if l_bp < min_bp {
+                    break;
+                }
+                self.lexer.next();
+
+                lhs = match op {
+                    Op::Call => TokenTree::Call {
+                        func: Box::new(lhs),
+                        args: self
+                            .parse_fn_call_args()
+                            .wrap_err("in function call arguments")?,
+                    },
+                    _ => TokenTree::Cons(op, vec![lhs]),
+                };
+                continue;
+            }
+            if let Some((l_bp, r_bp)) = infix_binding_power(op) {
+                if l_bp < min_bp {
+                    break;
+                }
+                self.lexer.next();
+
+                lhs = {
+                    let rhs = self
+                        .parse_expr(r_bp)
+                        .wrap_err_with(|| format!("on the right-hand side of {lhs} {op}"))?;
+                    TokenTree::Cons(op, vec![lhs, rhs])
+                };
+                continue;
+            }
+
+            break;
+        }
+
+        Ok(lhs)
+    }
+
+    fn parse_fn_call_args(&mut self) -> Result<Vec<TokenTree<'src>>, Error> {
+        let mut args = Vec::new();
+
+        if !matches!(
+            self.lexer.peek(),
+            Some(Ok(Token {
+                kind: TokenKind::RightParen,
+                ..
+            }))
+        ) {
+            loop {
+                let arg = self.parse_expr(0).wrap_err_with(|| {
+                    format!("in argument #{} of function call", args.len() + 1)
+                })?;
+                args.push(arg);
+                let token = self
+                    .lexer
+                    .expect_where(
+                        |token| matches!(token.kind, TokenKind::Comma | TokenKind::RightParen),
+                        "continuing argument list",
+                    )
+                    .wrap_err("in argument list of function call")?;
+
+                if token.kind == TokenKind::RightParen {
+                    break;
+                }
+            }
+        }
+        Ok(args)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Atom<'src> {
+    Bool(bool),
+    Int(i64),
+    Uint(u64),
+    Double(f64),
+    String(Cow<'src, str>),
+    RawString(Cow<'src, str>),
+    Bytes(Cow<'src, [u8]>),
+    RawBytes(Cow<'src, [u8]>),
+    Ident(&'src str),
+    Null,
+}
+
+impl fmt::Display for Atom<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Atom::Bool(b) => write!(f, "{b:?}"),
+            Atom::Int(i) => write!(f, "{}", i),
+            Atom::Uint(u) => write!(f, "{}", u),
+            Atom::Double(d) => write!(f, "{}", d),
+            Atom::String(s) => write!(f, "{:?}", s),
+            Atom::RawString(s) => write!(f, "{:?}", s),
+            Atom::Bytes(b) => write!(f, "{:?}", b),
+            Atom::RawBytes(b) => write!(f, "{:?}", b),
+            Atom::Ident(i) => write!(f, "{}", i),
+            Atom::Null => write!(f, "null"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Op {
+    Minus,
+    Plus,
+    Star,
+    NotEqual,
+    EqualEqual,
+    LessEqual,
+    GreaterEqual,
+    Less,
+    Greater,
+    Slash,
+    Not,
+    And,
+    Or,
+    Call,
+    For,
+    Field,
+    Var,
+    While,
+    Group,
+}
+
+impl fmt::Display for Op {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            Op::Minus => "-",
+            Op::Plus => "+",
+            Op::Star => "*",
+            Op::NotEqual => "!=",
+            Op::EqualEqual => "==",
+            Op::LessEqual => "<=",
+            Op::GreaterEqual => ">=",
+            Op::Less => "<",
+            Op::Greater => ">",
+            Op::Slash => "/",
+            Op::Not => "!",
+            Op::And => "&&",
+            Op::Or => "||",
+            Op::Call => "(",
+            Op::For => "for",
+            Op::Field => ".",
+            Op::Var => "var",
+            Op::While => "while",
+            Op::Group => "(",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokenTree<'src> {
+    Atom(Atom<'src>),
+    Cons(Op, Vec<TokenTree<'src>>),
+    Call {
+        func: Box<TokenTree<'src>>,
+        args: Vec<TokenTree<'src>>,
+    },
+}
+
+impl fmt::Display for TokenTree<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TokenTree::Atom(atom) => write!(f, "{}", atom),
+            TokenTree::Cons(op, args) => {
+                write!(f, "{}", op)?;
+                for arg in args {
+                    write!(f, " {}", arg)?;
+                }
+                Ok(())
+            }
+            TokenTree::Call { func, args } => {
+                write!(f, "{}(", func)?;
+                for arg in args {
+                    write!(f, ", {}", arg)?;
+                }
+                write!(f, ")")
+            }
+        }
+    }
+}
+
+fn prefix_binding_power(op: Op) -> ((), u8) {
+    match op {
+        Op::Minus | Op::Not => ((), 13),
+        _ => panic!("Unexpected operator: {:?}", op),
+    }
+}
+
+fn postfix_binding_power(op: Op) -> Option<(u8, ())> {
+    match op {
+        Op::Call => Some((15, ())),
+        _ => None,
+    }
+}
+
+// Precedence levels for infix operators.
+// ?: - 1,2
+// || - 3,4
+// && - 5,6
+// in - 7,8
+// == != <><=>= - 7,8
+// -(binary) +(binary) - 9,10
+// * / % - 11,12
+// ! -(unary) - 13,14
+// () . [] {} - 15,16
+
+/// Returns the binding powers for the given infix operator.
+fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
+    let res = match op {
+        // '=' => (2, 1),
+        // '?' => (4, 3),
+        Op::And | Op::Or => (5, 6),
+        Op::NotEqual
+        | Op::EqualEqual
+        | Op::Less
+        | Op::LessEqual
+        | Op::Greater
+        | Op::GreaterEqual => (7, 8),
+        Op::Plus | Op::Minus => (9, 10),
+        Op::Star | Op::Slash => (11, 12),
+        Op::Field => (16, 15),
+        _ => return None,
+    };
+    Some(res)
+}
