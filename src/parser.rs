@@ -49,6 +49,10 @@ impl<'src> Parser<'src> {
                 ..
             } => TokenTree::Atom(Atom::Double(n)),
             Token {
+                kind: TokenKind::Null,
+                ..
+            } => TokenTree::Atom(Atom::Null),
+            Token {
                 kind: TokenKind::String,
                 origin,
                 ..
@@ -750,5 +754,31 @@ mod tests {
                 ]
             )
         );
+    }
+
+    #[test]
+    fn test_singuler_expression() {
+        let tt = vec![
+            ("identifier", TokenTree::Atom(Atom::Ident("identifier"))),
+            ("123", TokenTree::Atom(Atom::Int(123))),
+            ("123u", TokenTree::Atom(Atom::Uint(123))),
+            ("123.456", TokenTree::Atom(Atom::Double(123.456))),
+            ("true", TokenTree::Atom(Atom::Bool(true))),
+            ("false", TokenTree::Atom(Atom::Bool(false))),
+            (
+                "\"string\"",
+                TokenTree::Atom(Atom::String(Cow::Borrowed("string"))),
+            ),
+            ("null", TokenTree::Atom(Atom::Null)),
+        ]
+        .into_iter();
+
+        for (input, expected) in tt {
+            let mut parser = Parser::new(input);
+            let tree = parser.parse();
+            assert!(tree.is_ok(), "input={:?}, out={:?}", input, tree);
+            let tree = tree.unwrap();
+            assert_eq!(tree, expected);
+        }
     }
 }
