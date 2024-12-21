@@ -351,11 +351,11 @@ impl<'src> Iterator for Lexer<'src> {
                     }
                     'b' | 'B' => {
                         if self.rest.starts_with(['"', '\'']) {
-                            Started::RawBytes
+                            Started::Bytes
                         } else if self.rest.starts_with(['r', 'R']) {
                             let rest = &self.rest[1..];
                             if rest.starts_with(['"', '\'']) {
-                                Started::RawString
+                                Started::RawBytes
                             } else {
                                 Started::Ident
                             }
@@ -402,17 +402,12 @@ impl<'src> Iterator for Lexer<'src> {
                 Started::String => {
                     let non_delim = c_onwards.find(|ch| ch != c).unwrap_or(c_onwards.len());
                     match non_delim {
-                        1 => {
-                            // read escaped string
-                            let mut escaped = false;
-                            let mut end = 0;
-                            for ch in self.rest.chars() {
-                                end += ch.len_utf8();
-                                if ch == '\\' {
-                                    escaped = !escaped;
-                                } else if ch == c && !escaped {
-                                    break;
-                                } else if matches!(ch, '\n' | '\r') {
+                        1 | 2 => {
+                            let nl = c_onwards.find(['\n', '\r']).unwrap_or(c_onwards.len());
+                            let literal = read_str_until_ch(&c_onwards[..nl], c);
+                            let literal = match literal {
+                                Some(literal) => literal,
+                                None => {
                                     return Some(Err(miette::miette! {
                                         labels = vec![LabeledSpan::at(
                                             c_at..self.byte,
@@ -421,12 +416,9 @@ impl<'src> Iterator for Lexer<'src> {
                                         help = "Expected a closing quote",
                                         "[line {line}] Error: Unexpected character: {c}",
                                     }));
-                                } else if escaped {
-                                    escaped = false;
                                 }
-                            }
+                            };
 
-                            let literal = &c_onwards[..end + 1];
                             let extra_bytes = literal.len() - c.len_utf8();
                             self.read_extra(extra_bytes);
                             return Some(Ok(Token {
@@ -436,31 +428,22 @@ impl<'src> Iterator for Lexer<'src> {
                                 origin: literal,
                             }));
                         }
-                        2 => {
-                            // empty string
-                            self.byte += 1;
-                            self.rest = &self.rest[1..];
-                            return Some(Ok(Token {
-                                kind: TokenKind::String,
-                                line: self.line,
-                                offset: c_at,
-                                origin: "",
-                            }));
-                        }
                         _ => {
                             let delim = &c_onwards[..3]; // must be 3 (""" or ''')
                             let rest = &c_onwards[3..];
-                            let end = rest.find(delim).unwrap_or(rest.len());
-                            if end == rest.len() {
-                                return Some(Err(miette::miette! {
-                                    labels = vec![LabeledSpan::at(
-                                        c_at..self.byte,
-                                        "Unexpected character"
-                                    )],
-                                    help = "Expected a closing quote",
-                                    "[line {line}] Error: Unexpected character: {c}",
-                                }));
-                            }
+                            let end = match rest.find(delim) {
+                                Some(end) => end,
+                                None => {
+                                    return Some(Err(miette::miette! {
+                                        labels = vec![LabeledSpan::at(
+                                            c_at..self.byte,
+                                            "Unexpected character"
+                                        )],
+                                        help = "Expected a closing quote",
+                                        "[line {line}] Error: Unexpected character: {c}",
+                                    }));
+                                }
+                            };
 
                             let literal = &c_onwards[..end + 6];
                             let extra_bytes = literal.len() - c.len_utf8();
@@ -478,7 +461,64 @@ impl<'src> Iterator for Lexer<'src> {
                     todo!()
                 }
                 Started::Bytes => {
-                    todo!()
+                    let rest = &c_onwards[1..]; // ignore b
+                    let delim = rest.chars().next().unwrap();
+                    let non_delim = rest.find(|ch| ch != delim).unwrap_or(rest.len());
+
+                    match non_delim {
+                        1 | 2 => {
+                            let nl = rest.find(['\n', '\r']).unwrap_or(rest.len());
+                            let literal = read_str_until_ch(&rest[..nl], delim);
+                            let literal = match literal {
+                                Some(literal) => literal,
+                                None => {
+                                    return Some(Err(miette::miette! {
+                                        labels = vec![LabeledSpan::at(
+                                            c_at..self.byte,
+                                            "Unexpected character"
+                                        )],
+                                        help = "Expected a closing quote",
+                                        "[line {line}] Error: Unexpected character: {c}",
+                                    }));
+                                }
+                            };
+
+                            let extra_bytes = literal.len();
+                            self.read_extra(extra_bytes);
+                            return Some(Ok(Token {
+                                kind: TokenKind::Bytes,
+                                line: self.line,
+                                offset: c_at,
+                                origin: literal,
+                            }));
+                        }
+                        _ => {
+                            let delim = &c_onwards[1..4];
+                            let rest = &c_onwards[4..];
+                            let end = match rest.find(delim) {
+                                Some(end) => end,
+                                None => {
+                                    return Some(Err(miette::miette! {
+                                        labels = vec![LabeledSpan::at(
+                                            c_at..self.byte,
+                                            "Unexpected character"
+                                        )],
+                                        help = "Expected a closing quote",
+                                        "[line {line}] Error: Unexpected character: {c}",
+                                    }));
+                                }
+                            };
+                            let literal = &c_onwards[1..end + 6 + 1];
+                            let extra_bytes = literal.len();
+                            self.read_extra(extra_bytes);
+                            return Some(Ok(Token {
+                                kind: TokenKind::Bytes,
+                                line: self.line,
+                                offset: c_at,
+                                origin: literal,
+                            }));
+                        }
+                    }
                 }
                 Started::RawBytes => {
                     todo!()
@@ -608,7 +648,7 @@ impl<'src> Iterator for Lexer<'src> {
                     }
                 }
                 Started::HexNumber => {
-                    let rest = &c_onwards[2..];
+                    let rest = &c_onwards[2..]; // ignore 0x
                     if rest.is_empty() {
                         let line = self.line;
                         return Some(Err(miette::miette! {
@@ -657,6 +697,26 @@ impl<'src> Iterator for Lexer<'src> {
             };
         }
     }
+}
+
+fn read_str_until_ch(s: &str, delim: char) -> Option<&str> {
+    let mut chars = s.chars();
+    assert_eq!(chars.next()?, delim);
+
+    let mut escaped = false;
+    let mut end = 0;
+    for ch in chars {
+        end += ch.len_utf8();
+        if ch == '\\' {
+            escaped = !escaped;
+        } else if ch == delim && !escaped {
+            return Some(&s[..end + delim.len_utf8()]);
+        } else if escaped {
+            escaped = false;
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -860,13 +920,13 @@ mod tests {
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, "");
+        assert_eq!(token.origin, input);
 
         let input = "''";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, "");
+        assert_eq!(token.origin, input);
 
         let input = r#""foo
 bar""#;
@@ -879,6 +939,57 @@ bar""#;
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
         assert_eq!(token.origin, input);
+    }
+
+    #[test]
+    fn test_single_quote_bytes_parsing() {
+        let input = r#"b"foo""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = "b'foo'";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = r#"b"foo\\\"bar""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = "b'foo\\'bar'";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = r#"b"""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = "b''";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = r#"b"foo
+bar""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap();
+        assert!(token.is_err());
+
+        let input = "b'foo\\nbar'";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
     }
 
     #[test]
@@ -936,5 +1047,62 @@ test'case''
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
         assert_eq!(token.origin, input);
+    }
+
+    #[test]
+    fn tripple_quoted_bytes() {
+        let input = r#"b"""""""#; // empty
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = "b''''''";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = r#"b"""foo""""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = "b'''foo'''";
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = r#"b'''foo
+bar'''"#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = r#"b"""foo
+bar""""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = r#"b"""
+test"case""
+""""#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
+
+        let input = r#"b'''
+test'case''
+'''"#;
+        let mut lexer = Lexer::new(input);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.kind, TokenKind::Bytes);
+        assert_eq!(token.origin, input.trim_start_matches('b'));
     }
 }
