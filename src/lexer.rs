@@ -38,6 +38,8 @@ impl Token<'_> {
 pub enum TokenKind {
     LeftParen,
     RightParen,
+    LeftBracket,
+    RightBracket,
     LeftBrace,
     RightBrace,
     Dot,
@@ -54,6 +56,7 @@ pub enum TokenKind {
     Less,
     LessEqual,
     Slash,
+    Colon,
     RawString,
     Star,
     String,
@@ -144,6 +147,7 @@ impl fmt::Display for Token<'_> {
         let origin = self.origin;
         match self.kind {
             TokenKind::Star => write!(f, "STAR {origin} nil"),
+            TokenKind::Colon => write!(f, "COLON {origin} nil"),
             TokenKind::In => write!(f, "IN {origin} nil"),
             TokenKind::Break => write!(f, "BREAK {origin} nil"),
             TokenKind::Const => write!(f, "CONST {origin} nil"),
@@ -156,6 +160,8 @@ impl fmt::Display for Token<'_> {
             TokenKind::As => write!(f, "AS {origin} nil"),
             TokenKind::LeftParen => write!(f, "LEFT_PAREN {origin} nil"),
             TokenKind::RightParen => write!(f, "RIGHT_PAREN {origin} nil"),
+            TokenKind::LeftBracket => write!(f, "LEFT_BRACKET {origin} nil"),
+            TokenKind::RightBracket => write!(f, "RIGHT_BRACKET {origin} nil"),
             TokenKind::LeftBrace => write!(f, "LEFT_BRACE {origin} nil"),
             TokenKind::RightBrace => write!(f, "RIGHT_BRACE {origin} nil"),
             TokenKind::Dot => write!(f, "DOT {origin} nil"),
@@ -301,8 +307,11 @@ impl<'src> Iterator for Lexer<'src> {
             let started = match c {
                 '(' => return just(TokenKind::LeftParen),
                 ')' => return just(TokenKind::RightParen),
+                '[' => return just(TokenKind::LeftBracket),
+                ']' => return just(TokenKind::RightBracket),
                 '{' => return just(TokenKind::LeftBrace),
                 '}' => return just(TokenKind::RightBrace),
+                ':' => return just(TokenKind::Colon),
                 ',' => return just(TokenKind::Comma),
                 '.' => {
                     if self.rest.starts_with(|c: char| c.is_ascii_digit()) {
@@ -1415,6 +1424,29 @@ test'case''
             let token = lexer.next().unwrap().unwrap();
             assert_eq!(token.kind, TokenKind::RawBytes);
             assert_eq!(token.origin, t.get(2..).unwrap());
+        }
+    }
+
+    #[test]
+    fn test_types() {
+        let input = "true false 42 42u 42.0 \"foo\" 'foo' b\"foo\" b'foo' null".split(' ');
+        let expected = vec![
+            TokenKind::True,
+            TokenKind::False,
+            TokenKind::Int(42),
+            TokenKind::Uint(42),
+            TokenKind::Double(42.0),
+            TokenKind::String,
+            TokenKind::String,
+            TokenKind::Bytes,
+            TokenKind::Bytes,
+            TokenKind::Null,
+        ];
+
+        for (t, e) in input.zip(expected) {
+            let mut lexer = Lexer::new(t);
+            let token = lexer.next().unwrap().unwrap();
+            assert_eq!(token.kind, e);
         }
     }
 }

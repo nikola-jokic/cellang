@@ -88,6 +88,17 @@ impl<'src> Parser<'src> {
                 TokenTree::Cons(op, vec![rhs])
             }
 
+            // aggregate types
+            Token {
+                kind: TokenKind::LeftBrace,
+                ..
+            } => self.parse_map()?,
+
+            Token {
+                kind: TokenKind::LeftBracket,
+                ..
+            } => self.parse_list()?,
+
             token => {
                 return Err(miette::miette! {
                     labels = vec![
@@ -118,9 +129,10 @@ impl<'src> Parser<'src> {
                 Some(Token {
                     kind:
                         TokenKind::RightParen
+                        | TokenKind::RightBracket
+                        | TokenKind::RightBrace
                         | TokenKind::Comma
-                        | TokenKind::Semicolon
-                        | TokenKind::RightBrace,
+                        | TokenKind::Semicolon,
                     ..
                 }) => break,
                 Some(Token {
@@ -179,6 +191,10 @@ impl<'src> Parser<'src> {
                     kind: TokenKind::Or,
                     ..
                 }) => Op::Or,
+                Some(Token {
+                    kind: TokenKind::Colon,
+                    ..
+                }) => Op::MapAssign,
 
                 Some(token) => return Err(miette::miette! {
                     labels = vec![
@@ -226,6 +242,68 @@ impl<'src> Parser<'src> {
         }
 
         Ok(lhs)
+    }
+
+    fn parse_map(&mut self) -> Result<TokenTree<'src>, Error> {
+        let mut items = Vec::new();
+        if !matches!(
+            self.lexer.peek(),
+            Some(Ok(Token {
+                kind: TokenKind::RightBrace,
+                ..
+            }))
+        ) {
+            loop {
+                let key = self.parse_expr(0).wrap_err("in map key")?;
+                self.lexer
+                    .expect(TokenKind::Colon, "Expected colon between map key and value")?;
+                let value = self.parse_expr(0).wrap_err("in map value")?;
+                items.push(TokenTree::FieldInitialization {
+                    key: Box::new(key),
+                    value: Box::new(value),
+                });
+                let token = self
+                    .lexer
+                    .expect_where(
+                        |token| matches!(token.kind, TokenKind::Comma | TokenKind::RightBrace),
+                        "continuing map",
+                    )
+                    .wrap_err("in map")?;
+
+                if token.kind == TokenKind::RightBrace {
+                    break;
+                }
+            }
+        }
+        Ok(TokenTree::Cons(Op::MapAssign, items))
+    }
+
+    fn parse_list(&mut self) -> Result<TokenTree<'src>, Error> {
+        let mut items = Vec::new();
+        if !matches!(
+            self.lexer.peek(),
+            Some(Ok(Token {
+                kind: TokenKind::RightBracket,
+                ..
+            }))
+        ) {
+            loop {
+                let item = self.parse_expr(0).wrap_err("in list item")?;
+                items.push(item);
+                let token = self
+                    .lexer
+                    .expect_where(
+                        |token| matches!(token.kind, TokenKind::Comma | TokenKind::RightBracket),
+                        "continuing list",
+                    )
+                    .wrap_err("in list")?;
+
+                if token.kind == TokenKind::RightBracket {
+                    break;
+                }
+            }
+        }
+        Ok(TokenTree::Cons(Op::List, items))
     }
 
     fn parse_fn_call_args(&mut self) -> Result<Vec<TokenTree<'src>>, Error> {
@@ -312,6 +390,8 @@ pub enum Op {
     Var,
     While,
     Group,
+    MapAssign,
+    List,
 }
 
 impl fmt::Display for Op {
@@ -336,6 +416,8 @@ impl fmt::Display for Op {
             Op::Var => "var",
             Op::While => "while",
             Op::Group => "(",
+            Op::MapAssign => "{",
+            Op::List => "[",
         };
         write!(f, "{}", s)
     }
@@ -348,6 +430,10 @@ pub enum TokenTree<'src> {
     Call {
         func: Box<TokenTree<'src>>,
         args: Vec<TokenTree<'src>>,
+    },
+    FieldInitialization {
+        key: Box<TokenTree<'src>>,
+        value: Box<TokenTree<'src>>,
     },
 }
 
@@ -368,6 +454,9 @@ impl fmt::Display for TokenTree<'_> {
                     write!(f, ", {}", arg)?;
                 }
                 write!(f, ")")
+            }
+            TokenTree::FieldInitialization { key, value } => {
+                write!(f, "{}: {}", key, value)
             }
         }
     }
@@ -412,8 +501,148 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
         | Op::GreaterEqual => (7, 8),
         Op::Plus | Op::Minus => (9, 10),
         Op::Star | Op::Slash => (11, 12),
-        Op::Field => (16, 15),
+        Op::Field | Op::MapAssign => (16, 15),
         _ => return None,
     };
     Some(res)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add_and_multiply() {
+        let input = "1 + 2 * 3";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Plus,
+                vec![
+                    TokenTree::Atom(Atom::Int(1)),
+                    TokenTree::Cons(
+                        Op::Star,
+                        vec![TokenTree::Atom(Atom::Int(2)), TokenTree::Atom(Atom::Int(3)),]
+                    )
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_field_access() {
+        let input = "foo.bar.baz";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Field,
+                vec![
+                    TokenTree::Atom(Atom::Ident("foo")),
+                    TokenTree::Cons(
+                        Op::Field,
+                        vec![
+                            TokenTree::Atom(Atom::Ident("bar")),
+                            TokenTree::Atom(Atom::Ident("baz")),
+                        ]
+                    )
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_function_call() {
+        let input = "foo(bar, baz)";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Call {
+                func: Box::new(TokenTree::Atom(Atom::Ident("foo"))),
+                args: vec![
+                    TokenTree::Atom(Atom::Ident("bar")),
+                    TokenTree::Atom(Atom::Ident("baz")),
+                ]
+            }
+        );
+    }
+
+    #[test]
+    fn test_method_call() {
+        let input = "foo.bar(baz)";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Field,
+                vec![
+                    TokenTree::Atom(Atom::Ident("foo")),
+                    TokenTree::Call {
+                        func: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
+                        args: vec![TokenTree::Atom(Atom::Ident("baz"))],
+                    }
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_list_definition() {
+        let input = "[1, 2, 3]";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse();
+        assert!(tree.is_ok(), "{:?}", tree);
+        let tree = tree.unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::List,
+                vec![
+                    TokenTree::Atom(Atom::Int(1)),
+                    TokenTree::Atom(Atom::Int(2)),
+                    TokenTree::Atom(Atom::Int(3)),
+                ]
+            )
+        );
+
+        let input = "[]";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(tree, TokenTree::Cons(Op::List, vec![]));
+    }
+
+    #[test]
+    fn test_map_definition() {
+        let input = "{foo: 1, bar: 2}";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse();
+        assert!(tree.is_ok(), "{:?}", tree);
+        let tree = tree.unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::MapAssign,
+                vec![
+                    TokenTree::FieldInitialization {
+                        key: Box::new(TokenTree::Atom(Atom::Ident("foo"))),
+                        value: Box::new(TokenTree::Atom(Atom::Int(1))),
+                    },
+                    TokenTree::FieldInitialization {
+                        key: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
+                        value: Box::new(TokenTree::Atom(Atom::Int(2))),
+                    },
+                ]
+            )
+        );
+
+        let input = "{}";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(tree, TokenTree::Cons(Op::MapAssign, vec![]));
+    }
 }
