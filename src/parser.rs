@@ -157,6 +157,10 @@ impl<'src> Parser<'src> {
                     ..
                 }) => Op::Star,
                 Some(Token {
+                    kind: TokenKind::Percent,
+                    ..
+                }) => Op::Mod,
+                Some(Token {
                     kind: TokenKind::NotEqual,
                     ..
                 }) => Op::NotEqual,
@@ -380,6 +384,7 @@ pub enum Op {
     Slash,
     Not,
     And,
+    In,
     Or,
     Call,
     For,
@@ -389,6 +394,7 @@ pub enum Op {
     Group,
     Map,
     List,
+    Mod,
 }
 
 impl fmt::Display for Op {
@@ -403,6 +409,7 @@ impl fmt::Display for Op {
             Op::GreaterEqual => ">=",
             Op::Less => "<",
             Op::Greater => ">",
+            Op::In => "in",
             Op::Slash => "/",
             Op::Not => "!",
             Op::And => "&&",
@@ -415,6 +422,7 @@ impl fmt::Display for Op {
             Op::Group => "(",
             Op::Map => "{",
             Op::List => "[",
+            Op::Mod => "%",
         };
         write!(f, "{}", s)
     }
@@ -490,14 +498,15 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
         // '=' => (2, 1),
         // '?' => (4, 3),
         Op::And | Op::Or => (5, 6),
-        Op::NotEqual
+        Op::In
+        | Op::NotEqual
         | Op::EqualEqual
         | Op::Less
         | Op::LessEqual
         | Op::Greater
         | Op::GreaterEqual => (7, 8),
         Op::Plus | Op::Minus => (9, 10),
-        Op::Star | Op::Slash => (11, 12),
+        Op::Star | Op::Slash | Op::Mod => (11, 12),
         Op::Field => (16, 15),
         _ => return None,
     };
@@ -641,5 +650,91 @@ mod tests {
         let mut parser = Parser::new(input);
         let tree = parser.parse().unwrap();
         assert_eq!(tree, TokenTree::Cons(Op::Map, vec![]));
+    }
+
+    #[test]
+    fn test_grouping() {
+        let input = "(1 + 2) * 3 % 4";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Mod,
+                vec![
+                    TokenTree::Cons(
+                        Op::Star,
+                        vec![
+                            TokenTree::Cons(
+                                Op::Group,
+                                vec![TokenTree::Cons(
+                                    Op::Plus,
+                                    vec![
+                                        TokenTree::Atom(Atom::Int(1)),
+                                        TokenTree::Atom(Atom::Int(2)),
+                                    ]
+                                ),]
+                            ),
+                            TokenTree::Atom(Atom::Int(3)),
+                        ]
+                    ),
+                    TokenTree::Atom(Atom::Int(4)),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_unary_minus() {
+        let input = "-1";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(Op::Minus, vec![TokenTree::Atom(Atom::Int(1))])
+        );
+    }
+
+    #[test]
+    fn test_unary_not() {
+        let input = "!true";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(Op::Not, vec![TokenTree::Atom(Atom::Bool(true))])
+        );
+    }
+
+    #[test]
+    fn test_relations() {
+        let input = "1 < 2 && 3 >= 4 || 5 == 6";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Or,
+                vec![
+                    TokenTree::Cons(
+                        Op::And,
+                        vec![
+                            TokenTree::Cons(
+                                Op::Less,
+                                vec![TokenTree::Atom(Atom::Int(1)), TokenTree::Atom(Atom::Int(2)),]
+                            ),
+                            TokenTree::Cons(
+                                Op::GreaterEqual,
+                                vec![TokenTree::Atom(Atom::Int(3)), TokenTree::Atom(Atom::Int(4)),]
+                            ),
+                        ]
+                    ),
+                    TokenTree::Cons(
+                        Op::EqualEqual,
+                        vec![TokenTree::Atom(Atom::Int(5)), TokenTree::Atom(Atom::Int(6)),]
+                    ),
+                ]
+            )
+        );
     }
 }

@@ -45,6 +45,7 @@ pub enum TokenKind {
     Dot,
     Comma,
     Plus,
+    Percent,
     Minus,
     Semicolon,
     Not,
@@ -197,6 +198,7 @@ impl fmt::Display for Token<'_> {
             TokenKind::Less => write!(f, "LESS {origin} nil"),
             TokenKind::LessEqual => write!(f, "LESS_EQUAL {origin} nil"),
             TokenKind::Slash => write!(f, "SLASH {origin} nil"),
+            TokenKind::Percent => write!(f, "PERCENT {origin} nil"),
         }
     }
 }
@@ -321,10 +323,11 @@ impl<'src> Iterator for Lexer<'src> {
                     }
                 }
                 '*' => return just(TokenKind::Star),
+                '%' => return just(TokenKind::Percent),
+                '/' => Started::Slash,
                 '-' => return just(TokenKind::Minus),
                 '+' => return just(TokenKind::Plus),
                 ';' => return just(TokenKind::Semicolon),
-                '/' => Started::Slash,
                 '<' => Started::OrEqual(TokenKind::Less, TokenKind::LessEqual),
                 '>' => Started::OrEqual(TokenKind::Greater, TokenKind::GreaterEqual),
                 '!' => Started::OrEqual(TokenKind::Not, TokenKind::NotEqual),
