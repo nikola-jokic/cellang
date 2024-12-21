@@ -165,6 +165,10 @@ impl<'src> Parser<'src> {
                     ..
                 }) => Op::NotEqual,
                 Some(Token {
+                    kind: TokenKind::In,
+                    ..
+                }) => Op::In,
+                Some(Token {
                     kind: TokenKind::EqualEqual,
                     ..
                 }) => Op::EqualEqual,
@@ -497,7 +501,8 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
     let res = match op {
         // '=' => (2, 1),
         // '?' => (4, 3),
-        Op::And | Op::Or => (5, 6),
+        Op::Or => (3, 4),
+        Op::And => (5, 6),
         Op::In
         | Op::NotEqual
         | Op::EqualEqual
@@ -708,7 +713,7 @@ mod tests {
 
     #[test]
     fn test_relations() {
-        let input = "1 < 2 && 3 >= 4 || 5 == 6";
+        let input = "1 < 2 && 3 >= 4 || 5 == 6 && 5 in 6";
         let mut parser = Parser::new(input);
         let tree = parser.parse().unwrap();
         assert_eq!(
@@ -730,8 +735,17 @@ mod tests {
                         ]
                     ),
                     TokenTree::Cons(
-                        Op::EqualEqual,
-                        vec![TokenTree::Atom(Atom::Int(5)), TokenTree::Atom(Atom::Int(6)),]
+                        Op::And,
+                        vec![
+                            TokenTree::Cons(
+                                Op::EqualEqual,
+                                vec![TokenTree::Atom(Atom::Int(5)), TokenTree::Atom(Atom::Int(6)),]
+                            ),
+                            TokenTree::Cons(
+                                Op::In,
+                                vec![TokenTree::Atom(Atom::Int(5)), TokenTree::Atom(Atom::Int(6)),]
+                            ),
+                        ]
                     ),
                 ]
             )
