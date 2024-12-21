@@ -1,6 +1,10 @@
-use core::fmt;
+use core::{fmt, panic};
 use miette::{Diagnostic, Error, LabeledSpan};
-use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
 
 #[derive(Diagnostic, Debug)]
 pub struct Eof;
@@ -111,6 +115,30 @@ fn keywords() -> &'static HashMap<&'static str, TokenKind> {
         map.insert("while", TokenKind::While);
 
         map
+    })
+}
+
+fn single_char_escape() -> &'static HashSet<char> {
+    static SINGLE_CHAR_ESCAPE: OnceLock<HashSet<char>> = OnceLock::new();
+    // https://github.com/google/cel-spec/blob/master/doc/langdef.md#string-and-bytes-values
+    SINGLE_CHAR_ESCAPE.get_or_init(|| {
+        let mut set = HashSet::new();
+        // A punctuation mark representing itself
+        set.insert('\\');
+        set.insert('?');
+        set.insert('"');
+        set.insert('\'');
+        set.insert('`');
+
+        // A code for whitespace:
+        set.insert('a');
+        set.insert('b');
+        set.insert('f');
+        set.insert('n');
+        set.insert('r');
+        set.insert('t');
+        set.insert('v');
+        set
     })
 }
 
@@ -400,185 +428,69 @@ impl<'src> Iterator for Lexer<'src> {
                     }
                 }
                 Started::String => {
-                    let non_delim = c_onwards.find(|ch| ch != c).unwrap_or(c_onwards.len());
-                    match non_delim {
-                        1 | 2 => {
-                            let nl = c_onwards.find(['\n', '\r']).unwrap_or(c_onwards.len());
-                            let literal = read_str_until_ch(&c_onwards[..nl], c);
-                            let literal = match literal {
-                                Some(literal) => literal,
-                                None => {
-                                    return Some(Err(miette::miette! {
-                                        labels = vec![LabeledSpan::at(
-                                            c_at..self.byte,
-                                            "Unexpected character"
-                                        )],
-                                        help = "Expected a closing quote",
-                                        "[line {line}] Error: Unexpected character: {c}",
-                                    }));
-                                }
-                            };
+                    let literal = match read_str(c_onwards) {
+                        Ok(literal) => literal,
+                        Err(e) => return Some(Err(e)),
+                    };
 
-                            let extra_bytes = literal.len() - c.len_utf8();
-                            self.read_extra(extra_bytes);
-                            return Some(Ok(Token {
-                                kind: TokenKind::String,
-                                line: self.line,
-                                offset: c_at,
-                                origin: literal,
-                            }));
-                        }
-                        _ => {
-                            let delim = &c_onwards[..3]; // must be 3 (""" or ''')
-                            let rest = &c_onwards[3..];
-                            let end = match rest.find(delim) {
-                                Some(end) => end,
-                                None => {
-                                    return Some(Err(miette::miette! {
-                                        labels = vec![LabeledSpan::at(
-                                            c_at..self.byte,
-                                            "Unexpected character"
-                                        )],
-                                        help = "Expected a closing quote",
-                                        "[line {line}] Error: Unexpected character: {c}",
-                                    }));
-                                }
-                            };
-
-                            let literal = &c_onwards[..end + 6];
-                            let extra_bytes = literal.len() - c.len_utf8();
-                            self.read_extra(extra_bytes);
-                            return Some(Ok(Token {
-                                kind: TokenKind::String,
-                                line: self.line,
-                                offset: c_at,
-                                origin: literal,
-                            }));
-                        }
-                    }
+                    let extra_bytes = literal.len() - c.len_utf8();
+                    self.read_extra(extra_bytes);
+                    Some(Ok(Token {
+                        kind: TokenKind::String,
+                        line: self.line,
+                        offset: c_at,
+                        origin: literal,
+                    }))
                 }
                 Started::RawString => {
+                    // starts with r
                     let rest = &c_onwards[1..]; // ignore r
-                    let delim = rest.chars().next().unwrap();
-                    let non_delim = rest.find(|ch| ch != delim).unwrap_or(rest.len());
-                    match non_delim {
-                        1 | 2 => {
-                            let nl = rest.find(['\n', '\r']).unwrap_or(rest.len());
-                            let heystack = match rest[delim.len_utf8()..nl].find(delim) {
-                                Some(heystack) => heystack,
-                                None => {
-                                    return Some(Err(miette::miette! {
-                                        labels = vec![LabeledSpan::at(
-                                            c_at..self.byte,
-                                            "Unexpected character"
-                                        )],
-                                        help = "Expected a closing quote",
-                                        "[line {line}] Error: Unexpected character: {c}",
-                                    }));
-                                }
-                            };
+                    let literal = match read_str_raw(rest) {
+                        Ok(literal) => literal,
+                        Err(e) => return Some(Err(e)),
+                    };
 
-                            let literal = &c_onwards[1..heystack + 1 + 2]; // + 1 for r, + 2 for
-                                                                           // delimt
-                            let extra_bytes = literal.len();
-                            self.read_extra(extra_bytes);
-                            return Some(Ok(Token {
-                                kind: TokenKind::RawString,
-                                line: self.line,
-                                offset: c_at,
-                                origin: literal,
-                            }));
-                        }
-                        _ => {
-                            let delim = &c_onwards[1..4];
-                            let rest = &c_onwards[4..];
-                            let end = match rest.find(delim) {
-                                Some(end) => end,
-                                None => {
-                                    return Some(Err(miette::miette! {
-                                        labels = vec![LabeledSpan::at(
-                                            c_at..self.byte,
-                                            "Unexpected character"
-                                        )],
-                                        help = "Expected a closing quote",
-                                        "[line {line}] Error: Unexpected character: {c}",
-                                    }));
-                                }
-                            };
-                            let literal = &c_onwards[1..end + 6 + 1];
-                            let extra_bytes = literal.len();
-                            self.read_extra(extra_bytes);
-                            return Some(Ok(Token {
-                                kind: TokenKind::RawString,
-                                line: self.line,
-                                offset: c_at,
-                                origin: literal,
-                            }));
-                        }
-                    }
+                    let extra_bytes = literal.len();
+                    self.read_extra(extra_bytes);
+                    Some(Ok(Token {
+                        kind: TokenKind::RawString,
+                        line: self.line,
+                        offset: c_at,
+                        origin: literal,
+                    }))
                 }
                 Started::Bytes => {
+                    // starts with b
                     let rest = &c_onwards[1..]; // ignore b
-                    let delim = rest.chars().next().unwrap();
-                    let non_delim = rest.find(|ch| ch != delim).unwrap_or(rest.len());
-
-                    match non_delim {
-                        1 | 2 => {
-                            let nl = rest.find(['\n', '\r']).unwrap_or(rest.len());
-                            let literal = read_str_until_ch(&rest[..nl], delim);
-                            let literal = match literal {
-                                Some(literal) => literal,
-                                None => {
-                                    return Some(Err(miette::miette! {
-                                        labels = vec![LabeledSpan::at(
-                                            c_at..self.byte,
-                                            "Unexpected character"
-                                        )],
-                                        help = "Expected a closing quote",
-                                        "[line {line}] Error: Unexpected character: {c}",
-                                    }));
-                                }
-                            };
-
-                            let extra_bytes = literal.len();
-                            self.read_extra(extra_bytes);
-                            return Some(Ok(Token {
-                                kind: TokenKind::Bytes,
-                                line: self.line,
-                                offset: c_at,
-                                origin: literal,
-                            }));
-                        }
-                        _ => {
-                            let delim = &c_onwards[1..4];
-                            let rest = &c_onwards[4..];
-                            let end = match rest.find(delim) {
-                                Some(end) => end,
-                                None => {
-                                    return Some(Err(miette::miette! {
-                                        labels = vec![LabeledSpan::at(
-                                            c_at..self.byte,
-                                            "Unexpected character"
-                                        )],
-                                        help = "Expected a closing quote",
-                                        "[line {line}] Error: Unexpected character: {c}",
-                                    }));
-                                }
-                            };
-                            let literal = &c_onwards[1..end + 6 + 1];
-                            let extra_bytes = literal.len();
-                            self.read_extra(extra_bytes);
-                            return Some(Ok(Token {
-                                kind: TokenKind::Bytes,
-                                line: self.line,
-                                offset: c_at,
-                                origin: literal,
-                            }));
-                        }
-                    }
+                    let literal = match read_str(rest) {
+                        Ok(literal) => literal,
+                        Err(e) => return Some(Err(e)),
+                    };
+                    let extra_bytes = literal.len();
+                    self.read_extra(extra_bytes);
+                    Some(Ok(Token {
+                        kind: TokenKind::Bytes,
+                        line: self.line,
+                        offset: c_at,
+                        origin: literal,
+                    }))
                 }
                 Started::RawBytes => {
-                    todo!()
+                    // starts with rb or br (case-insensitive)
+                    let rest = &c_onwards[2..]; // ignore r
+                    let literal = match read_str_raw(rest) {
+                        Ok(literal) => literal,
+                        Err(e) => return Some(Err(e)),
+                    };
+
+                    let extra_bytes = literal.len() + 1;
+                    self.read_extra(extra_bytes);
+                    Some(Ok(Token {
+                        kind: TokenKind::RawBytes,
+                        line: self.line,
+                        offset: c_at,
+                        origin: literal,
+                    }))
                 }
                 Started::Ident => {
                     let first_non_ident = c_onwards
@@ -756,24 +668,198 @@ impl<'src> Iterator for Lexer<'src> {
     }
 }
 
-fn read_str_until_ch(s: &str, delim: char) -> Option<&str> {
-    let mut chars = s.chars();
-    assert_eq!(chars.next()?, delim);
-
-    let mut escaped = false;
-    let mut end = 0;
-    for ch in chars {
-        end += ch.len_utf8();
-        if ch == '\\' {
-            escaped = !escaped;
-        } else if ch == delim && !escaped {
-            return Some(&s[..end + delim.len_utf8()]);
-        } else if escaped {
-            escaped = false;
+/// Reads a string literal from the input.
+/// It expects the first character to be the opening delimiter.
+/// Based on the delimiter, it will read until the closing delimiter.
+/// The delimiter can be ", ', """, or '''.
+fn read_str(s: &str) -> Result<&str, Error> {
+    // Empty string must have at least 2 characters ("" or '')
+    if s.len() < 2 {
+        return Err(miette::miette! {
+            labels = vec![LabeledSpan::at(
+                0..s.len(),
+                "Unexpected character"
+            )],
+            help = "Expected a closing quote",
+            "Unexpected end of file",
         }
+        .with_source_code(s.to_string()));
     }
 
-    None
+    match read_str_delimiter(s) {
+        StrDelimiter::Single => read_str_single(s),
+        StrDelimiter::Tripple => read_str_tripple(s),
+    }
+}
+
+fn read_str_single(s: &str) -> Result<&str, Error> {
+    let mut chars = s.chars();
+    let delim = chars.next().unwrap();
+
+    let mut end = 0;
+    loop {
+        let c = match chars.next() {
+            Some(c) => c,
+            None => {
+                return Err(miette::miette! {
+                    labels = vec![LabeledSpan::at(
+                        0..end,
+                        "Unexpected character"
+                    )],
+                    help = "Expected a closing quote",
+                    "Unexpected end of file",
+                }
+                .with_source_code(s.to_string()));
+            }
+        };
+        end += c.len_utf8();
+
+        match c {
+            '\n' | '\r' => {
+                return Err(miette::miette! {
+                    labels = vec![LabeledSpan::at(
+                        0..end,
+                        "Unexpected character"
+                    )],
+                    help = "Expected a closing quote",
+                    "Unexpected newline",
+                }
+                .with_source_code(s.to_string()));
+            }
+            '\\' => {}
+            c if c == delim => return Ok(&s[..end + delim.len_utf8()]),
+            _ => continue,
+        };
+
+        // escape sequence
+        let c = match chars.next() {
+            Some(c) => c,
+            None => {
+                return Err(miette::miette! {
+                    labels = vec![LabeledSpan::at(
+                        0..end,
+                        "Unexpected character"
+                    )],
+                    help = "Expected char after escape",
+                    "Unexpected end of file",
+                }
+                .with_source_code(s.to_string()));
+            }
+        };
+        end += c.len_utf8();
+        if single_char_escape().contains(&c) {
+            continue;
+        }
+
+        match c {
+            'x' => {
+                read_n_hex_chars(&mut chars, 2)?;
+            }
+            'u' => {
+                read_n_hex_chars(&mut chars, 4)?;
+            }
+            'U' => {
+                read_n_hex_chars(&mut chars, 8)?;
+            }
+            _ => {
+                return Err(miette::miette! {
+                    labels = vec![LabeledSpan::at(
+                        0..end,
+                        "Unexpected character"
+                    )],
+                    help = "Expected a hex digit",
+                    "Unexpected character: {c}",
+                }
+                .with_source_code(s.to_string()));
+            }
+        }
+    }
+}
+
+fn read_str_tripple(s: &str) -> Result<&str, Error> {
+    let delim = &s[..3];
+    let rest = &s[3..];
+    let end = match rest.find(delim) {
+        Some(end) => end,
+        None => {
+            return Err(miette::miette! {
+                labels = vec![LabeledSpan::at(
+                    0..s.len(),
+                    "Unexpected character"
+                )],
+                help = "Expected a closing quote",
+                "Unexpected end of file",
+            }
+            .with_source_code(s.to_string()));
+        }
+    };
+
+    Ok(&s[..end + 6])
+}
+
+fn read_str_raw(s: &str) -> Result<&str, Error> {
+    if s.len() < 2 {
+        return Err(miette::miette! {
+            help = "Expected a closing quote",
+            "Unexpected end of file",
+        });
+    }
+
+    let take = match read_str_delimiter(s) {
+        StrDelimiter::Single => 1,
+        StrDelimiter::Tripple => 3,
+    };
+
+    let delim = &s[..take];
+    let rest = &s[take..];
+    let end = match rest.find(delim) {
+        Some(end) => end,
+        None => {
+            return Err(miette::miette! {
+                help = "Expected a closing quote",
+                "Unexpected end of file",
+            });
+        }
+    };
+
+    Ok(&s[..end + take + take])
+}
+
+enum StrDelimiter {
+    Single,
+    Tripple,
+}
+
+fn read_str_delimiter(s: &str) -> StrDelimiter {
+    if s.starts_with("'''") || s.starts_with(r#"""""#) {
+        StrDelimiter::Tripple
+    } else if s.starts_with(['"', '\'']) {
+        StrDelimiter::Single
+    } else {
+        panic!("Unexpected string delimiter: {}", s)
+    }
+}
+
+fn read_n_hex_chars(chars: &mut impl Iterator<Item = char>, n: usize) -> Result<(), Error> {
+    for _ in 0..n {
+        let c = match chars.next() {
+            Some(c) => c,
+            None => {
+                return Err(miette::miette! {
+                    help = "Expected a hex digit",
+                    "Unexpected end of file",
+                });
+            }
+        };
+
+        if !c.is_ascii_hexdigit() {
+            return Err(miette::miette! {
+                help = "Expected a hex digit",
+                "Unexpected character: {c}",
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
