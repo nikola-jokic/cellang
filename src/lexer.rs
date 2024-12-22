@@ -1126,369 +1126,121 @@ mod tests {
 
     #[test]
     fn test_single_quote_string_parsing() {
-        // good cases
-        for t in ["foo", "foo\\\"bar", "foo\\\'bar", "foo\\nbar", ""] {
-            for delim in ['"', '\''] {
-                let input = format!("{delim}{t}{delim}");
-                let mut lexer = Lexer::new(&input);
-                let token = lexer.next().unwrap().unwrap();
-                assert_eq!(token.kind, TokenKind::String);
-                assert_eq!(token.origin, t);
-            }
+        for delim in ['"', '\''] {
+            let input = format!("{delim}foo{delim}");
+            let mut lexer = Lexer::new(&input);
+            let token = lexer.next().unwrap().unwrap();
+            assert_eq!(token.kind, TokenKind::String);
+            assert_eq!(token.origin, "foo");
+            let next = lexer.next();
+            assert!(next.is_none());
         }
-
-        let input = r#""foo
-bar""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap();
-        assert!(token.is_err());
     }
 
     #[test]
     fn test_raw_string_parsing() {
-        let input = r#"r"foo""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, "foo");
-
-        let input = "r'foo'";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, "foo");
-
-        let input = r#"r"foo\\\"bar""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, r#"foo\\\"#);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Ident);
-        let token = lexer.next().unwrap();
-        assert!(token.is_err());
-
-        let input = r#"r'foo\\\'bar'"#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, r#"foo\\\"#);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Ident);
-        let token = lexer.next().unwrap();
-        assert!(token.is_err());
-
-        let input = r#"r"foo\nbar""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, r#"foo\nbar"#);
-
-        let input = r#"r'foo\nbar'"#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, r#"foo\nbar"#);
+        for delim in ['"', '\''] {
+            for r in ["r", "R"] {
+                let input = format!("{r}{delim}foo{delim}");
+                let mut lexer = Lexer::new(&input);
+                let token = lexer.next().unwrap().unwrap();
+                assert_eq!(token.kind, TokenKind::RawString);
+                assert_eq!(token.origin, "foo");
+                let next = lexer.next();
+                assert!(next.is_none());
+            }
+        }
     }
 
     #[test]
     fn test_single_quote_bytes_parsing() {
-        let input = r#"b"foo""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "foo");
-
-        let input = "b'foo'";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "foo");
-
-        let input = "b\"foo\\\"bar\"";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "foo\\\"bar");
-
-        let input = "b'foo\\'bar'";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "foo\\'bar");
-
-        let input = r#"b"""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "");
-
-        let input = "b''";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "");
-
-        let input = r#"b"foo
-bar""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap();
-        assert!(token.is_err());
+        for delim in ['"', '\''] {
+            for b in ["b", "B"] {
+                let input = format!("{b}{delim}foo{delim}");
+                let mut lexer = Lexer::new(&input);
+                let token = lexer.next().unwrap().unwrap();
+                assert_eq!(token.kind, TokenKind::Bytes);
+                assert_eq!(token.origin, "foo");
+                let next = lexer.next();
+                assert!(next.is_none());
+            }
+        }
     }
 
     #[test]
     fn test_tripple_quoted_string() {
-        let input = r#""""""""#; // empty
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, "");
-
-        let input = "''''''";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, "");
-
-        let input = r#""""foo""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, "foo");
-
-        let input = "'''foo'''";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, "foo");
-
-        let input = r#"'''foo
-bar'''"#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, "foo\nbar");
-
-        let input = r#""""foo
-bar""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, "foo\nbar");
-
-        let input = r#""""
-test"case""
-""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, "\ntest\"case\"\"\n");
-
-        let input = r#"'''
-test'case''
-'''"#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, "\ntest'case''\n");
+        for delim in [r#"""""#, "'''"] {
+            let input = format!("{delim}\nfoo\n{delim}");
+            let mut lexer = Lexer::new(&input);
+            let token = lexer.next().unwrap().unwrap();
+            assert_eq!(token.kind, TokenKind::String);
+            assert_eq!(token.origin, "\nfoo\n");
+            let next = lexer.next();
+            assert!(next.is_none());
+        }
     }
 
     #[test]
     fn test_raw_tripple_quoted_string() {
-        let input = r#"r"""""""#; // empty
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, "");
-
-        let input = "r''''''";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, "");
-
-        let input = r#"r"""foo""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, "foo");
-
-        let input = "r'''foo'''";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, "foo");
-
-        let input = r#"r"""foo\nbar""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, "foo\\nbar");
-
-        let input = r#"r'''foo\nbar'''"#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, "foo\\nbar");
-
-        let input = r#"r"""
-test"case""
-""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, "\ntest\"case\"\"\n");
-
-        let input = r#"r'''
-test'case''
-'''"#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, "\ntest'case''\n");
+        for delim in [r#"""""#, "'''"] {
+            for r in ["r", "R"] {
+                let input = format!("{r}{delim}\nfoo\n{delim}");
+                let mut lexer = Lexer::new(&input);
+                let token = lexer.next().unwrap().unwrap();
+                assert_eq!(token.kind, TokenKind::RawString);
+                assert_eq!(token.origin, "\nfoo\n");
+                let next = lexer.next();
+                assert!(next.is_none());
+            }
+        }
     }
 
     #[test]
     fn test_tripple_quoted_bytes() {
-        let input = r#"b"""""""#; // empty
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "");
-
-        let input = "b''''''";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "");
-
-        let input = r#"b"""foo""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "foo");
-
-        let input = "b'''foo'''";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "foo");
-
-        let input = r#"b'''foo
-bar'''"#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "foo\nbar");
-
-        let input = r#"b"""foo
-bar""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "foo\nbar");
-
-        let input = r#"b"""
-test"case""
-""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "\ntest\"case\"\"\n");
-
-        let input = r#"b'''
-test'case''
-'''"#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, "\ntest'case''\n");
+        for delim in [r#"""""#, "'''"] {
+            for b in ["b", "B"] {
+                let input = format!("{b}{delim}\nfoo\n{delim}", delim = delim);
+                let mut lexer = Lexer::new(&input);
+                let token = lexer.next().unwrap().unwrap();
+                assert_eq!(token.kind, TokenKind::Bytes);
+                assert_eq!(token.origin, "\nfoo\n");
+                let next = lexer.next();
+                assert!(next.is_none());
+            }
+        }
     }
 
     #[test]
     fn test_raw_tripple_quoted_bytes() {
-        let input = r#"rb"""""""#; // empty
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, "");
-
-        let input = "rb''''''";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, "");
-
-        let input = r#"rb"""foo""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, "foo");
-
-        let input = "rb'''foo'''";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, "foo");
-
-        let input = r#"rb"""foo\nbar""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, "foo\\nbar");
-
-        let input = r#"rb'''foo\nbar'''"#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, "foo\\nbar");
-
-        let input = r#"rb"""
-test"case""
-""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, "\ntest\"case\"\"\n");
-
-        let input = r#"rb'''
-test'case''
-'''"#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, "\ntest'case''\n");
-    }
-
-    #[test]
-    fn test_raw_byte_combinations() {
-        let tt = vec!["rb'foo'", "rB'foo'", "Rb'foo'", "RB'foo'"];
-
-        for t in tt {
-            let mut lexer = Lexer::new(t);
-            let token = lexer.next().unwrap().unwrap();
-            assert_eq!(token.kind, TokenKind::RawBytes);
-            assert_eq!(token.origin, t.get(3..t.len() - 1).unwrap());
+        for delim in [r#"""""#, "'''"] {
+            for rb in ["rb", "rB", "Rb", "RB"] {
+                let input = format!("{rb}{delim}\nfoo\n{delim}", delim = delim);
+                let mut lexer = Lexer::new(&input);
+                let token = lexer.next().unwrap().unwrap();
+                assert_eq!(token.kind, TokenKind::RawBytes);
+                assert_eq!(token.origin, "\nfoo\n");
+                let next = lexer.next();
+                assert!(next.is_none());
+            }
         }
     }
 
     #[test]
     fn test_types() {
-        let input = "true false 42 42u 42.0 \"foo\" 'foo' b\"foo\" b'foo' null".split(' ');
-        let expected = vec![
-            TokenKind::True,
-            TokenKind::False,
-            TokenKind::Int(42),
-            TokenKind::Uint(42),
-            TokenKind::Double(42.0),
-            TokenKind::String,
-            TokenKind::String,
-            TokenKind::Bytes,
-            TokenKind::Bytes,
-            TokenKind::Null,
+        let tt = vec![
+            ("true", TokenKind::True),
+            ("false", TokenKind::False),
+            ("42", TokenKind::Int(42)),
+            ("42u", TokenKind::Uint(42)),
+            ("42.0", TokenKind::Double(42.0)),
+            ("\"foo\"", TokenKind::String),
+            ("'foo'", TokenKind::String),
+            ("b\"foo\"", TokenKind::Bytes),
+            ("b'foo'", TokenKind::Bytes),
+            ("null", TokenKind::Null),
         ];
 
-        for (t, e) in input.zip(expected) {
+        for (t, e) in tt {
             let mut lexer = Lexer::new(t);
             let token = lexer.next().unwrap().unwrap();
             assert_eq!(token.kind, e);
@@ -1497,8 +1249,11 @@ test'case''
 
     #[test]
     fn test_scan_str() {
+        let tripple_delim = [r#"""""#, "'''"];
+        let single_delim = ['"', '\''];
         // good cases
         for value in [
+            "",
             "foo",
             "foo\\\"bar",
             "foo\\'bar",
@@ -1508,7 +1263,8 @@ test'case''
             "foo\\U00000000bar",
             "foo\\000bar",
         ] {
-            for delim in ['"', '\''] {
+            // single delimiter
+            for delim in single_delim {
                 let input = format!("{}{}{}", delim, value, delim);
                 let out = scan_str(&input);
                 assert!(out.is_ok(), "input={input:?}, result={out:?}");
@@ -1516,17 +1272,85 @@ test'case''
                 assert_eq!(end, input.len());
                 assert_eq!(out, value);
             }
+
+            // single delimiter missing quote
+            for delim in single_delim {
+                let input = format!("{delim}{value}");
+                let out = scan_str(&input);
+                assert!(out.is_err(), "input={input:?}, result={out:?}");
+            }
+
+            // tripple delimiter
+            for delim in tripple_delim {
+                let input = format!("{}{}{}", delim, value, delim);
+                let out = scan_str(&input);
+                assert!(out.is_ok(), "input={input:?}, result={out:?}");
+                let (end, out) = out.unwrap();
+                assert_eq!(end, input.len());
+                assert_eq!(out, value);
+            }
+
+            // tripple delimiter missing quote
+            for delim in tripple_delim {
+                let bad_delim = &delim[..2];
+                let input = format!("{delim}{value}{bad_delim}");
+                let out = scan_str(&input);
+                assert!(out.is_err(), "input={input:?}, result={out:?}");
+            }
+
+            // tripple delimiter with added newlines
+            for delim in tripple_delim {
+                let input = format!("{}\n{}\n{}", delim, value, delim);
+                let out = scan_str(&input);
+                assert!(out.is_ok(), "input={input:?}, result={out:?}");
+                let (end, out) = out.unwrap();
+                assert_eq!(end, input.len());
+                assert_eq!(out, format!("\n{value}\n"));
+            }
         }
 
-        // bad values
+        // catch that the delimiter is not the same
+        for (main, other) in [('"', '\''), ('\'', '"')] {
+            let input = format!(
+                r#"{main}{main}{main}
+foo{main}{main}
+{main} <- catches that space does not terminate the string
+foo{main}{main}{other}{main} <- catches that the delimiter is not the same and proceeds with the next one
+{other}{other}{other} <- other delimiter
+{main}{main}{main}"#
+            );
+            let out = scan_str(&input);
+            assert!(
+                out.is_ok(),
+                "main={main:?}, other={other:?}\ninput={input:?}, result={out:?}"
+            );
+            let (size, literal) = out.unwrap();
+            assert_eq!(size, input.len());
+            assert_eq!(literal, &input[3..input.len() - 3]);
+        }
+
+        // bad escapes
         for value in [
-            r#"foo\sbar"#,       // invalid escape
+            r#"foo\sbar"#,       // invalid char escape
+            r#"foo\xz0zzz"#,     // invalid unicode escape
             r#"foo\u000zzz"#,    // invalid unicode escape
             r#"foo\U000000zzz"#, // invalid unicode escape
             r#"foo\800zzz"#,     // invalid unicode escape
         ] {
             for delim in ['"', '\''] {
                 let input = format!("{delim}{value}{delim}");
+                let out = scan_str(&input);
+                assert!(out.is_err(), "input={input:?}, result={out:?}");
+            }
+
+            for delim in [r#"""""#, "'''"] {
+                let input = format!("{delim}{value}{delim}");
+                let out = scan_str(&input);
+                assert!(out.is_err(), "input={input:?}, result={out:?}");
+            }
+
+            for delim in [r#"""""#, "'''"] {
+                let input = format!("{delim}\n{value}\n{delim}");
                 let out = scan_str(&input);
                 assert!(out.is_err(), "input={input:?}, result={out:?}");
             }
