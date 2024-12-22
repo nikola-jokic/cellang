@@ -163,7 +163,7 @@ impl<'src> Parser<'src> {
                 Some(Token {
                     kind: TokenKind::Star,
                     ..
-                }) => Op::Star,
+                }) => Op::Multiply,
                 Some(Token {
                     kind: TokenKind::Percent,
                     ..
@@ -199,7 +199,7 @@ impl<'src> Parser<'src> {
                 Some(Token {
                     kind: TokenKind::Slash,
                     ..
-                }) => Op::Slash,
+                }) => Op::Devide,
                 Some(Token {
                     kind: TokenKind::And,
                     ..
@@ -378,9 +378,7 @@ pub enum Atom<'src> {
     Uint(u64),
     Double(f64),
     String(Cow<'src, str>),
-    RawString(Cow<'src, str>),
     Bytes(Cow<'src, [u8]>),
-    RawBytes(Cow<'src, [u8]>),
     Ident(&'src str),
     Null,
 }
@@ -393,9 +391,7 @@ impl fmt::Display for Atom<'_> {
             Atom::Uint(u) => write!(f, "{}", u),
             Atom::Double(d) => write!(f, "{}", d),
             Atom::String(s) => write!(f, "{:?}", s),
-            Atom::RawString(s) => write!(f, "{:?}", s),
             Atom::Bytes(b) => write!(f, "{:?}", b),
-            Atom::RawBytes(b) => write!(f, "{:?}", b),
             Atom::Ident(i) => write!(f, "{}", i),
             Atom::Null => write!(f, "null"),
         }
@@ -406,19 +402,20 @@ impl fmt::Display for Atom<'_> {
 pub enum Op {
     Minus,
     Plus,
-    Star,
+    Multiply,
+    Devide,
+    Mod,
     NotEqual,
     EqualEqual,
-    LessEqual,
-    GreaterEqual,
     Less,
+    LessEqual,
     Greater,
-    Slash,
+    GreaterEqual,
     Not,
     And,
-    In,
     Or,
     IfTernary,
+    In,
     Call,
     Index,
     For,
@@ -428,7 +425,6 @@ pub enum Op {
     Group,
     Map,
     List,
-    Mod,
 }
 
 impl fmt::Display for Op {
@@ -437,7 +433,7 @@ impl fmt::Display for Op {
             Op::IfTernary => "?:",
             Op::Minus => "-",
             Op::Plus => "+",
-            Op::Star => "*",
+            Op::Multiply => "*",
             Op::NotEqual => "!=",
             Op::EqualEqual => "==",
             Op::LessEqual => "<=",
@@ -446,7 +442,7 @@ impl fmt::Display for Op {
             Op::Greater => ">",
             Op::Index => "[]",
             Op::In => "in",
-            Op::Slash => "/",
+            Op::Devide => "/",
             Op::Not => "!",
             Op::And => "&&",
             Op::Or => "||",
@@ -544,7 +540,7 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
         | Op::Greater
         | Op::GreaterEqual => (7, 8),
         Op::Plus | Op::Minus => (9, 10),
-        Op::Star | Op::Slash | Op::Mod => (11, 12),
+        Op::Multiply | Op::Devide | Op::Mod => (11, 12),
         Op::Field => (16, 15),
         _ => return None,
     };
@@ -567,7 +563,7 @@ mod tests {
                 vec![
                     TokenTree::Atom(Atom::Int(1)),
                     TokenTree::Cons(
-                        Op::Star,
+                        Op::Multiply,
                         vec![TokenTree::Atom(Atom::Int(2)), TokenTree::Atom(Atom::Int(3)),]
                     )
                 ]
@@ -701,7 +697,7 @@ mod tests {
                 Op::Mod,
                 vec![
                     TokenTree::Cons(
-                        Op::Star,
+                        Op::Multiply,
                         vec![
                             TokenTree::Cons(
                                 Op::Group,
@@ -886,5 +882,35 @@ mod tests {
                 ]
             )
         );
+    }
+
+    #[test]
+    fn test_basic() {
+        // https://github.com/google/cel-spec/blob/master/tests/simple/testdata/basic.textproto
+        let tt = [
+            ("0", TokenTree::Atom(Atom::Int(0))),
+            ("0u", TokenTree::Atom(Atom::Uint(0))),
+            ("0U", TokenTree::Atom(Atom::Uint(0))),
+            ("0.0", TokenTree::Atom(Atom::Double(0.0))),
+            ("0e+0", TokenTree::Atom(Atom::Double(0.0))),
+            ("\"\"", TokenTree::Atom(Atom::String(Cow::Borrowed("")))),
+            ("r\"\"", TokenTree::Atom(Atom::String(Cow::Borrowed("")))),
+            (
+                "b\"\"",
+                TokenTree::Atom(Atom::Bytes(Cow::Borrowed("".as_bytes()))),
+            ),
+            ("false", TokenTree::Atom(Atom::Bool(false))),
+            ("null", TokenTree::Atom(Atom::Null)),
+            ("{}", TokenTree::Cons(Op::Map, vec![])),
+            ("[]", TokenTree::Cons(Op::List, vec![])),
+        ];
+
+        for (input, expected) in tt {
+            let mut parser = Parser::new(input);
+            let tree = parser.parse();
+            assert!(tree.is_ok(), "input={:?}, out={:?}", input, tree);
+            let tree = tree.unwrap();
+            assert_eq!(tree, expected);
+        }
     }
 }

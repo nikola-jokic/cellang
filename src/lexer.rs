@@ -547,7 +547,7 @@ impl<'src> Iterator for Lexer<'src> {
                             (State::Nil, '.') => State::Dot,
                             (State::Nil, c) if c.is_ascii_digit() => State::Int,
                             (State::Int, '.') => State::Dot,
-                            (State::Int, 'u') => State::Uint,
+                            (State::Int, 'u') | (State::Int, 'U') => State::Uint,
                             (State::Int, 'e') | (State::Int, 'E') => State::Exp,
                             (State::Int, c) if c.is_ascii_digit() => State::Int,
                             (State::Dot, c) if c.is_ascii_digit() => State::Fraction,
