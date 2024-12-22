@@ -55,6 +55,9 @@ impl Interpreter {
                     (Value::String(s1), Value::String(s2)) => {
                         Value::String(format!("{}{}", s1, s2))
                     }
+                    (Value::Bytes(b1), Value::Bytes(b2)) => {
+                        Value::Bytes([b1.as_slice(), b2.as_slice()].concat())
+                    }
                     _ => unimplemented!(),
                 }
             }
@@ -214,6 +217,18 @@ impl Interpreter {
                 }
 
                 Value::Map(map)
+            }
+            Op::IfTernary => {
+                let lhs = match self.eval_ast(&tokens[0])? {
+                    Value::Bool(b) => b,
+                    _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
+                };
+
+                if lhs {
+                    self.eval_ast(&tokens[1])?
+                } else {
+                    self.eval_ast(&tokens[2])?
+                }
             }
             _ => unimplemented!(),
         };
@@ -700,5 +715,18 @@ mod tests {
             assert!(result.is_err());
             assert_eq!(result.unwrap_err().to_string(), *expected);
         }
+    }
+
+    #[test]
+    fn test_if_ternary() {
+        let interpreter = Interpreter {};
+        assert_eq!(
+            interpreter.eval("1 > 2 ? 1 : 2u").expect("1 > 2 ? 1 : 2u"),
+            Value::Uint(2)
+        );
+        assert_eq!(
+            interpreter.eval("1 < 2 ? 1 : 2u").expect("1 < 2 ? 1 : 2u"),
+            Value::Int(1)
+        );
     }
 }
