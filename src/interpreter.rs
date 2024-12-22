@@ -6,9 +6,41 @@ use crate::{
     Parser,
 };
 
-pub struct Interpreter {}
+pub struct Environment {
+    variables: HashMap<String, Value>,
+}
 
-impl Interpreter {
+impl Default for Environment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Environment {
+    pub fn new() -> Self {
+        Self {
+            variables: HashMap::new(),
+        }
+    }
+
+    pub fn get_variable(&self, name: &str) -> Option<&Value> {
+        self.variables.get(name)
+    }
+
+    pub fn set_variable(&mut self, name: &str, value: Value) {
+        self.variables.insert(name.to_string(), value);
+    }
+}
+
+pub struct Interpreter<'a> {
+    env: &'a Environment,
+}
+
+impl<'a> Interpreter<'a> {
+    pub fn new(env: &'a Environment) -> Self {
+        Self { env }
+    }
+
     pub fn eval(&self, program: &str) -> Result<Value, Error> {
         let tree = Parser::new(program).parse()?;
         self.eval_ast(&tree)
@@ -31,7 +63,13 @@ impl Interpreter {
             Atom::Bool(b) => Value::Bool(*b),
             Atom::Null => Value::Null,
             Atom::Bytes(b) => Value::Bytes(b.clone().to_vec()),
-            _ => unimplemented!(),
+            Atom::Ident(ident) => {
+                if let Some(val) = self.env.get_variable(ident) {
+                    val.clone()
+                } else {
+                    miette::bail!("Variable not found: {}", ident);
+                }
+            }
         };
         Ok(val)
     }
@@ -285,6 +323,60 @@ pub enum Value {
     Null,
 }
 
+impl From<i8> for Value {
+    fn from(n: i8) -> Self {
+        Value::Int(n as i64)
+    }
+}
+
+impl From<i16> for Value {
+    fn from(n: i16) -> Self {
+        Value::Int(n as i64)
+    }
+}
+
+impl From<i32> for Value {
+    fn from(n: i32) -> Self {
+        Value::Int(n as i64)
+    }
+}
+
+impl From<i64> for Value {
+    fn from(n: i64) -> Self {
+        Value::Int(n)
+    }
+}
+
+impl From<u8> for Value {
+    fn from(n: u8) -> Self {
+        Value::Uint(n as u64)
+    }
+}
+
+impl From<u16> for Value {
+    fn from(n: u16) -> Self {
+        Value::Uint(n as u64)
+    }
+}
+
+impl From<u32> for Value {
+    fn from(n: u32) -> Self {
+        Value::Uint(n as u64)
+    }
+}
+
+impl From<u64> for Value {
+    fn from(n: u64) -> Self {
+        Value::Uint(n)
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Self {
+        Value::String(s)
+    }
+}
+
 impl Value {
     fn kind(&self) -> ValueKind {
         match self {
@@ -338,11 +430,14 @@ impl TryFrom<Value> for MapKey {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use super::*;
 
     #[test]
     fn test_eval_primitives() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("42").expect("42"), Value::Int(42));
         assert_eq!(interpreter.eval("true").expect("true"), Value::Bool(true));
         assert_eq!(
@@ -358,7 +453,8 @@ mod tests {
 
     #[test]
     fn test_eval_plus() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("1 + 2").expect("1 + 2"), Value::Int(3));
         assert_eq!(
             interpreter.eval("1u + 2u").expect("1u + 2u"),
@@ -378,7 +474,8 @@ mod tests {
 
     #[test]
     fn test_eval_minus() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("1 - 2").expect("1 - 2"), Value::Int(-1));
         assert_eq!(
             interpreter.eval("2u - 1u").expect("2u - 1u"),
@@ -392,7 +489,8 @@ mod tests {
 
     #[test]
     fn test_eval_multiply() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("2 * 3").expect("2 * 3"), Value::Int(6));
         assert_eq!(
             interpreter.eval("2u * 3u").expect("2u * 3u"),
@@ -406,7 +504,8 @@ mod tests {
 
     #[test]
     fn test_eval_devide() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("6 / 3").expect("6 / 3"), Value::Int(2));
         assert_eq!(
             interpreter.eval("6u / 3u").expect("6u / 3u"),
@@ -420,7 +519,8 @@ mod tests {
 
     #[test]
     fn test_eval_and() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(
             interpreter.eval("true && false").expect("true && false"),
             Value::Bool(false)
@@ -433,7 +533,8 @@ mod tests {
 
     #[test]
     fn test_eval_or() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(
             interpreter.eval("false || true").expect("false || true"),
             Value::Bool(true)
@@ -446,7 +547,8 @@ mod tests {
 
     #[test]
     fn test_eval_equal_equal() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(
             interpreter.eval("1 == 1").expect("1 == 1"),
             Value::Bool(true)
@@ -495,7 +597,8 @@ mod tests {
 
     #[test]
     fn test_not_equal() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(
             interpreter.eval("1 != 1").expect("1 != 1"),
             Value::Bool(false)
@@ -544,7 +647,8 @@ mod tests {
 
     #[test]
     fn test_eval_greater() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("2 > 1").expect("2 > 1"), Value::Bool(true));
         assert_eq!(
             interpreter.eval("1 > 2").expect("1 > 2"),
@@ -570,7 +674,8 @@ mod tests {
 
     #[test]
     fn test_eval_greater_equal() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(
             interpreter.eval("2 >= 1").expect("2 >= 1"),
             Value::Bool(true)
@@ -611,7 +716,8 @@ mod tests {
 
     #[test]
     fn test_eval_less() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("1 < 2").expect("1 < 2"), Value::Bool(true));
         assert_eq!(
             interpreter.eval("2 < 1").expect("2 < 1"),
@@ -637,7 +743,8 @@ mod tests {
 
     #[test]
     fn test_eval_less_equal() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(
             interpreter.eval("1 <= 2").expect("1 <= 2"),
             Value::Bool(true)
@@ -678,7 +785,8 @@ mod tests {
 
     #[test]
     fn test_eval_mod() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("5 % 2").expect("5 % 2"), Value::Int(1));
         assert_eq!(
             interpreter.eval("5u % 2u").expect("5u % 2u"),
@@ -688,7 +796,8 @@ mod tests {
 
     #[test]
     fn test_eval_not() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(
             interpreter.eval("!true").expect("!true"),
             Value::Bool(false)
@@ -701,7 +810,8 @@ mod tests {
 
     #[test]
     fn test_list() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("[]").expect("[]"), Value::List(vec![]));
         assert_eq!(
             interpreter.eval("[1, 2, 3]").expect("[1, 2, 3]"),
@@ -779,7 +889,8 @@ mod tests {
             }),
         ];
 
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         for (input, expected) in tt.iter() {
             let result = interpreter.eval(input).expect(input);
             assert_eq!(result, *expected, "input: {}", input);
@@ -804,7 +915,8 @@ mod tests {
 
     #[test]
     fn test_if_ternary() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(
             interpreter.eval("1 > 2 ? 1 : 2u").expect("1 > 2 ? 1 : 2u"),
             Value::Uint(2)
@@ -817,7 +929,8 @@ mod tests {
 
     #[test]
     fn test_group() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(
             interpreter.eval("(1 + 2) * 3").expect("(1 + 2) * 3"),
             Value::Int(9)
@@ -826,7 +939,8 @@ mod tests {
 
     #[test]
     fn test_in() {
-        let interpreter = Interpreter {};
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
         assert_eq!(
             interpreter.eval("1 in [1, 2, 3]").expect("1 in [1, 2, 3]"),
             Value::Bool(true)
@@ -835,5 +949,13 @@ mod tests {
             interpreter.eval("4 in [1, 2, 3]").expect("4 in [1, 2, 3]"),
             Value::Bool(false)
         );
+    }
+
+    #[test]
+    fn test_variable() {
+        let mut env = Environment::default();
+        env.set_variable("x", 42i64.into());
+        let interpreter = Interpreter::new(&env);
+        assert_eq!(interpreter.eval("x").expect("x"), Value::Int(42));
     }
 }
