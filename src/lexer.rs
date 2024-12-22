@@ -1,6 +1,6 @@
-use core::{fmt, panic};
+use core::fmt;
 use miette::{Diagnostic, Error, LabeledSpan};
-use std::{borrow::Cow, collections::HashMap, io::Read, sync::OnceLock};
+use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
 
 #[derive(Diagnostic, Debug)]
 pub struct Eof;
@@ -22,11 +22,6 @@ pub struct Token<'src> {
 }
 
 pub fn unescape(s: &str) -> Cow<'_, str> {
-    let s = match read_str_delimiter(s) {
-        StrDelimiter::Single => &s[1..s.len() - 1],
-        StrDelimiter::Tripple => &s[3..s.len() - 3],
-    };
-
     if !s.contains('\\') {
         return Cow::Borrowed(s);
     }
@@ -532,12 +527,12 @@ impl<'src> Iterator for Lexer<'src> {
                     }
                 }
                 Started::String => {
-                    let literal = match read_str(c_onwards) {
+                    let (n, literal) = match scan_str(c_onwards) {
                         Ok(literal) => literal,
                         Err(e) => return Some(Err(e)),
                     };
 
-                    let extra_bytes = literal.len() - c.len_utf8();
+                    let extra_bytes = n - c.len_utf8();
                     self.read_extra(extra_bytes);
                     Some(Ok(Token {
                         kind: TokenKind::String,
@@ -549,13 +544,12 @@ impl<'src> Iterator for Lexer<'src> {
                 Started::RawString => {
                     // starts with r
                     let rest = &c_onwards[1..]; // ignore r
-                    let literal = match read_str_raw(rest) {
+                    let (n, literal) = match read_str_raw(rest) {
                         Ok(literal) => literal,
                         Err(e) => return Some(Err(e)),
                     };
 
-                    let extra_bytes = literal.len();
-                    self.read_extra(extra_bytes);
+                    self.read_extra(n);
                     Some(Ok(Token {
                         kind: TokenKind::RawString,
                         line: self.line,
@@ -566,12 +560,11 @@ impl<'src> Iterator for Lexer<'src> {
                 Started::Bytes => {
                     // starts with b
                     let rest = &c_onwards[1..]; // ignore b
-                    let literal = match read_str(rest) {
+                    let (n, literal) = match scan_str(rest) {
                         Ok(literal) => literal,
                         Err(e) => return Some(Err(e)),
                     };
-                    let extra_bytes = literal.len();
-                    self.read_extra(extra_bytes);
+                    self.read_extra(n);
                     Some(Ok(Token {
                         kind: TokenKind::Bytes,
                         line: self.line,
@@ -582,12 +575,12 @@ impl<'src> Iterator for Lexer<'src> {
                 Started::RawBytes => {
                     // starts with rb or br (case-insensitive)
                     let rest = &c_onwards[2..]; // ignore r
-                    let literal = match read_str_raw(rest) {
+                    let (n, literal) = match read_str_raw(rest) {
                         Ok(literal) => literal,
                         Err(e) => return Some(Err(e)),
                     };
 
-                    let extra_bytes = literal.len() + 1;
+                    let extra_bytes = n + 1;
                     self.read_extra(extra_bytes);
                     Some(Ok(Token {
                         kind: TokenKind::RawBytes,
@@ -772,36 +765,29 @@ impl<'src> Iterator for Lexer<'src> {
     }
 }
 
-/// Reads a string literal from the input.
-/// It expects the first character to be the opening delimiter.
-/// Based on the delimiter, it will read until the closing delimiter.
-/// The delimiter can be ", ', """, or '''.
-fn read_str(s: &str) -> Result<&str, Error> {
-    // Empty string must have at least 2 characters ("" or '')
+fn scan_str(s: &str) -> Result<(usize, &str), Error> {
+    assert!(s.starts_with(['"', '\'']));
+
     if s.len() < 2 {
         return Err(miette::miette! {
-            labels = vec![LabeledSpan::at(
-                0..s.len(),
-                "Unexpected character"
-            )],
             help = "Expected a closing quote",
             "Unexpected end of file",
-        }
-        .with_source_code(s.to_string()));
+        });
     }
 
-    match read_str_delimiter(s) {
-        StrDelimiter::Single => read_str_escaped(s),
-        StrDelimiter::Tripple => read_str_tripple(s),
-    }
-}
-
-/// read_str_escaped expects something like "escaped string" or 'escaped string'
-fn read_str_escaped(s: &str) -> Result<&str, Error> {
     let mut chars = s.chars();
-    let delim = chars.next().unwrap();
+    let delim_c = chars.next().unwrap();
+    let delim_n = if s.starts_with(r#"""""#) || s.starts_with("'''") {
+        // read rest of the delimiter
+        chars.next().unwrap();
+        chars.next().unwrap();
+        3
+    } else {
+        1
+    };
 
-    let mut end = 0;
+    let mut delim_hit = 0;
+    let mut end = delim_n;
     loop {
         let c = match chars.next() {
             Some(c) => c,
@@ -817,24 +803,35 @@ fn read_str_escaped(s: &str) -> Result<&str, Error> {
                 .with_source_code(s.to_string()));
             }
         };
+
         end += c.len_utf8();
 
-        match c {
-            '\n' | '\r' => {
-                return Err(miette::miette! {
-                    labels = vec![LabeledSpan::at(
-                        0..end,
-                        "Unexpected character"
-                    )],
-                    help = "Expected a closing quote",
-                    "Unexpected newline",
-                }
-                .with_source_code(s.to_string()));
+        if delim_n == 1 && matches!(c, '\r' | '\n') {
+            return Err(miette::miette! {
+                labels = vec![LabeledSpan::at(
+                    end-1..end,
+                    "Unexpected character"
+                )],
+                help = "Unterminated string",
+                "Unexpected newline in string",
             }
-            '\\' => {}
-            c if c == delim => return Ok(&s[..end + delim.len_utf8()]),
-            _ => continue,
-        };
+            .with_source_code(s[..end].to_string()));
+        }
+
+        // if it is a delimiter, check if it is the closing delimiter
+        if c == delim_c {
+            delim_hit += 1;
+            if delim_hit == delim_n {
+                return Ok((end, &s[delim_n..end - delim_n]));
+            }
+            continue;
+        }
+        delim_hit = 0;
+
+        if c != '\\' {
+            // Not a delimiter, not an escape
+            continue;
+        }
 
         // escape sequence
         let c = match chars.next() {
@@ -889,28 +886,7 @@ fn read_str_escaped(s: &str) -> Result<&str, Error> {
     }
 }
 
-fn read_str_tripple(s: &str) -> Result<&str, Error> {
-    let delim = &s[..3];
-    let rest = &s[3..];
-    let end = match rest.find(delim) {
-        Some(end) => end,
-        None => {
-            return Err(miette::miette! {
-                labels = vec![LabeledSpan::at(
-                    0..s.len(),
-                    "Unexpected character"
-                )],
-                help = "Expected a closing quote",
-                "Unexpected end of file",
-            }
-            .with_source_code(s.to_string()));
-        }
-    };
-
-    Ok(&s[..end + 6])
-}
-
-fn read_str_raw(s: &str) -> Result<&str, Error> {
+fn read_str_raw(s: &str) -> Result<(usize, &str), Error> {
     if s.len() < 2 {
         return Err(miette::miette! {
             help = "Expected a closing quote",
@@ -918,9 +894,10 @@ fn read_str_raw(s: &str) -> Result<&str, Error> {
         });
     }
 
-    let take = match read_str_delimiter(s) {
-        StrDelimiter::Single => 1,
-        StrDelimiter::Tripple => 3,
+    let take = if s.starts_with(r#"""""#) || s.starts_with("'''") {
+        3
+    } else {
+        1
     };
 
     let delim = &s[..take];
@@ -935,23 +912,7 @@ fn read_str_raw(s: &str) -> Result<&str, Error> {
         }
     };
 
-    Ok(&s[..end + take + take])
-}
-
-enum StrDelimiter {
-    Single,
-    Tripple,
-}
-
-#[inline]
-fn read_str_delimiter(s: &str) -> StrDelimiter {
-    if s.starts_with("'''") || s.starts_with(r#"""""#) {
-        StrDelimiter::Tripple
-    } else if s.starts_with(['"', '\'']) {
-        StrDelimiter::Single
-    } else {
-        panic!("Unexpected string delimiter: {}", s)
-    }
+    Ok((end + 2 * take, &rest[..end]))
 }
 
 fn is_hex(c: char) -> bool {
@@ -1165,53 +1126,22 @@ mod tests {
 
     #[test]
     fn test_single_quote_string_parsing() {
-        let input = r#""foo""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
-
-        let input = "'foo'";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
-
-        let input = r#""foo\\\"bar""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
-
-        let input = "'foo\\'bar'";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
-
-        let input = r#""""#;
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
-
-        let input = "''";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
+        // good cases
+        for t in ["foo", "foo\\\"bar", "foo\\\'bar", "foo\\nbar", ""] {
+            for delim in ['"', '\''] {
+                let input = format!("{delim}{t}{delim}");
+                let mut lexer = Lexer::new(&input);
+                let token = lexer.next().unwrap().unwrap();
+                assert_eq!(token.kind, TokenKind::String);
+                assert_eq!(token.origin, t);
+            }
+        }
 
         let input = r#""foo
 bar""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap();
         assert!(token.is_err());
-
-        let input = "'foo\\nbar'";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
     }
 
     #[test]
@@ -1220,19 +1150,19 @@ bar""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, input.trim_start_matches('r'));
+        assert_eq!(token.origin, "foo");
 
         let input = "r'foo'";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, input.trim_start_matches('r'));
+        assert_eq!(token.origin, "foo");
 
         let input = r#"r"foo\\\"bar""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, r#""foo\\\""#);
+        assert_eq!(token.origin, r#"foo\\\"#);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Ident);
         let token = lexer.next().unwrap();
@@ -1242,7 +1172,7 @@ bar""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, r#"'foo\\\'"#);
+        assert_eq!(token.origin, r#"foo\\\"#);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Ident);
         let token = lexer.next().unwrap();
@@ -1252,13 +1182,13 @@ bar""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, r#""foo\nbar""#);
+        assert_eq!(token.origin, r#"foo\nbar"#);
 
         let input = r#"r'foo\nbar'"#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, r#"'foo\nbar'"#);
+        assert_eq!(token.origin, r#"foo\nbar"#);
     }
 
     #[test]
@@ -1267,49 +1197,43 @@ bar""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "foo");
 
         let input = "b'foo'";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "foo");
 
-        let input = r#"b"foo\\\"bar""#;
+        let input = "b\"foo\\\"bar\"";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "foo\\\"bar");
 
         let input = "b'foo\\'bar'";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "foo\\'bar");
 
         let input = r#"b"""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "");
 
         let input = "b''";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "");
 
         let input = r#"b"foo
 bar""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap();
         assert!(token.is_err());
-
-        let input = "b'foo\\nbar'";
-        let mut lexer = Lexer::new(input);
-        let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
     }
 
     #[test]
@@ -1318,39 +1242,39 @@ bar""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
+        assert_eq!(token.origin, "");
 
         let input = "''''''";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
+        assert_eq!(token.origin, "");
 
         let input = r#""""foo""""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
+        assert_eq!(token.origin, "foo");
 
         let input = "'''foo'''";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
+        assert_eq!(token.origin, "foo");
 
         let input = r#"'''foo
 bar'''"#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
+        assert_eq!(token.origin, "foo\nbar");
 
         let input = r#""""foo
 bar""""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
+        assert_eq!(token.origin, "foo\nbar");
 
         let input = r#""""
 test"case""
@@ -1358,7 +1282,7 @@ test"case""
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
+        assert_eq!(token.origin, "\ntest\"case\"\"\n");
 
         let input = r#"'''
 test'case''
@@ -1366,7 +1290,7 @@ test'case''
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::String);
-        assert_eq!(token.origin, input);
+        assert_eq!(token.origin, "\ntest'case''\n");
     }
 
     #[test]
@@ -1375,37 +1299,37 @@ test'case''
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, input.trim_start_matches('r'));
+        assert_eq!(token.origin, "");
 
         let input = "r''''''";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, input.trim_start_matches('r'));
+        assert_eq!(token.origin, "");
 
         let input = r#"r"""foo""""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, input.trim_start_matches('r'));
+        assert_eq!(token.origin, "foo");
 
         let input = "r'''foo'''";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, input.trim_start_matches('r'));
+        assert_eq!(token.origin, "foo");
 
         let input = r#"r"""foo\nbar""""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, input.trim_start_matches('r'));
+        assert_eq!(token.origin, "foo\\nbar");
 
         let input = r#"r'''foo\nbar'''"#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, input.trim_start_matches('r'));
+        assert_eq!(token.origin, "foo\\nbar");
 
         let input = r#"r"""
 test"case""
@@ -1413,7 +1337,7 @@ test"case""
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, input.trim_start_matches('r'));
+        assert_eq!(token.origin, "\ntest\"case\"\"\n");
 
         let input = r#"r'''
 test'case''
@@ -1421,7 +1345,7 @@ test'case''
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawString);
-        assert_eq!(token.origin, input.trim_start_matches('r'));
+        assert_eq!(token.origin, "\ntest'case''\n");
     }
 
     #[test]
@@ -1430,39 +1354,39 @@ test'case''
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "");
 
         let input = "b''''''";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "");
 
         let input = r#"b"""foo""""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "foo");
 
         let input = "b'''foo'''";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "foo");
 
         let input = r#"b'''foo
 bar'''"#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "foo\nbar");
 
         let input = r#"b"""foo
 bar""""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "foo\nbar");
 
         let input = r#"b"""
 test"case""
@@ -1470,7 +1394,7 @@ test"case""
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "\ntest\"case\"\"\n");
 
         let input = r#"b'''
 test'case''
@@ -1478,7 +1402,7 @@ test'case''
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::Bytes);
-        assert_eq!(token.origin, input.trim_start_matches('b'));
+        assert_eq!(token.origin, "\ntest'case''\n");
     }
 
     #[test]
@@ -1487,37 +1411,37 @@ test'case''
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, input.trim_start_matches("rb"));
+        assert_eq!(token.origin, "");
 
         let input = "rb''''''";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, input.trim_start_matches("rb"));
+        assert_eq!(token.origin, "");
 
         let input = r#"rb"""foo""""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, input.trim_start_matches("rb"));
+        assert_eq!(token.origin, "foo");
 
         let input = "rb'''foo'''";
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, input.trim_start_matches("rb"));
+        assert_eq!(token.origin, "foo");
 
         let input = r#"rb"""foo\nbar""""#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, input.trim_start_matches("rb"));
+        assert_eq!(token.origin, "foo\\nbar");
 
         let input = r#"rb'''foo\nbar'''"#;
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, input.trim_start_matches("rb"));
+        assert_eq!(token.origin, "foo\\nbar");
 
         let input = r#"rb"""
 test"case""
@@ -1525,7 +1449,7 @@ test"case""
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, input.trim_start_matches("rb"));
+        assert_eq!(token.origin, "\ntest\"case\"\"\n");
 
         let input = r#"rb'''
 test'case''
@@ -1533,7 +1457,7 @@ test'case''
         let mut lexer = Lexer::new(input);
         let token = lexer.next().unwrap().unwrap();
         assert_eq!(token.kind, TokenKind::RawBytes);
-        assert_eq!(token.origin, input.trim_start_matches("rb"));
+        assert_eq!(token.origin, "\ntest'case''\n");
     }
 
     #[test]
@@ -1544,7 +1468,7 @@ test'case''
             let mut lexer = Lexer::new(t);
             let token = lexer.next().unwrap().unwrap();
             assert_eq!(token.kind, TokenKind::RawBytes);
-            assert_eq!(token.origin, t.get(2..).unwrap());
+            assert_eq!(token.origin, t.get(3..t.len() - 1).unwrap());
         }
     }
 
@@ -1572,64 +1496,46 @@ test'case''
     }
 
     #[test]
-    fn test_read_str() {
-        let input = r#""foo""#;
-        let out = read_str(input).unwrap();
-        assert_eq!(out, input);
+    fn test_scan_str() {
+        // good cases
+        for value in [
+            "foo",
+            "foo\\\"bar",
+            "foo\\'bar",
+            "foo\\nbar",
+            "foo\\x00bar",
+            "foo\\u0000bar",
+            "foo\\U00000000bar",
+            "foo\\000bar",
+        ] {
+            for delim in ['"', '\''] {
+                let input = format!("{}{}{}", delim, value, delim);
+                let out = scan_str(&input);
+                assert!(out.is_ok(), "input={input:?}, result={out:?}");
+                let (end, out) = out.unwrap();
+                assert_eq!(end, input.len());
+                assert_eq!(out, value);
+            }
+        }
 
-        let input = r#""foo\"bar""#;
-        let out = read_str(input).unwrap();
-        assert_eq!(out, input);
-
-        let input = r#""foo\nbar""#;
-        let out = read_str(input).unwrap();
-        assert_eq!(out, input);
-
-        let input = r#""foo\x00bar""#;
-        let out = read_str(input).unwrap();
-        assert_eq!(out, input);
-
-        let input = r#""foo\u0000bar""#;
-        let out = read_str(input).unwrap();
-        assert_eq!(out, input);
-
-        let input = r#""foo\U00000000bar""#;
-        let out = read_str(input).unwrap();
-        assert_eq!(out, input);
-
-        let input = r#""foo\000bar""#;
-        let out = read_str(input).unwrap();
-        assert_eq!(out, input);
-
-        // bad cases
-        let input = r#""foo"#;
-        let out = read_str(input);
-        assert!(out.is_err(), "{:?}", out);
-
-        let input = r#""foo\sbar"#;
-        let out = read_str(input);
-        assert!(out.is_err(), "{:?}", out);
-
-        let input = r#""foo\ubar"#;
-        let out = read_str(input);
-        assert!(out.is_err(), "{:?}", out);
-
-        let input = r#""foo\u000zzz"#;
-        let out = read_str(input);
-        assert!(out.is_err(), "{:?}", out);
-
-        let input = r#""foo\U000000zzz"#;
-        let out = read_str(input);
-        assert!(out.is_err(), "{:?}", out);
-
-        let input = r#""foo\800zzz"#;
-        let out = read_str(input);
-        assert!(out.is_err(), "{:?}", out);
+        // bad values
+        for value in [
+            r#"foo\sbar"#,       // invalid escape
+            r#"foo\u000zzz"#,    // invalid unicode escape
+            r#"foo\U000000zzz"#, // invalid unicode escape
+            r#"foo\800zzz"#,     // invalid unicode escape
+        ] {
+            for delim in ['"', '\''] {
+                let input = format!("{delim}{value}{delim}");
+                let out = scan_str(&input);
+                assert!(out.is_err(), "input={input:?}, result={out:?}");
+            }
+        }
     }
 
     #[test]
     fn test_unescape() {
-        let input = r#""\n\t\r\"\'""#;
+        let input = r#"\n\t\r\"\'"#;
         let out = Token::unescape(input);
         assert_eq!(out, "\n\t\r\"\'");
     }
