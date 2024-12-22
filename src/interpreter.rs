@@ -10,9 +10,7 @@ pub struct Interpreter {}
 
 impl Interpreter {
     pub fn eval(&self, program: &str) -> Result<Value, Error> {
-        let tree = Parser::new(program)
-            .parse()
-            .expect("Failed to parse program");
+        let tree = Parser::new(program).parse()?;
         self.eval_ast(&tree)
     }
 
@@ -32,7 +30,8 @@ impl Interpreter {
             Atom::String(s) => Value::String(s.to_string()),
             Atom::Bool(b) => Value::Bool(*b),
             Atom::Null => Value::Null,
-            _ => miette::bail!("Unexpected atom: {:?}", atom),
+            Atom::Bytes(b) => Value::Bytes(b.clone().to_vec()),
+            _ => unimplemented!(),
         };
         Ok(val)
     }
