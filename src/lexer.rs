@@ -1,10 +1,6 @@
 use core::{fmt, panic};
 use miette::{Diagnostic, Error, LabeledSpan};
-use std::{
-    borrow::Cow,
-    collections::{HashMap, HashSet},
-    sync::OnceLock,
-};
+use std::{borrow::Cow, collections::HashMap, io::Read, sync::OnceLock};
 
 #[derive(Diagnostic, Debug)]
 pub struct Eof;
@@ -25,12 +21,81 @@ pub struct Token<'src> {
     pub kind: TokenKind,
 }
 
+pub fn unescape(s: &str) -> Cow<'_, str> {
+    let s = match read_str_delimiter(s) {
+        StrDelimiter::Single => &s[1..s.len() - 1],
+        StrDelimiter::Tripple => &s[3..s.len() - 3],
+    };
+
+    if !s.contains('\\') {
+        return Cow::Borrowed(s);
+    }
+
+    let mut buf = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            buf.push(c);
+            continue;
+        }
+
+        let c = match chars.next() {
+            Some(c) => c,
+            None => break,
+        };
+
+        if let Some(c) = single_char_escape().get(&c) {
+            buf.push(*c);
+            continue;
+        }
+
+        match c {
+            'x' => {
+                let c = u8::from_str_radix(
+                    &read_n_hex_chars(&mut chars, 2).expect("should be handled in lexing stage"),
+                    16,
+                )
+                .unwrap();
+                buf.push(c as char);
+            }
+            'u' => {
+                let c = char::from_u32(
+                    u32::from_str_radix(
+                        &read_n_hex_chars(&mut chars, 4)
+                            .expect("should be handled in lexing stage"),
+                        16,
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+                buf.push(c);
+            }
+            'U' => {
+                let c = char::from_u32(
+                    u32::from_str_radix(
+                        &read_n_hex_chars(&mut chars, 8)
+                            .expect("should be handled in lexing stage"),
+                        16,
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+                buf.push(c);
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    Cow::Owned(buf)
+}
+
 impl Token<'_> {
     pub fn unescape(s: &str) -> Cow<'_, str> {
-        match read_str_delimiter(s) {
-            StrDelimiter::Single => Cow::Borrowed(&s[1..s.len() - 1]),
-            StrDelimiter::Tripple => Cow::Borrowed(&s[3..s.len() - 3]),
-        }
+        unescape(s)
+    }
+    pub fn unescape_bytes(s: &str) -> Cow<'_, [u8]> {
+        let out = unescape(s);
+        Cow::Owned(out.as_bytes().to_vec())
     }
 }
 
@@ -120,27 +185,27 @@ fn keywords() -> &'static HashMap<&'static str, TokenKind> {
     })
 }
 
-fn single_char_escape() -> &'static HashSet<char> {
-    static SINGLE_CHAR_ESCAPE: OnceLock<HashSet<char>> = OnceLock::new();
+fn single_char_escape() -> &'static HashMap<char, char> {
+    static SINGLE_CHAR_ESCAPE: OnceLock<HashMap<char, char>> = OnceLock::new();
     // https://github.com/google/cel-spec/blob/master/doc/langdef.md#string-and-bytes-values
     SINGLE_CHAR_ESCAPE.get_or_init(|| {
-        let mut set = HashSet::new();
+        let mut map = HashMap::new();
         // A punctuation mark representing itself
-        set.insert('\\');
-        set.insert('?');
-        set.insert('"');
-        set.insert('\'');
-        set.insert('`');
+        map.insert('\\', '\\');
+        map.insert('?', '?');
+        map.insert('"', '"');
+        map.insert('\'', '\'');
+        map.insert('`', '`');
 
         // A code for whitespace:
-        set.insert('a');
-        set.insert('b');
-        set.insert('f');
-        set.insert('n');
-        set.insert('r');
-        set.insert('t');
-        set.insert('v');
-        set
+        map.insert('a', '\x07');
+        map.insert('b', '\x08');
+        map.insert('f', '\x0c');
+        map.insert('n', '\n');
+        map.insert('r', '\r');
+        map.insert('t', '\t');
+        map.insert('v', '\x0b');
+        map
     })
 }
 
@@ -761,7 +826,7 @@ fn read_str_single(s: &str) -> Result<&str, Error> {
             }
         };
         end += c.len_utf8();
-        if single_char_escape().contains(&c) {
+        if single_char_escape().get(&c).is_some() {
             continue;
         }
 
@@ -855,7 +920,8 @@ fn read_str_delimiter(s: &str) -> StrDelimiter {
     }
 }
 
-fn read_n_hex_chars(chars: &mut impl Iterator<Item = char>, n: usize) -> Result<(), Error> {
+fn read_n_hex_chars(chars: &mut impl Iterator<Item = char>, n: usize) -> Result<String, Error> {
+    let mut buf = String::with_capacity(n);
     for _ in 0..n {
         let c = match chars.next() {
             Some(c) => c,
@@ -873,8 +939,10 @@ fn read_n_hex_chars(chars: &mut impl Iterator<Item = char>, n: usize) -> Result<
                 "Unexpected character: {c}",
             });
         }
+
+        buf.push(c);
     }
-    Ok(())
+    Ok(buf)
 }
 
 #[cfg(test)]
@@ -1454,5 +1522,12 @@ test'case''
             let token = lexer.next().unwrap().unwrap();
             assert_eq!(token.kind, e);
         }
+    }
+
+    #[test]
+    fn test_unescape() {
+        let input = r#""\n\t\r\"\'""#;
+        let out = Token::unescape(input);
+        assert_eq!(out, "\n\t\r\"\'");
     }
 }

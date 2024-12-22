@@ -176,7 +176,11 @@ impl Interpreter {
                 let mut iter = tokens.iter();
                 let first = self.eval_ast(iter.next().unwrap())?;
                 let kind = match first {
-                    Value::Int(_) | Value::Uint(_) | Value::Double(_) | Value::String(_) => {
+                    Value::Int(_)
+                    | Value::Uint(_)
+                    | Value::Double(_)
+                    | Value::String(_)
+                    | Value::Bool(_) => {
                         let kind = first.kind();
                         list.push(first);
                         kind
@@ -187,7 +191,7 @@ impl Interpreter {
                 for token in iter {
                     let value = self.eval_ast(token)?;
                     if value.kind() != kind {
-                        panic!("List elements must have the same type");
+                        miette::bail!("List elements must have the same type");
                     }
                     list.push(value);
                 }

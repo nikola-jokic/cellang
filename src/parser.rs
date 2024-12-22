@@ -58,6 +58,21 @@ impl<'src> Parser<'src> {
                 ..
             } => TokenTree::Atom(Atom::String(Token::unescape(origin))),
             Token {
+                kind: TokenKind::RawString,
+                origin,
+                ..
+            } => TokenTree::Atom(Atom::String(Token::unescape(origin))),
+            Token {
+                kind: TokenKind::Bytes,
+                origin,
+                ..
+            } => TokenTree::Atom(Atom::Bytes(Token::unescape_bytes(origin))),
+            Token {
+                kind: TokenKind::RawBytes,
+                origin,
+                ..
+            } => TokenTree::Atom(Atom::Bytes(Token::unescape_bytes(origin))),
+            Token {
                 kind: TokenKind::True,
                 ..
             } => TokenTree::Atom(Atom::Bool(true)),
