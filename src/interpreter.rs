@@ -120,6 +120,22 @@ impl Interpreter {
                     _ => unimplemented!(),
                 }
             }
+            Op::NotEqual => {
+                let lhs = self.eval_ast(&tokens[0])?;
+                let rhs = self.eval_ast(&tokens[1])?;
+                match (lhs, rhs) {
+                    (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs != rhs),
+                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs != rhs),
+                    (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs != rhs),
+                    (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs != rhs),
+                    (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs != rhs),
+                    (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs != rhs),
+                    (Value::Null, Value::Null) => Value::Bool(false),
+                    (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs != rhs),
+                    (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs != rhs),
+                    _ => unimplemented!(),
+                }
+            }
             Op::EqualEqual => {
                 let lhs = self.eval_ast(&tokens[0])?;
                 let rhs = self.eval_ast(&tokens[1])?;
@@ -129,6 +145,10 @@ impl Interpreter {
                     (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs == rhs),
                     (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs == rhs),
                     (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs == rhs),
+                    (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs == rhs),
+                    (Value::Null, Value::Null) => Value::Bool(true),
+                    (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs == rhs),
+                    (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs == rhs),
                     _ => unimplemented!(),
                 }
             }
@@ -454,6 +474,55 @@ mod tests {
                 .eval("\"hello\" == \"world\"")
                 .expect("\"hello\" == \"world\""),
             Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_not_equal() {
+        let interpreter = Interpreter {};
+        assert_eq!(
+            interpreter.eval("1 != 1").expect("1 != 1"),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            interpreter.eval("1 != 2").expect("1 != 2"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            interpreter.eval("1u != 1u").expect("1u != 1u"),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            interpreter.eval("1u != 2u").expect("1u != 2u"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            interpreter.eval("1.0 != 1.0").expect("1.0 != 1.0"),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            interpreter.eval("1.0 != 2.0").expect("1.0 != 2.0"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            interpreter.eval("true != true").expect("true != true"),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            interpreter.eval("true != false").expect("true != false"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            interpreter
+                .eval("\"hello\" != \"hello\"")
+                .expect("\"hello\" != \"hello\""),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            interpreter
+                .eval("\"hello\" != \"world\"")
+                .expect("\"hello\" != \"world\""),
+            Value::Bool(true)
         );
     }
 
