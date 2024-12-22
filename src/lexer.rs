@@ -52,7 +52,8 @@ pub fn unescape(s: &str) -> Cow<'_, str> {
         match c {
             'x' => {
                 let c = u8::from_str_radix(
-                    &read_n_hex_chars(&mut chars, 2).expect("should be handled in lexing stage"),
+                    &read_chars_tested(&mut chars, 2, is_hex, "Expected 2 hex numbers after \\x")
+                        .expect("should be handled in lexing stage"),
                     16,
                 )
                 .unwrap();
@@ -61,8 +62,13 @@ pub fn unescape(s: &str) -> Cow<'_, str> {
             'u' => {
                 let c = char::from_u32(
                     u32::from_str_radix(
-                        &read_n_hex_chars(&mut chars, 4)
-                            .expect("should be handled in lexing stage"),
+                        &read_chars_tested(
+                            &mut chars,
+                            4,
+                            is_hex,
+                            "Expected 4 hex numbers after \\u",
+                        )
+                        .expect("should be handled in lexing stage"),
                         16,
                     )
                     .unwrap(),
@@ -73,14 +79,33 @@ pub fn unescape(s: &str) -> Cow<'_, str> {
             'U' => {
                 let c = char::from_u32(
                     u32::from_str_radix(
-                        &read_n_hex_chars(&mut chars, 8)
-                            .expect("should be handled in lexing stage"),
+                        &read_chars_tested(
+                            &mut chars,
+                            8,
+                            is_hex,
+                            "Expected 8 hex numbers after \\U",
+                        )
+                        .expect("should be handled in lexing stage"),
                         16,
                     )
                     .unwrap(),
                 )
                 .unwrap();
                 buf.push(c);
+            }
+            '0'..='7' => {
+                let c = u8::from_str_radix(
+                    &read_chars_tested(
+                        &mut chars,
+                        3,
+                        is_octal,
+                        "Expected 3 octal numbers after \\",
+                    )
+                    .expect("should be handled in lexing stage"),
+                    8,
+                )
+                .unwrap();
+                buf.push(c as char);
             }
             _ => unimplemented!(),
         }
@@ -766,12 +791,13 @@ fn read_str(s: &str) -> Result<&str, Error> {
     }
 
     match read_str_delimiter(s) {
-        StrDelimiter::Single => read_str_single(s),
+        StrDelimiter::Single => read_str_escaped(s),
         StrDelimiter::Tripple => read_str_tripple(s),
     }
 }
 
-fn read_str_single(s: &str) -> Result<&str, Error> {
+/// read_str_escaped expects something like "escaped string" or 'escaped string'
+fn read_str_escaped(s: &str) -> Result<&str, Error> {
     let mut chars = s.chars();
     let delim = chars.next().unwrap();
 
@@ -832,13 +858,21 @@ fn read_str_single(s: &str) -> Result<&str, Error> {
 
         match c {
             'x' => {
-                read_n_hex_chars(&mut chars, 2)?;
+                read_chars_tested(&mut chars, 2, is_hex, "Expected 2 hex numbers on \\x")?;
+                end += 2;
             }
             'u' => {
-                read_n_hex_chars(&mut chars, 4)?;
+                read_chars_tested(&mut chars, 4, is_hex, "Expected 4 hex numbers after \\u")?;
+                end += 4;
             }
             'U' => {
-                read_n_hex_chars(&mut chars, 8)?;
+                read_chars_tested(&mut chars, 8, is_hex, "Expected 8 hex numbers after \\U")?;
+                end += 8;
+            }
+            '0'..='7' => {
+                // one octal number is already read
+                read_chars_tested(&mut chars, 2, is_octal, "Expected 3 octal numbers after \\")?;
+                end += 2;
             }
             _ => {
                 return Err(miette::miette! {
@@ -920,22 +954,35 @@ fn read_str_delimiter(s: &str) -> StrDelimiter {
     }
 }
 
-fn read_n_hex_chars(chars: &mut impl Iterator<Item = char>, n: usize) -> Result<String, Error> {
+fn is_hex(c: char) -> bool {
+    c.is_ascii_hexdigit()
+}
+
+fn is_octal(c: char) -> bool {
+    matches!(c, '0'..='7')
+}
+
+fn read_chars_tested(
+    chars: &mut impl Iterator<Item = char>,
+    n: usize,
+    test_fn: impl Fn(char) -> bool,
+    err_msg: &str,
+) -> Result<String, Error> {
     let mut buf = String::with_capacity(n);
     for _ in 0..n {
         let c = match chars.next() {
             Some(c) => c,
             None => {
                 return Err(miette::miette! {
-                    help = "Expected a hex digit",
+                    help = err_msg,
                     "Unexpected end of file",
                 });
             }
         };
 
-        if !c.is_ascii_hexdigit() {
+        if !test_fn(c) {
             return Err(miette::miette! {
-                help = "Expected a hex digit",
+                help = err_msg,
                 "Unexpected character: {c}",
             });
         }
@@ -1522,6 +1569,62 @@ test'case''
             let token = lexer.next().unwrap().unwrap();
             assert_eq!(token.kind, e);
         }
+    }
+
+    #[test]
+    fn test_read_str() {
+        let input = r#""foo""#;
+        let out = read_str(input).unwrap();
+        assert_eq!(out, input);
+
+        let input = r#""foo\"bar""#;
+        let out = read_str(input).unwrap();
+        assert_eq!(out, input);
+
+        let input = r#""foo\nbar""#;
+        let out = read_str(input).unwrap();
+        assert_eq!(out, input);
+
+        let input = r#""foo\x00bar""#;
+        let out = read_str(input).unwrap();
+        assert_eq!(out, input);
+
+        let input = r#""foo\u0000bar""#;
+        let out = read_str(input).unwrap();
+        assert_eq!(out, input);
+
+        let input = r#""foo\U00000000bar""#;
+        let out = read_str(input).unwrap();
+        assert_eq!(out, input);
+
+        let input = r#""foo\000bar""#;
+        let out = read_str(input).unwrap();
+        assert_eq!(out, input);
+
+        // bad cases
+        let input = r#""foo"#;
+        let out = read_str(input);
+        assert!(out.is_err(), "{:?}", out);
+
+        let input = r#""foo\sbar"#;
+        let out = read_str(input);
+        assert!(out.is_err(), "{:?}", out);
+
+        let input = r#""foo\ubar"#;
+        let out = read_str(input);
+        assert!(out.is_err(), "{:?}", out);
+
+        let input = r#""foo\u000zzz"#;
+        let out = read_str(input);
+        assert!(out.is_err(), "{:?}", out);
+
+        let input = r#""foo\U000000zzz"#;
+        let out = read_str(input);
+        assert!(out.is_err(), "{:?}", out);
+
+        let input = r#""foo\800zzz"#;
+        let out = read_str(input);
+        assert!(out.is_err(), "{:?}", out);
     }
 
     #[test]
