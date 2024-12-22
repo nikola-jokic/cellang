@@ -53,6 +53,9 @@ impl Interpreter {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs + rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs + rhs),
                     (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs + rhs),
+                    (Value::String(s1), Value::String(s2)) => {
+                        Value::String(format!("{}{}", s1, s2))
+                    }
                     _ => unimplemented!(),
                 }
             }
@@ -175,18 +178,8 @@ impl Interpreter {
                 let mut list = Vec::with_capacity(tokens.len());
                 let mut iter = tokens.iter();
                 let first = self.eval_ast(iter.next().unwrap())?;
-                let kind = match first {
-                    Value::Int(_)
-                    | Value::Uint(_)
-                    | Value::Double(_)
-                    | Value::String(_)
-                    | Value::Bool(_) => {
-                        let kind = first.kind();
-                        list.push(first);
-                        kind
-                    }
-                    _ => unimplemented!(),
-                };
+                let kind = first.kind();
+                list.push(first);
 
                 for token in iter {
                     let value = self.eval_ast(token)?;
@@ -197,6 +190,31 @@ impl Interpreter {
                 }
 
                 Value::List(list)
+            }
+            Op::Map => {
+                if tokens.is_empty() {
+                    return Ok(Value::Map(HashMap::new()));
+                }
+
+                let mut iter = tokens.iter();
+                let first_key = self.eval_ast(iter.next().expect("Key must be present"))?;
+                let first_value = self.eval_ast(iter.next().expect("Value must be present"))?;
+                let key_kind = first_key.kind();
+                let value_kind = first_value.kind();
+
+                let mut map = HashMap::new();
+                map.insert(MapKey::try_from(first_key)?, first_value);
+
+                while let (Some(key), Some(value)) = (iter.next(), iter.next()) {
+                    let key = self.eval_ast(key)?;
+                    let value = self.eval_ast(value)?;
+                    if key.kind() != key_kind || value.kind() != value_kind {
+                        miette::bail!("Map elements must have the same type");
+                    }
+                    map.insert(MapKey::try_from(key)?, value);
+                }
+
+                Value::Map(map)
             }
             _ => unimplemented!(),
         };
@@ -254,6 +272,20 @@ pub enum MapKey {
     Bool(bool),
 }
 
+impl TryFrom<Value> for MapKey {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int(n) => Ok(MapKey::Int(n)),
+            Value::Uint(n) => Ok(MapKey::Uint(n)),
+            Value::String(s) => Ok(MapKey::String(s)),
+            Value::Bool(b) => Ok(MapKey::Bool(b)),
+            _ => miette::bail!("Invalid map key: {:?}", value),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,6 +317,12 @@ mod tests {
         assert_eq!(
             interpreter.eval("1.0 + 2.0").expect("1.0 + 2.0"),
             Value::Double(3.0)
+        );
+        assert_eq!(
+            interpreter
+                .eval("\"hello\" + \"world\"")
+                .expect("\"hello\" + \"world\""),
+            Value::String("helloworld".to_string())
         );
     }
 
@@ -608,6 +646,60 @@ mod tests {
         for t in tt.iter() {
             let result = interpreter.eval(t);
             assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn test_map() {
+        let tt = [
+            ("{}", Value::Map(HashMap::new())),
+            ("{1: 2, 3: 4}", {
+                let mut map = HashMap::new();
+                map.insert(MapKey::Int(1), Value::Int(2));
+                map.insert(MapKey::Int(3), Value::Int(4));
+                Value::Map(map)
+            }),
+            ("{1u: 2u, 3u: 4u}", {
+                let mut map = HashMap::new();
+                map.insert(MapKey::Uint(1), Value::Uint(2));
+                map.insert(MapKey::Uint(3), Value::Uint(4));
+                Value::Map(map)
+            }),
+            ("{\"hello\": \"world\"}", {
+                let mut map = HashMap::new();
+                map.insert(
+                    MapKey::String("hello".to_string()),
+                    Value::String("world".to_string()),
+                );
+                Value::Map(map)
+            }),
+            ("{true: false}", {
+                let mut map = HashMap::new();
+                map.insert(MapKey::Bool(true), Value::Bool(false));
+                Value::Map(map)
+            }),
+        ];
+
+        let interpreter = Interpreter {};
+        for (input, expected) in tt.iter() {
+            let result = interpreter.eval(input).expect(input);
+            assert_eq!(result, *expected, "input: {}", input);
+        }
+
+        let tt = [
+            ("{1: 2, 3u: 4}", "Map elements must have the same type"),
+            ("{1: 2, 3: 4u}", "Map elements must have the same type"),
+            (
+                "{1: 2, 3: \"hello\"}",
+                "Map elements must have the same type",
+            ),
+            ("{1: 2, 3: true}", "Map elements must have the same type"),
+        ];
+
+        for (input, expected) in tt.iter() {
+            let result = interpreter.eval(input);
+            assert!(result.is_err());
+            assert_eq!(result.unwrap_err().to_string(), *expected);
         }
     }
 }

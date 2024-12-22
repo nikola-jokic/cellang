@@ -306,10 +306,9 @@ impl<'src> Parser<'src> {
                 self.lexer
                     .expect(TokenKind::Colon, "Expected colon between map key and value")?;
                 let value = self.parse_expr(0).wrap_err("in map value")?;
-                items.push(TokenTree::FieldInitialization {
-                    key: Box::new(key),
-                    value: Box::new(value),
-                });
+                items.push(key);
+                items.push(value);
+
                 let token = self
                     .lexer
                     .expect_where(
@@ -483,11 +482,6 @@ pub enum TokenTree<'src> {
         func: Box<TokenTree<'src>>,
         args: Vec<TokenTree<'src>>,
     },
-    FieldInitialization {
-        key: Box<TokenTree<'src>>,
-        value: Box<TokenTree<'src>>,
-    },
-    // TODO: Handle messages
 }
 
 impl fmt::Display for TokenTree<'_> {
@@ -507,9 +501,6 @@ impl fmt::Display for TokenTree<'_> {
                     write!(f, ", {}", arg)?;
                 }
                 write!(f, ")")
-            }
-            TokenTree::FieldInitialization { key, value } => {
-                write!(f, "{}: {}", key, value)
             }
         }
     }
@@ -683,14 +674,10 @@ mod tests {
             TokenTree::Cons(
                 Op::Map,
                 vec![
-                    TokenTree::FieldInitialization {
-                        key: Box::new(TokenTree::Atom(Atom::Ident("foo"))),
-                        value: Box::new(TokenTree::Atom(Atom::Int(1))),
-                    },
-                    TokenTree::FieldInitialization {
-                        key: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
-                        value: Box::new(TokenTree::Atom(Atom::Int(2))),
-                    },
+                    TokenTree::Atom(Atom::Ident("foo")),
+                    TokenTree::Atom(Atom::Int(1)),
+                    TokenTree::Atom(Atom::Ident("bar")),
+                    TokenTree::Atom(Atom::Int(2)),
                 ]
             )
         );
