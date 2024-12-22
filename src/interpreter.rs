@@ -250,6 +250,22 @@ impl Interpreter {
                     self.eval_ast(&tokens[2])?
                 }
             }
+            Op::Group => self.eval_ast(&tokens[0])?,
+            Op::In => {
+                let lhs = self.eval_ast(&tokens[0])?;
+                let rhs = match self.eval_ast(&tokens[1])? {
+                    Value::List(list) => list,
+                    _ => miette::bail!("Expected list, found {:?}", tokens[1]),
+                };
+
+                if rhs.contains(&lhs) {
+                    Value::Bool(true)
+                } else {
+                    Value::Bool(false)
+                }
+            }
+            Op::For => miette::bail!("For loop is not supported"),
+            Op::While => miette::bail!("While loop is not supported"),
             _ => unimplemented!(),
         };
         Ok(val)
@@ -796,6 +812,28 @@ mod tests {
         assert_eq!(
             interpreter.eval("1 < 2 ? 1 : 2u").expect("1 < 2 ? 1 : 2u"),
             Value::Int(1)
+        );
+    }
+
+    #[test]
+    fn test_group() {
+        let interpreter = Interpreter {};
+        assert_eq!(
+            interpreter.eval("(1 + 2) * 3").expect("(1 + 2) * 3"),
+            Value::Int(9)
+        );
+    }
+
+    #[test]
+    fn test_in() {
+        let interpreter = Interpreter {};
+        assert_eq!(
+            interpreter.eval("1 in [1, 2, 3]").expect("1 in [1, 2, 3]"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            interpreter.eval("4 in [1, 2, 3]").expect("4 in [1, 2, 3]"),
+            Value::Bool(false)
         );
     }
 }
