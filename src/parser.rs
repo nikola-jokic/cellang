@@ -80,6 +80,27 @@ impl<'src> Parser<'src> {
                 kind: TokenKind::False,
                 ..
             } => TokenTree::Atom(Atom::Bool(false)),
+            Token {
+                kind: TokenKind::Dot,
+                ..
+            } => {
+                todo!()
+                // let peek = match  self.lexer.peek() {
+                //     None => return Err(miette::miette! {
+                //         help = "Unexpected end of input",
+                //         "Unexpected end of input"
+                //     }),
+                //     Some(Err(e)) => return Err(miette::miette! {
+                //         help = format!("Unexpected error: {:?}", e),
+                //         "Unexpected error"
+                //     }),
+                //     Some(Ok(token)) => token,
+                // };
+                //
+                // if !matches!(peek.kind, TokenKind::Int(_) | TokenK)
+                //
+                // todo!()
+            }
 
             // groups
             Token {

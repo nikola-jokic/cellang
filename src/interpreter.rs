@@ -6,6 +6,8 @@ use crate::{
     Parser,
 };
 
+// DO THIS BY REFERENCES AND NOT WITH CLONES
+
 type Function = Box<dyn Fn(&[Value]) -> Result<Value, Error>>;
 
 pub struct Environment {
@@ -112,12 +114,24 @@ impl<'a> Interpreter<'a> {
     fn eval_cons(&self, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
         let val = match op {
             Op::Field => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                assert!(tokens.len() > 2);
+                todo!()
+            }
+            Op::Index => {
+                let lhs = match self.eval_ast(&tokens[0])?.value(self.env)? {
+                    Value::List(list) => match list {
+                        None => return Ok(Value::Null),
+                        Some(list) => list,
+                    },
+                    Value::Map(map) => match map {
+                        None => return Ok(Value::Null),
+                        Some(map) => map,
+                    },
+                    _ => miette::bail!("Expected list, found {:?}", tokens[0]),
+                };
+                let idx = self.eval_ast(&tokens[1])?.value(self.env)?;
 
-                dbg!(lhs, rhs);
-
-                todo!();
+                todo!()
             }
             Op::Not => {
                 let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
@@ -275,7 +289,7 @@ impl<'a> Interpreter<'a> {
             }
             Op::List => {
                 if tokens.is_empty() {
-                    return Ok(Value::List(vec![]));
+                    return Ok(Value::List(None));
                 }
 
                 let mut list = Vec::with_capacity(tokens.len());
@@ -292,11 +306,14 @@ impl<'a> Interpreter<'a> {
                     list.push(value);
                 }
 
-                Value::List(list)
+                Value::List(Some(ListKind {
+                    vk: kind,
+                    value: list,
+                }))
             }
             Op::Map => {
                 if tokens.is_empty() {
-                    return Ok(Value::Map(HashMap::new()));
+                    return Ok(Value::Map(None));
                 }
 
                 let mut iter = tokens.iter();
@@ -306,7 +323,7 @@ impl<'a> Interpreter<'a> {
                 let first_value = self
                     .eval_ast(iter.next().expect("Value must be present"))?
                     .value(self.env)?;
-                let key_kind = first_key.kind();
+                let key_kind = MapKeyKind::try_from(first_key.kind())?;
                 let value_kind = first_value.kind();
 
                 let mut map = HashMap::new();
@@ -315,13 +332,18 @@ impl<'a> Interpreter<'a> {
                 while let (Some(key), Some(value)) = (iter.next(), iter.next()) {
                     let key = self.eval_ast(key)?.value(self.env)?;
                     let value = self.eval_ast(value)?.value(self.env)?;
-                    if key.kind() != key_kind || value.kind() != value_kind {
+                    let kk = MapKeyKind::try_from(key.kind())?;
+                    if kk != key_kind || value.kind() != value_kind {
                         miette::bail!("Map elements must have the same type");
                     }
                     map.insert(MapKey::try_from(key)?, value);
                 }
 
-                Value::Map(map)
+                Value::Map(Some(MapKind {
+                    kk: key_kind,
+                    vk: value_kind,
+                    value: map,
+                }))
             }
             Op::IfTernary => {
                 let lhs = match self.eval_ast(&tokens[0])?.value(self.env)? {
@@ -339,15 +361,14 @@ impl<'a> Interpreter<'a> {
             Op::In => {
                 let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
                 let rhs = match self.eval_ast(&tokens[1])?.value(self.env)? {
-                    Value::List(list) => list,
+                    Value::List(list) => match list {
+                        None => return Ok(Value::Bool(false)),
+                        Some(list) => list,
+                    },
                     _ => miette::bail!("Expected list, found {:?}", tokens[1]),
                 };
 
-                if rhs.contains(&lhs) {
-                    Value::Bool(true)
-                } else {
-                    Value::Bool(false)
-                }
+                Value::Bool(rhs.contains(&lhs)?)
             }
             Op::For => miette::bail!("For loop is not supported"),
             Op::While => miette::bail!("While loop is not supported"),
@@ -385,10 +406,33 @@ pub enum Value {
     Double(f64),
     String(String),
     Bool(bool),
-    Map(HashMap<MapKey, Value>),
-    List(Vec<Value>),
+    Map(Option<MapKind>),
+    List(Option<ListKind>),
     Bytes(Vec<u8>),
     Null,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct MapKind {
+    kk: MapKeyKind,
+    vk: ValueKind,
+    value: HashMap<MapKey, Value>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct ListKind {
+    vk: ValueKind,
+    value: Vec<Value>,
+}
+
+impl ListKind {
+    fn contains(&self, value: &Value) -> Result<bool, Error> {
+        if value.kind() != self.vk {
+            miette::bail!("Invalid type for list: {:?}", value);
+        }
+
+        Ok(self.value.contains(value))
+    }
 }
 
 impl From<i8> for Value {
@@ -474,6 +518,28 @@ enum ValueKind {
     Null,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum MapKeyKind {
+    Int,
+    Uint,
+    String,
+    Bool,
+}
+
+impl TryFrom<ValueKind> for MapKeyKind {
+    type Error = Error;
+
+    fn try_from(kind: ValueKind) -> Result<Self, Self::Error> {
+        match kind {
+            ValueKind::Int => Ok(MapKeyKind::Int),
+            ValueKind::Uint => Ok(MapKeyKind::Uint),
+            ValueKind::String => Ok(MapKeyKind::String),
+            ValueKind::Bool => Ok(MapKeyKind::Bool),
+            _ => miette::bail!("Invalid map key kind: {:?}", kind),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum MapKey {
     Int(i64),
@@ -508,8 +574,14 @@ fn m_size<'a>(this: &'a Value, _: &'a [Value]) -> Result<Value, Error> {
     let v = match this {
         Value::Bytes(b) => Value::Int(b.len() as i64),
         Value::String(s) => Value::Int(s.len() as i64),
-        Value::List(list) => Value::Int(list.len() as i64),
-        Value::Map(map) => Value::Int(map.len() as i64),
+        Value::List(list) => Value::Int(match list {
+            None => 0,
+            Some(list) => list.value.len() as i64,
+        }),
+        Value::Map(map) => Value::Int(match map {
+            None => 0,
+            Some(map) => map.value.len() as i64,
+        }),
         _ => miette::bail!("Invalid type for size: {:?}", this),
     };
 
@@ -1110,5 +1182,28 @@ mod tests {
         env.set_variable("x", 42i64.into());
         let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("x.foo()").expect("x.foo()"), Value::Int(1));
+    }
+
+    #[test]
+    fn test_field_access() {
+        let mut env = Environment::default();
+        env.set_variable(
+            "x",
+            Value::Map({
+                let mut leaf = HashMap::new();
+                leaf.insert(MapKey::String("y".to_string()), Value::Int(42));
+                let mut middle_level = HashMap::new();
+                middle_level.insert(MapKey::Int(0), Value::Map(leaf));
+                let mut root = HashMap::new();
+                root.insert(MapKey::Bool(true), Value::Map(middle_level));
+                root
+            }),
+        );
+
+        let interpreter = Interpreter::new(&env);
+        assert_eq!(
+            interpreter.eval("x[true][0].y").expect("x[true][0].y"),
+            Value::Int(42)
+        );
     }
 }
