@@ -6,8 +6,12 @@ use crate::{
     Parser,
 };
 
+type Function = Box<dyn Fn(&[Value]) -> Result<Value, Error>>;
+type Method = Box<dyn Fn(&Value, &[Value]) -> Value>;
+
 pub struct Environment {
     variables: HashMap<String, Value>,
+    functions: HashMap<String, Function>,
 }
 
 impl Default for Environment {
@@ -20,6 +24,12 @@ impl Environment {
     pub fn new() -> Self {
         Self {
             variables: HashMap::new(),
+            functions: {
+                let mut m = HashMap::new();
+                m.insert("size".to_string(), Box::new(fn_size) as Function);
+                m.insert("type".to_string(), Box::new(fn_type) as Function);
+                m
+            },
         }
     }
 
@@ -29,6 +39,14 @@ impl Environment {
 
     pub fn set_variable(&mut self, name: &str, value: Value) {
         self.variables.insert(name.to_string(), value);
+    }
+
+    pub fn get_function(&self, name: &str) -> Option<&Function> {
+        self.functions.get(name)
+    }
+
+    pub fn set_function(&mut self, name: &str, function: Function) {
+        self.functions.insert(name.to_string(), function);
     }
 }
 
@@ -50,7 +68,22 @@ impl<'a> Interpreter<'a> {
         match root {
             TokenTree::Atom(atom) => self.eval_atom(atom),
             TokenTree::Cons(op, tokens) => self.eval_cons(op, tokens),
-            _ => unimplemented!(),
+            TokenTree::Call { func, args } => {
+                let name = match self.eval_ast(func)? {
+                    Value::String(s) => s,
+                    _ => miette::bail!("Expected string, found {:?}", func),
+                };
+                let args = args
+                    .iter()
+                    .map(|arg| self.eval_ast(arg))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                if let Some(func) = self.env.get_function(&name) {
+                    func(&args)
+                } else {
+                    miette::bail!("Function not found: {}", name);
+                }
+            }
         }
     }
 
@@ -428,10 +461,46 @@ impl TryFrom<Value> for MapKey {
     }
 }
 
+fn fn_size(vals: &[Value]) -> Result<Value, Error> {
+    if vals.len() != 1 {
+        miette::bail!("Expected 1 argument, found {}", vals.len());
+    }
+
+    m_size(&vals[0], vals)
+}
+
+fn m_size<'a>(this: &'a Value, _: &'a [Value]) -> Result<Value, Error> {
+    let v = match this {
+        Value::Bytes(b) => Value::Int(b.len() as i64),
+        Value::String(s) => Value::Int(s.len() as i64),
+        Value::List(list) => Value::Int(list.len() as i64),
+        Value::Map(map) => Value::Int(map.len() as i64),
+        _ => miette::bail!("Invalid type for size: {:?}", this),
+    };
+
+    Ok(v)
+}
+
+fn fn_type(vals: &[Value]) -> Result<Value, Error> {
+    if vals.len() != 1 {
+        miette::bail!("Expected 1 argument, found {}", vals.len());
+    }
+
+    match &vals[0] {
+        Value::Int(_) => Ok(Value::String("int".to_string())),
+        Value::Uint(_) => Ok(Value::String("uint".to_string())),
+        Value::Double(_) => Ok(Value::String("double".to_string())),
+        Value::String(_) => Ok(Value::String("string".to_string())),
+        Value::Bool(_) => Ok(Value::String("bool".to_string())),
+        Value::Map(_) => Ok(Value::String("map".to_string())),
+        Value::List(_) => Ok(Value::String("list".to_string())),
+        Value::Bytes(_) => Ok(Value::String("bytes".to_string())),
+        Value::Null => Ok(Value::String("null".to_string())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::sync::LazyLock;
-
     use super::*;
 
     #[test]
@@ -957,5 +1026,46 @@ mod tests {
         env.set_variable("x", 42i64.into());
         let interpreter = Interpreter::new(&env);
         assert_eq!(interpreter.eval("x").expect("x"), Value::Int(42));
+        assert!(interpreter.eval("y").is_err());
+    }
+
+    #[test]
+    fn test_size() {
+        let env = Environment::default();
+        let interpreter = Interpreter::new(&env);
+        assert_eq!(
+            interpreter.eval("size(\"\")").expect("size(\"\")"),
+            Value::Int(0)
+        );
+        assert_eq!(
+            interpreter
+                .eval("size(\"hello\")")
+                .expect("size(\"hello\")"),
+            Value::Int(5)
+        );
+        assert_eq!(
+            interpreter.eval("size([])").expect("size([])"),
+            Value::Int(0)
+        );
+        assert_eq!(
+            interpreter
+                .eval("size([1, 2, 3])")
+                .expect("size([1, 2, 3])"),
+            Value::Int(3)
+        );
+        assert_eq!(
+            interpreter.eval("size({})").expect("size({})"),
+            Value::Int(0)
+        );
+        assert_eq!(
+            interpreter
+                .eval("size({1: 2, 3: 4})")
+                .expect("size({1: 2, 3: 4})"),
+            Value::Int(2)
+        );
+        assert_eq!(
+            interpreter.eval("size(null)").expect("size(null)"),
+            Value::Int(0)
+        );
     }
 }
