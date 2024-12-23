@@ -111,6 +111,14 @@ impl<'a> Interpreter<'a> {
 
     fn eval_cons(&self, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
         let val = match op {
+            Op::Field => {
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?;
+
+                dbg!(lhs, rhs);
+
+                todo!();
+            }
             Op::Not => {
                 let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
                 match lhs {
@@ -1090,5 +1098,17 @@ mod tests {
                 .expect("size({1: 2, 3: 4})"),
             Value::Int(2)
         );
+    }
+
+    #[test]
+    fn test_method_call() {
+        let mut env = Environment::default();
+        env.set_function(
+            "foo",
+            Box::new(|args: &[Value]| Ok(Value::Int(args.len() as i64))),
+        );
+        env.set_variable("x", 42i64.into());
+        let interpreter = Interpreter::new(&env);
+        assert_eq!(interpreter.eval("x.foo()").expect("x.foo()"), Value::Int(1));
     }
 }

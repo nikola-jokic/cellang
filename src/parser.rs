@@ -276,10 +276,18 @@ impl<'src> Parser<'src> {
                         TokenTree::Cons(op, vec![lhs, mhs, rhs])
                     }
                     _ => {
-                        let rhs = self
+                        // If this is a method call, turn it into a function call with lhs as the
+                        // first argument.
+                        match self
                             .parse_expr(r_bp)
-                            .wrap_err_with(|| format!("on the right-hand side of {lhs} {op}"))?;
-                        TokenTree::Cons(op, vec![lhs, rhs])
+                            .wrap_err_with(|| format!("on the right-hand side of {lhs} {op}"))?
+                        {
+                            TokenTree::Call { func, args } => TokenTree::Call {
+                                func,
+                                args: vec![lhs].into_iter().chain(args).collect(),
+                            },
+                            rhs => TokenTree::Cons(op, vec![lhs, rhs]),
+                        }
                     }
                 };
 
@@ -650,16 +658,13 @@ mod tests {
         let tree = parser.parse().unwrap();
         assert_eq!(
             tree,
-            TokenTree::Cons(
-                Op::Field,
-                vec![
+            TokenTree::Call {
+                func: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
+                args: vec![
                     TokenTree::Atom(Atom::Ident("foo")),
-                    TokenTree::Call {
-                        func: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
-                        args: vec![TokenTree::Atom(Atom::Ident("baz"))],
-                    }
+                    TokenTree::Atom(Atom::Ident("baz")),
                 ]
-            )
+            }
         );
     }
 
