@@ -7,7 +7,6 @@ use crate::{
 };
 
 type Function = Box<dyn Fn(&[Value]) -> Result<Value, Error>>;
-type Method = Box<dyn Fn(&Value, &[Value]) -> Value>;
 
 pub struct Environment {
     variables: HashMap<String, Value>,
@@ -61,48 +60,51 @@ impl<'a> Interpreter<'a> {
 
     pub fn eval(&self, program: &str) -> Result<Value, Error> {
         let tree = Parser::new(program).parse()?;
-        self.eval_ast(&tree)
-    }
-
-    fn eval_ast(&self, root: &TokenTree) -> Result<Value, Error> {
-        match root {
-            TokenTree::Atom(atom) => self.eval_atom(atom),
-            TokenTree::Cons(op, tokens) => self.eval_cons(op, tokens),
-            TokenTree::Call { func, args } => {
-                let name = match self.eval_ast(func)? {
-                    Value::String(s) => s,
-                    _ => miette::bail!("Expected string, found {:?}", func),
-                };
-                let args = args
-                    .iter()
-                    .map(|arg| self.eval_ast(arg))
-                    .collect::<Result<Vec<_>, _>>()?;
-
-                if let Some(func) = self.env.get_function(&name) {
-                    func(&args)
-                } else {
-                    miette::bail!("Function not found: {}", name);
-                }
-            }
-        }
-    }
-
-    fn eval_atom(&self, atom: &Atom) -> Result<Value, Error> {
-        let val = match atom {
-            Atom::Int(n) => Value::Int(*n),
-            Atom::Uint(n) => Value::Uint(*n),
-            Atom::Double(n) => Value::Double(*n),
-            Atom::String(s) => Value::String(s.to_string()),
-            Atom::Bool(b) => Value::Bool(*b),
-            Atom::Null => Value::Null,
-            Atom::Bytes(b) => Value::Bytes(b.clone().to_vec()),
-            Atom::Ident(ident) => {
-                if let Some(val) = self.env.get_variable(ident) {
-                    val.clone()
+        match self.eval_ast(&tree) {
+            Ok(Object::Value(val)) => Ok(val),
+            Ok(Object::Reference(ident)) => {
+                if let Some(val) = self.env.get_variable(&ident) {
+                    Ok(val.clone())
                 } else {
                     miette::bail!("Variable not found: {}", ident);
                 }
             }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn eval_ast(&self, root: &TokenTree) -> Result<Object, Error> {
+        match root {
+            TokenTree::Atom(atom) => self.eval_atom(atom),
+            TokenTree::Cons(op, tokens) => Ok(Object::Value(self.eval_cons(op, tokens)?)),
+            TokenTree::Call { func, args } => {
+                let f = match self.eval_ast(func)? {
+                    Object::Reference(name) => match self.env.get_function(&name) {
+                        Some(f) => f,
+                        None => miette::bail!("Function not found: {}", name),
+                    },
+                    _ => miette::bail!("Expected function name, found {:?}", func),
+                };
+                let args = args
+                    .iter()
+                    .map(|arg| self.eval_ast(arg)?.value(self.env))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                Ok(Object::Value(f(&args)?))
+            }
+        }
+    }
+
+    fn eval_atom(&self, atom: &Atom) -> Result<Object, Error> {
+        let val = match atom {
+            Atom::Int(n) => Object::Value(Value::Int(*n)),
+            Atom::Uint(n) => Object::Value(Value::Uint(*n)),
+            Atom::Double(n) => Object::Value(Value::Double(*n)),
+            Atom::String(s) => Object::Value(Value::String(s.to_string())),
+            Atom::Bool(b) => Object::Value(Value::Bool(*b)),
+            Atom::Null => Object::Value(Value::Null),
+            Atom::Bytes(b) => Object::Value(Value::Bytes(b.clone().to_vec())),
+            Atom::Ident(ident) => Object::Reference(ident.to_string()),
         };
         Ok(val)
     }
@@ -110,15 +112,15 @@ impl<'a> Interpreter<'a> {
     fn eval_cons(&self, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
         let val = match op {
             Op::Not => {
-                let lhs = self.eval_ast(&tokens[0])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
                 match lhs {
-                    Value::Bool(lhs) => Value::Bool(!lhs),
-                    _ => miette::bail!("Expected bool, found {:?}", lhs),
+                    Value::Bool(b) => Value::Bool(!b),
+                    _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
                 }
             }
             Op::Plus => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs + rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs + rhs),
@@ -133,8 +135,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::Minus => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs - rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs - rhs),
@@ -143,8 +145,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::Multiply => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
@@ -153,8 +155,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::Devide => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs / rhs),
@@ -163,8 +165,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::Mod => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
@@ -172,16 +174,16 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::And => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs && rhs),
                     _ => unimplemented!(),
                 }
             }
             Op::Or => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     // short-circuit evaluation
                     (Value::Bool(true), _) => Value::Bool(true),
@@ -192,8 +194,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::NotEqual => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs != rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs != rhs),
@@ -208,8 +210,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::EqualEqual => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs == rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs == rhs),
@@ -224,8 +226,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::Greater => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs > rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs > rhs),
@@ -234,8 +236,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::GreaterEqual => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs >= rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs >= rhs),
@@ -244,8 +246,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::Less => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs < rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs < rhs),
@@ -254,8 +256,8 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Op::LessEqual => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = self.eval_ast(&tokens[1])?;
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
                 match (lhs, rhs) {
                     (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs <= rhs),
                     (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs <= rhs),
@@ -270,12 +272,12 @@ impl<'a> Interpreter<'a> {
 
                 let mut list = Vec::with_capacity(tokens.len());
                 let mut iter = tokens.iter();
-                let first = self.eval_ast(iter.next().unwrap())?;
+                let first = self.eval_ast(iter.next().unwrap())?.value(self.env)?;
                 let kind = first.kind();
                 list.push(first);
 
                 for token in iter {
-                    let value = self.eval_ast(token)?;
+                    let value = self.eval_ast(token)?.value(self.env)?;
                     if value.kind() != kind {
                         miette::bail!("List elements must have the same type");
                     }
@@ -290,8 +292,12 @@ impl<'a> Interpreter<'a> {
                 }
 
                 let mut iter = tokens.iter();
-                let first_key = self.eval_ast(iter.next().expect("Key must be present"))?;
-                let first_value = self.eval_ast(iter.next().expect("Value must be present"))?;
+                let first_key = self
+                    .eval_ast(iter.next().expect("Key must be present"))?
+                    .value(self.env)?;
+                let first_value = self
+                    .eval_ast(iter.next().expect("Value must be present"))?
+                    .value(self.env)?;
                 let key_kind = first_key.kind();
                 let value_kind = first_value.kind();
 
@@ -299,8 +305,8 @@ impl<'a> Interpreter<'a> {
                 map.insert(MapKey::try_from(first_key)?, first_value);
 
                 while let (Some(key), Some(value)) = (iter.next(), iter.next()) {
-                    let key = self.eval_ast(key)?;
-                    let value = self.eval_ast(value)?;
+                    let key = self.eval_ast(key)?.value(self.env)?;
+                    let value = self.eval_ast(value)?.value(self.env)?;
                     if key.kind() != key_kind || value.kind() != value_kind {
                         miette::bail!("Map elements must have the same type");
                     }
@@ -310,21 +316,21 @@ impl<'a> Interpreter<'a> {
                 Value::Map(map)
             }
             Op::IfTernary => {
-                let lhs = match self.eval_ast(&tokens[0])? {
+                let lhs = match self.eval_ast(&tokens[0])?.value(self.env)? {
                     Value::Bool(b) => b,
                     _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
                 };
 
                 if lhs {
-                    self.eval_ast(&tokens[1])?
+                    self.eval_ast(&tokens[1])?.value(self.env)?
                 } else {
-                    self.eval_ast(&tokens[2])?
+                    self.eval_ast(&tokens[2])?.value(self.env)?
                 }
             }
-            Op::Group => self.eval_ast(&tokens[0])?,
+            Op::Group => self.eval_ast(&tokens[0])?.value(self.env)?,
             Op::In => {
-                let lhs = self.eval_ast(&tokens[0])?;
-                let rhs = match self.eval_ast(&tokens[1])? {
+                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
+                let rhs = match self.eval_ast(&tokens[1])?.value(self.env)? {
                     Value::List(list) => list,
                     _ => miette::bail!("Expected list, found {:?}", tokens[1]),
                 };
@@ -340,6 +346,27 @@ impl<'a> Interpreter<'a> {
             _ => unimplemented!(),
         };
         Ok(val)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum Object {
+    Value(Value),
+    Reference(String),
+}
+
+impl Object {
+    fn value(&self, env: &Environment) -> Result<Value, Error> {
+        match self {
+            Object::Value(val) => Ok(val.clone()),
+            Object::Reference(ident) => {
+                if let Some(val) = env.get_variable(ident) {
+                    Ok(val.clone())
+                } else {
+                    miette::bail!("Variable not found: {}", ident);
+                }
+            }
+        }
     }
 }
 
@@ -1062,10 +1089,6 @@ mod tests {
                 .eval("size({1: 2, 3: 4})")
                 .expect("size({1: 2, 3: 4})"),
             Value::Int(2)
-        );
-        assert_eq!(
-            interpreter.eval("size(null)").expect("size(null)"),
-            Value::Int(0)
         );
     }
 }

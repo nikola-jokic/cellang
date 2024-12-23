@@ -294,32 +294,34 @@ impl<'src> Parser<'src> {
 
     fn parse_map(&mut self) -> Result<TokenTree<'src>, Error> {
         let mut items = Vec::new();
-        if !matches!(
+        if matches!(
             self.lexer.peek(),
             Some(Ok(Token {
                 kind: TokenKind::RightBrace,
                 ..
             }))
         ) {
-            loop {
-                let key = self.parse_expr(0).wrap_err("in map key")?;
-                self.lexer
-                    .expect(TokenKind::Colon, "Expected colon between map key and value")?;
-                let value = self.parse_expr(0).wrap_err("in map value")?;
-                items.push(key);
-                items.push(value);
+            self.lexer.next();
+            return Ok(TokenTree::Cons(Op::Map, items));
+        }
+        loop {
+            let key = self.parse_expr(0).wrap_err("in map key")?;
+            self.lexer
+                .expect(TokenKind::Colon, "Expected colon between map key and value")?;
+            let value = self.parse_expr(0).wrap_err("in map value")?;
+            items.push(key);
+            items.push(value);
 
-                let token = self
-                    .lexer
-                    .expect_where(
-                        |token| matches!(token.kind, TokenKind::Comma | TokenKind::RightBrace),
-                        "continuing map",
-                    )
-                    .wrap_err("in map")?;
+            let token = self
+                .lexer
+                .expect_where(
+                    |token| matches!(token.kind, TokenKind::Comma | TokenKind::RightBrace),
+                    "continuing map",
+                )
+                .wrap_err("in map")?;
 
-                if token.kind == TokenKind::RightBrace {
-                    break;
-                }
+            if token.kind == TokenKind::RightBrace {
+                break;
             }
         }
         Ok(TokenTree::Cons(Op::Map, items))
@@ -327,27 +329,29 @@ impl<'src> Parser<'src> {
 
     fn parse_list(&mut self) -> Result<TokenTree<'src>, Error> {
         let mut items = Vec::new();
-        if !matches!(
+        if matches!(
             self.lexer.peek(),
             Some(Ok(Token {
                 kind: TokenKind::RightBracket,
                 ..
             }))
         ) {
-            loop {
-                let item = self.parse_expr(0).wrap_err("in list item")?;
-                items.push(item);
-                let token = self
-                    .lexer
-                    .expect_where(
-                        |token| matches!(token.kind, TokenKind::Comma | TokenKind::RightBracket),
-                        "continuing list",
-                    )
-                    .wrap_err("in list")?;
+            self.lexer.next();
+            return Ok(TokenTree::Cons(Op::List, items));
+        }
+        loop {
+            let item = self.parse_expr(0).wrap_err("in list item")?;
+            items.push(item);
+            let token = self
+                .lexer
+                .expect_where(
+                    |token| matches!(token.kind, TokenKind::Comma | TokenKind::RightBracket),
+                    "continuing list",
+                )
+                .wrap_err("in list")?;
 
-                if token.kind == TokenKind::RightBracket {
-                    break;
-                }
+            if token.kind == TokenKind::RightBracket {
+                break;
             }
         }
         Ok(TokenTree::Cons(Op::List, items))
@@ -613,6 +617,28 @@ mod tests {
                     TokenTree::Atom(Atom::Ident("bar")),
                     TokenTree::Atom(Atom::Ident("baz")),
                 ]
+            }
+        );
+
+        let input = "foo([])";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Call {
+                func: Box::new(TokenTree::Atom(Atom::Ident("foo"))),
+                args: vec![TokenTree::Cons(Op::List, vec![])]
+            }
+        );
+
+        let input = "foo({})";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Call {
+                func: Box::new(TokenTree::Atom(Atom::Ident("foo"))),
+                args: vec![TokenTree::Cons(Op::Map, vec![])]
             }
         );
     }
