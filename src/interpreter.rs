@@ -1,3 +1,4 @@
+use core::fmt;
 use miette::Error;
 use std::collections::HashMap;
 
@@ -114,24 +115,53 @@ impl<'a> Interpreter<'a> {
     fn eval_cons(&self, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
         let val = match op {
             Op::Field => {
-                assert!(tokens.len() > 2);
+                assert!(tokens.len() == 2);
+
                 todo!()
             }
             Op::Index => {
-                let lhs = match self.eval_ast(&tokens[0])?.value(self.env)? {
-                    Value::List(list) => match list {
-                        None => return Ok(Value::Null),
-                        Some(list) => list,
-                    },
-                    Value::Map(map) => match map {
-                        None => return Ok(Value::Null),
-                        Some(map) => map,
-                    },
-                    _ => miette::bail!("Expected list, found {:?}", tokens[0]),
-                };
-                let idx = self.eval_ast(&tokens[1])?.value(self.env)?;
+                assert!(tokens.len() == 2);
 
-                todo!()
+                match self.eval_ast(&tokens[0])?.value(self.env)? {
+                    Value::List(list) => {
+                        let i = match self.eval_ast(&tokens[1])?.value(self.env)? {
+                            Value::Int(n) => n,
+                            _ => miette::bail!("Expected int index, found {:?}", tokens[1]),
+                        };
+
+                        match list {
+                            List::Empty => miette::bail!("Index out of bounds"),
+                            List::WithValue { inner, .. } => {
+                                if i < 0 || i as usize >= inner.len() {
+                                    miette::bail!("Index out of bounds");
+                                }
+                                inner[i as usize].clone()
+                            }
+                        }
+                    }
+
+                    Value::Map(map) => {
+                        let key = MapKey::try_from(self.eval_ast(&tokens[1])?.value(self.env)?)?;
+
+                        match map {
+                            Map::Empty => miette::bail!("No such key {key}"),
+                            Map::WithValue {
+                                inner, key_kind, ..
+                            } => {
+                                if key_kind != key.kind() {
+                                    miette::bail!("Invalid key type: {:?}", key);
+                                }
+
+                                match inner.get(&key) {
+                                    Some(val) => val.clone(),
+                                    None => miette::bail!("No such key {key}"),
+                                }
+                            }
+                        }
+                    }
+
+                    _ => miette::bail!("Expected reference to a list, found {:?}", tokens[0]),
+                }
             }
             Op::Not => {
                 let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
@@ -289,7 +319,7 @@ impl<'a> Interpreter<'a> {
             }
             Op::List => {
                 if tokens.is_empty() {
-                    return Ok(Value::List(None));
+                    return Ok(Value::List(List::Empty));
                 }
 
                 let mut list = Vec::with_capacity(tokens.len());
@@ -306,14 +336,14 @@ impl<'a> Interpreter<'a> {
                     list.push(value);
                 }
 
-                Value::List(Some(ListKind {
-                    vk: kind,
-                    value: list,
-                }))
+                Value::List(List::WithValue {
+                    elem_kind: kind,
+                    inner: list,
+                })
             }
             Op::Map => {
                 if tokens.is_empty() {
-                    return Ok(Value::Map(None));
+                    return Ok(Value::Map(Map::Empty));
                 }
 
                 let mut iter = tokens.iter();
@@ -339,11 +369,11 @@ impl<'a> Interpreter<'a> {
                     map.insert(MapKey::try_from(key)?, value);
                 }
 
-                Value::Map(Some(MapKind {
-                    kk: key_kind,
-                    vk: value_kind,
-                    value: map,
-                }))
+                Value::Map(Map::WithValue {
+                    key_kind,
+                    value_kind,
+                    inner: map,
+                })
             }
             Op::IfTernary => {
                 let lhs = match self.eval_ast(&tokens[0])?.value(self.env)? {
@@ -360,15 +390,13 @@ impl<'a> Interpreter<'a> {
             Op::Group => self.eval_ast(&tokens[0])?.value(self.env)?,
             Op::In => {
                 let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = match self.eval_ast(&tokens[1])?.value(self.env)? {
+                match self.eval_ast(&tokens[1])?.value(self.env)? {
                     Value::List(list) => match list {
-                        None => return Ok(Value::Bool(false)),
-                        Some(list) => list,
+                        List::Empty => Value::Bool(false),
+                        List::WithValue { inner, .. } => Value::Bool(inner.contains(&lhs)),
                     },
                     _ => miette::bail!("Expected list, found {:?}", tokens[1]),
-                };
-
-                Value::Bool(rhs.contains(&lhs)?)
+                }
             }
             Op::For => miette::bail!("For loop is not supported"),
             Op::While => miette::bail!("While loop is not supported"),
@@ -406,33 +434,55 @@ pub enum Value {
     Double(f64),
     String(String),
     Bool(bool),
-    Map(Option<MapKind>),
-    List(Option<ListKind>),
+    Map(Map),
+    List(List),
     Bytes(Vec<u8>),
     Null,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-struct MapKind {
-    kk: MapKeyKind,
-    vk: ValueKind,
-    value: HashMap<MapKey, Value>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-struct ListKind {
-    vk: ValueKind,
-    value: Vec<Value>,
-}
-
-impl ListKind {
-    fn contains(&self, value: &Value) -> Result<bool, Error> {
-        if value.kind() != self.vk {
-            miette::bail!("Invalid type for list: {:?}", value);
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::Int(n) => write!(f, "{}", n),
+            Value::Uint(n) => write!(f, "{}", n),
+            Value::Double(n) => write!(f, "{}", n),
+            Value::String(s) => write!(f, "{}", s),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::Map(map) => match map {
+                Map::Empty => write!(f, "{{}}"),
+                Map::WithValue { inner, .. } => {
+                    write!(f, "{:?}", inner)
+                }
+            },
+            Value::List(list) => match list {
+                List::Empty => write!(f, "[]"),
+                List::WithValue { inner, .. } => {
+                    write!(f, "{:?}", inner)
+                }
+            },
+            Value::Bytes(b) => write!(f, "{:?}", b),
+            Value::Null => write!(f, "null"),
         }
-
-        Ok(self.value.contains(value))
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Map {
+    Empty,
+    WithValue {
+        key_kind: MapKeyKind,
+        value_kind: ValueKind,
+        inner: HashMap<MapKey, Value>,
+    },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum List {
+    Empty,
+    WithValue {
+        elem_kind: ValueKind,
+        inner: Vec<Value>,
+    },
 }
 
 impl From<i8> for Value {
@@ -506,7 +556,7 @@ impl Value {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-enum ValueKind {
+pub enum ValueKind {
     Int,
     Uint,
     Double,
@@ -518,7 +568,7 @@ enum ValueKind {
     Null,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq)]
 pub enum MapKeyKind {
     Int,
     Uint,
@@ -548,6 +598,28 @@ pub enum MapKey {
     Bool(bool),
 }
 
+impl MapKey {
+    fn kind(&self) -> MapKeyKind {
+        match self {
+            MapKey::Int(_) => MapKeyKind::Int,
+            MapKey::Uint(_) => MapKeyKind::Uint,
+            MapKey::String(_) => MapKeyKind::String,
+            MapKey::Bool(_) => MapKeyKind::Bool,
+        }
+    }
+}
+
+impl fmt::Display for MapKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MapKey::Int(n) => write!(f, "{}", n),
+            MapKey::Uint(n) => write!(f, "{}", n),
+            MapKey::String(s) => write!(f, "{}", s),
+            MapKey::Bool(b) => write!(f, "{}", b),
+        }
+    }
+}
+
 impl TryFrom<Value> for MapKey {
     type Error = Error;
 
@@ -567,22 +639,18 @@ fn fn_size(vals: &[Value]) -> Result<Value, Error> {
         miette::bail!("Expected 1 argument, found {}", vals.len());
     }
 
-    m_size(&vals[0], vals)
-}
-
-fn m_size<'a>(this: &'a Value, _: &'a [Value]) -> Result<Value, Error> {
-    let v = match this {
+    let v = match &vals[0] {
         Value::Bytes(b) => Value::Int(b.len() as i64),
         Value::String(s) => Value::Int(s.len() as i64),
-        Value::List(list) => Value::Int(match list {
-            None => 0,
-            Some(list) => list.value.len() as i64,
-        }),
-        Value::Map(map) => Value::Int(match map {
-            None => 0,
-            Some(map) => map.value.len() as i64,
-        }),
-        _ => miette::bail!("Invalid type for size: {:?}", this),
+        Value::List(list) => match list {
+            List::Empty => Value::Int(0),
+            List::WithValue { inner, .. } => Value::Int(inner.len() as i64),
+        },
+        Value::Map(map) => match map {
+            Map::Empty => Value::Int(0),
+            Map::WithValue { inner, .. } => Value::Int(inner.len() as i64),
+        },
+        _ => miette::bail!("Invalid type for size: {:?}", vals[0].kind()),
     };
 
     Ok(v)
@@ -988,37 +1056,51 @@ mod tests {
     fn test_list() {
         let env = Environment::default();
         let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("[]").expect("[]"), Value::List(vec![]));
+        assert_eq!(
+            interpreter.eval("[]").expect("[]"),
+            Value::List(List::Empty)
+        );
         assert_eq!(
             interpreter.eval("[1, 2, 3]").expect("[1, 2, 3]"),
-            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+            Value::List(List::WithValue {
+                elem_kind: ValueKind::Int,
+                inner: vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+            })
         );
         assert_eq!(
             interpreter.eval("[1u, 2u, 3u]").expect("[1u, 2u, 3u]"),
-            Value::List(vec![Value::Uint(1), Value::Uint(2), Value::Uint(3)])
+            Value::List(List::WithValue {
+                elem_kind: ValueKind::Uint,
+                inner: vec![Value::Uint(1), Value::Uint(2), Value::Uint(3)]
+            })
         );
         assert_eq!(
             interpreter
                 .eval("[1.0, 2.0, 3.0]")
                 .expect("[1.0, 2.0, 3.0]"),
-            Value::List(vec![
-                Value::Double(1.0),
-                Value::Double(2.0),
-                Value::Double(3.0)
-            ])
+            Value::List(List::WithValue {
+                elem_kind: ValueKind::Double,
+                inner: vec![Value::Double(1.0), Value::Double(2.0), Value::Double(3.0)]
+            })
         );
         assert_eq!(
             interpreter
                 .eval("[\"hello\", \"world\"]")
                 .expect("[\"hello\", \"world\"]"),
-            Value::List(vec![
-                Value::String("hello".to_string()),
-                Value::String("world".to_string())
-            ])
+            Value::List(List::WithValue {
+                elem_kind: ValueKind::String,
+                inner: vec![
+                    Value::String("hello".to_string()),
+                    Value::String("world".to_string())
+                ]
+            })
         );
         assert_eq!(
             interpreter.eval("[true, false]").expect("[true, false]"),
-            Value::List(vec![Value::Bool(true), Value::Bool(false)])
+            Value::List(List::WithValue {
+                elem_kind: ValueKind::Bool,
+                inner: vec![Value::Bool(true), Value::Bool(false)]
+            })
         );
 
         // list elements must have the same type
@@ -1037,18 +1119,26 @@ mod tests {
     #[test]
     fn test_map() {
         let tt = [
-            ("{}", Value::Map(HashMap::new())),
+            ("{}", Value::Map(Map::Empty)),
             ("{1: 2, 3: 4}", {
                 let mut map = HashMap::new();
                 map.insert(MapKey::Int(1), Value::Int(2));
                 map.insert(MapKey::Int(3), Value::Int(4));
-                Value::Map(map)
+                Value::Map(Map::WithValue {
+                    key_kind: MapKeyKind::Int,
+                    value_kind: ValueKind::Int,
+                    inner: map,
+                })
             }),
             ("{1u: 2u, 3u: 4u}", {
                 let mut map = HashMap::new();
                 map.insert(MapKey::Uint(1), Value::Uint(2));
                 map.insert(MapKey::Uint(3), Value::Uint(4));
-                Value::Map(map)
+                Value::Map(Map::WithValue {
+                    key_kind: MapKeyKind::Uint,
+                    value_kind: ValueKind::Uint,
+                    inner: map,
+                })
             }),
             ("{\"hello\": \"world\"}", {
                 let mut map = HashMap::new();
@@ -1056,12 +1146,20 @@ mod tests {
                     MapKey::String("hello".to_string()),
                     Value::String("world".to_string()),
                 );
-                Value::Map(map)
+                Value::Map(Map::WithValue {
+                    key_kind: MapKeyKind::String,
+                    value_kind: ValueKind::String,
+                    inner: map,
+                })
             }),
             ("{true: false}", {
                 let mut map = HashMap::new();
                 map.insert(MapKey::Bool(true), Value::Bool(false));
-                Value::Map(map)
+                Value::Map(Map::WithValue {
+                    key_kind: MapKeyKind::Bool,
+                    value_kind: ValueKind::Bool,
+                    inner: map,
+                })
             }),
         ];
 
@@ -1185,25 +1283,72 @@ mod tests {
     }
 
     #[test]
-    fn test_field_access() {
+    fn test_index_map_access() {
         let mut env = Environment::default();
-        env.set_variable(
-            "x",
-            Value::Map({
-                let mut leaf = HashMap::new();
-                leaf.insert(MapKey::String("y".to_string()), Value::Int(42));
-                let mut middle_level = HashMap::new();
-                middle_level.insert(MapKey::Int(0), Value::Map(leaf));
-                let mut root = HashMap::new();
-                root.insert(MapKey::Bool(true), Value::Map(middle_level));
-                root
-            }),
-        );
+        env.set_variable("x", {
+            let mut leaf = HashMap::new();
+            leaf.insert(MapKey::String("y".to_string()), Value::Int(42));
+
+            let leaf = Value::Map(Map::WithValue {
+                key_kind: MapKeyKind::String,
+                value_kind: ValueKind::Int,
+                inner: leaf,
+            });
+
+            let mut middle_level = HashMap::new();
+            middle_level.insert(MapKey::Int(0), leaf);
+
+            let middle_level = Value::Map(Map::WithValue {
+                key_kind: MapKeyKind::Int,
+                value_kind: ValueKind::Map,
+                inner: middle_level,
+            });
+
+            let mut root = HashMap::new();
+            root.insert(MapKey::Bool(true), middle_level);
+
+            Value::Map(Map::WithValue {
+                key_kind: MapKeyKind::Bool,
+                value_kind: ValueKind::Map,
+                inner: root,
+            })
+        });
 
         let interpreter = Interpreter::new(&env);
         assert_eq!(
-            interpreter.eval("x[true][0].y").expect("x[true][0].y"),
+            interpreter
+                .eval("x[true][0][\"y\"]")
+                .expect("x[true][0][\"y\"]"),
             Value::Int(42)
         );
+    }
+
+    #[test]
+    fn test_field_map_access() {
+        let mut env = Environment::default();
+        env.set_variable("x", {
+            let leaf = Value::Map(Map::WithValue {
+                key_kind: MapKeyKind::String,
+                value_kind: ValueKind::Int,
+                inner: {
+                    let mut leaf = HashMap::new();
+                    leaf.insert(MapKey::String("z".to_string()), Value::Uint(42));
+                    leaf
+                },
+            });
+
+            Value::Map(Map::WithValue {
+                key_kind: MapKeyKind::String,
+                value_kind: ValueKind::Map,
+                inner: {
+                    let mut root = HashMap::new();
+                    root.insert(MapKey::String("y".to_string()), leaf);
+                    root
+                },
+            })
+        });
+
+        let interpreter = Interpreter::new(&env);
+        assert_eq!(interpreter.eval("x.y.z").expect("x.y.z"), Value::Uint(42));
     }
 }
