@@ -3,9 +3,10 @@ use std::collections::hash_map::{Drain, Entry, IntoValues, Iter, IterMut, Keys, 
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::impl_value_conversions;
+use crate::parser::TokenTree;
+use crate::{impl_value_conversions, Environment};
 
-pub type Function = Box<dyn Fn(&[Value]) -> Result<Value, Error>>;
+pub type Function = Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error>>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Map {
@@ -540,6 +541,21 @@ pub enum Key {
     Bool(bool),
 }
 
+impl TryFrom<Value> for Key {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int(n) => Ok(Key::Int(n)),
+            Value::Uint(n) => Ok(Key::Uint(n)),
+            Value::String(s) => Ok(Key::String(s)),
+            Value::Bool(b) => Ok(Key::Bool(b)),
+            Value::Any(v) => Key::try_from(*v),
+            _ => miette::bail!("Invalid map key: {:?}", value),
+        }
+    }
+}
+
 impl Key {
     fn kind(&self) -> KeyType {
         match self {
@@ -558,20 +574,6 @@ impl fmt::Display for Key {
             Key::Uint(n) => write!(f, "{}", n),
             Key::String(s) => write!(f, "{}", s),
             Key::Bool(b) => write!(f, "{}", b),
-        }
-    }
-}
-
-impl TryFrom<Value> for Key {
-    type Error = Error;
-
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
-        match value {
-            Value::Int(n) => Ok(Key::Int(n)),
-            Value::Uint(n) => Ok(Key::Uint(n)),
-            Value::String(s) => Ok(Key::String(s)),
-            Value::Bool(b) => Ok(Key::Bool(b)),
-            _ => miette::bail!("Invalid map key: {:?}", value),
         }
     }
 }

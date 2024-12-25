@@ -1,6 +1,6 @@
 use crate::{
-    functions::{size, type_fn},
-    types::{Function, Key, KeyType, Map, Value},
+    environment::Environment,
+    types::{Key, KeyType, Map, Value},
     List,
 };
 use miette::Error;
@@ -10,68 +10,6 @@ use crate::{
     parser::{Atom, Op, TokenTree},
     Parser,
 };
-
-pub struct Environment<'a> {
-    pub variables: Map,
-    pub functions: HashMap<String, Function>,
-    pub parent: Option<&'a Environment<'a>>,
-}
-
-impl Default for Environment<'_> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<'a> Environment<'a> {
-    /// The new returns a root environment.
-    pub fn new() -> Self {
-        Self {
-            variables: Map::new(),
-            functions: {
-                let mut m = HashMap::new();
-                m.insert("size".to_string(), Box::new(size) as Function);
-                m.insert("type".to_string(), Box::new(type_fn) as Function);
-                m
-            },
-            parent: None,
-        }
-    }
-
-    pub fn new_child(&'a self) -> Self {
-        Self {
-            variables: Map::new(),
-            functions: HashMap::new(),
-            parent: Some(self),
-        }
-    }
-
-    pub fn get_variable(&self, name: &Key) -> Result<Option<&Value>, Error> {
-        if let Some(val) = self.variables.get(name)? {
-            Ok(Some(val))
-        } else if let Some(parent) = self.parent {
-            parent.get_variable(name)
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn set_variable(&mut self, name: &str, value: Value) -> Result<&mut Self, Error> {
-        self.variables
-            .insert(Key::String(name.to_string()), value)?;
-        Ok(self)
-    }
-
-    pub fn get_function(&self, name: &str) -> Option<&Function> {
-        self.functions
-            .get(name)
-            .or_else(|| self.parent.and_then(|parent| parent.get_function(name)))
-    }
-
-    pub fn set_function(&mut self, name: &str, function: Function) {
-        self.functions.insert(name.to_string(), function);
-    }
-}
 
 pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
     let tree = Parser::new(program).parse()?;
@@ -89,7 +27,7 @@ pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
     }
 }
 
-fn eval_ast(env: &Environment, root: &TokenTree) -> Result<Object, Error> {
+pub fn eval_ast(env: &Environment, root: &TokenTree) -> Result<Object, Error> {
     match root {
         TokenTree::Atom(atom) => eval_atom(atom),
         TokenTree::Cons(op, tokens) => Ok(Object::Value(eval_cons(env, op, tokens)?)),
@@ -101,12 +39,8 @@ fn eval_ast(env: &Environment, root: &TokenTree) -> Result<Object, Error> {
                 },
                 _ => miette::bail!("Expected function name, found {:?}", func),
             };
-            let args = args
-                .iter()
-                .map(|arg| eval_ast(env, arg)?.value(env))
-                .collect::<Result<Vec<_>, _>>()?;
 
-            Ok(Object::Value(f(&args)?))
+            Ok(Object::Value(f(env, &args)?))
         }
     }
 }
@@ -131,7 +65,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
         Op::Field => {
             assert!(tokens.len() == 2);
 
-            let map = match eval_ast(env, &tokens[0])?.value(env)? {
+            let map = match eval_ast(env, &tokens[0])?.to_value(env)? {
                 Value::Map(map) => map,
                 _ => miette::bail!("Expected reference to a map, found {:?}", tokens[0]),
             };
@@ -139,14 +73,14 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             let mut env = env.new_child();
             env.variables = map;
 
-            eval_ast(&env, &tokens[1])?.value(&env)?
+            eval_ast(&env, &tokens[1])?.to_value(&env)?
         }
         Op::Index => {
             assert!(tokens.len() == 2);
 
-            match eval_ast(env, &tokens[0])?.value(env)? {
+            match eval_ast(env, &tokens[0])?.to_value(env)? {
                 Value::List(list) => {
-                    let i = match eval_ast(env, &tokens[1])?.value(env)? {
+                    let i = match eval_ast(env, &tokens[1])?.to_value(env)? {
                         Value::Int(n) => n,
                         _ => miette::bail!("Expected int index, found {:?}", tokens[1]),
                     };
@@ -159,7 +93,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 }
 
                 Value::Map(map) => {
-                    let key = Key::try_from(eval_ast(env, &tokens[1])?.value(env)?)?;
+                    let key = Key::try_from(eval_ast(env, &tokens[1])?.to_value(env)?)?;
 
                     if let Some(val) = map.get(&key)? {
                         val.clone()
@@ -171,19 +105,19 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
         }
         Op::Not => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             match lhs {
                 Value::Bool(b) => Value::Bool(!b),
                 _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
             }
         }
         Op::Plus => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             lhs.plus(&rhs)?
         }
         Op::Minus => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             match tokens.len() {
                 1 => match lhs {
                     Value::Int(n) => Value::Int(-n),
@@ -191,15 +125,15 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                     _ => miette::bail!("Expected number, found {:?}", tokens[0]),
                 },
                 2 => {
-                    let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+                    let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
                     lhs.minus(&rhs)?
                 }
                 _ => miette::bail!("Expected 1 or 2 arguments, found {}", tokens.len()),
             }
         }
         Op::Multiply => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
@@ -208,8 +142,8 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
         }
         Op::Devide => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs / rhs),
@@ -218,8 +152,8 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
         }
         Op::Mod => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
@@ -227,16 +161,16 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
         }
         Op::And => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs && rhs),
                 _ => miette::bail!("Expected bool, found {:?}", tokens),
             }
         }
         Op::Or => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 // short-circuit evaluation
                 (Value::Bool(true), _) => Value::Bool(true),
@@ -247,8 +181,8 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
         }
         Op::NotEqual => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs != rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs != rhs),
@@ -264,8 +198,8 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
         }
         Op::EqualEqual => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs == rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs == rhs),
@@ -281,8 +215,8 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
         }
         Op::Greater => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs > rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs > rhs),
@@ -291,8 +225,8 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
         }
         Op::GreaterEqual => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs >= rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs >= rhs),
@@ -301,8 +235,8 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
         }
         Op::Less => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs < rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs < rhs),
@@ -311,8 +245,8 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
         }
         Op::LessEqual => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
             match (lhs, rhs) {
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs <= rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs <= rhs),
@@ -327,12 +261,12 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
 
             let mut list = Vec::with_capacity(tokens.len());
             let mut iter = tokens.iter();
-            let first = eval_ast(env, iter.next().unwrap())?.value(env)?;
+            let first = eval_ast(env, iter.next().unwrap())?.to_value(env)?;
             let kind = first.kind();
             list.push(first);
 
             for token in iter {
-                let value = eval_ast(env, token)?.value(env)?;
+                let value = eval_ast(env, token)?.to_value(env)?;
                 if value.kind() != kind {
                     miette::bail!("List elements must have the same type");
                 }
@@ -347,17 +281,18 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             }
 
             let mut iter = tokens.iter();
-            let first_key = eval_ast(env, iter.next().expect("Key must be present"))?.value(env)?;
+            let first_key =
+                eval_ast(env, iter.next().expect("Key must be present"))?.to_value(env)?;
             let first_value =
-                eval_ast(env, iter.next().expect("Value must be present"))?.value(env)?;
+                eval_ast(env, iter.next().expect("Value must be present"))?.to_value(env)?;
             let key_kind = KeyType::try_from(first_key.kind())?;
 
             let mut map = HashMap::new();
             map.insert(Key::try_from(first_key)?, first_value);
 
             while let (Some(key), Some(value)) = (iter.next(), iter.next()) {
-                let key = eval_ast(env, key)?.value(env)?;
-                let value = eval_ast(env, value)?.value(env)?;
+                let key = eval_ast(env, key)?.to_value(env)?;
+                let value = eval_ast(env, value)?.to_value(env)?;
                 let kk = KeyType::try_from(key.kind())?;
                 if kk != key_kind {
                     miette::bail!("Map elements must have the same type");
@@ -368,21 +303,21 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             Value::Map(map.into())
         }
         Op::IfTernary => {
-            let lhs = match eval_ast(env, &tokens[0])?.value(env)? {
+            let lhs = match eval_ast(env, &tokens[0])?.to_value(env)? {
                 Value::Bool(b) => b,
                 _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
             };
 
             if lhs {
-                eval_ast(env, &tokens[1])?.value(env)?
+                eval_ast(env, &tokens[1])?.to_value(env)?
             } else {
-                eval_ast(env, &tokens[2])?.value(env)?
+                eval_ast(env, &tokens[2])?.to_value(env)?
             }
         }
-        Op::Group => eval_ast(env, &tokens[0])?.value(env)?,
+        Op::Group => eval_ast(env, &tokens[0])?.to_value(env)?,
         Op::In => {
-            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            match eval_ast(env, &tokens[1])?.value(env)? {
+            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
+            match eval_ast(env, &tokens[1])?.to_value(env)? {
                 Value::List(list) => Value::Bool(list.contains(&lhs)?),
                 _ => miette::bail!("Expected list, found {:?}", tokens[1]),
             }
@@ -395,15 +330,25 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum Object {
+pub enum Object {
     Value(Value),
     Ident(String),
 }
 
 impl Object {
-    fn value(&self, env: &Environment) -> Result<Value, Error> {
+    /// Get the value of the object. If the object is an identifier, look up the value in the
+    /// environment.
+    pub fn to_value(&self, env: &Environment) -> Result<Value, Error> {
         match self {
-            Object::Value(val) => Ok(val.clone()),
+            Object::Value(value) => {
+                let value = match value {
+                    Value::Any(v) => v.downcast(),
+                    value => value,
+                };
+
+                Ok(value.clone())
+            }
+
             Object::Ident(ident) => {
                 let ident = Key::String(ident.clone());
                 if let Some(val) = env.get_variable(&ident)? {
@@ -867,7 +812,7 @@ mod tests {
         let mut env = Environment::default();
         env.set_function(
             "foo",
-            Box::new(|args: &[Value]| Ok(Value::Int(args.len() as i64))),
+            Box::new(|_env, args: &[TokenTree]| Ok(Value::Int(args.len() as i64))),
         );
         env.set_variable("x", 42i64.into())
             .expect("to set variable");
