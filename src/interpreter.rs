@@ -52,371 +52,356 @@ impl Environment {
     }
 }
 
-pub struct Interpreter<'a> {
-    env: &'a Environment,
+pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
+    let tree = Parser::new(program).parse()?;
+    match eval_ast(env, &tree) {
+        Ok(Object::Value(val)) => Ok(val),
+        Ok(Object::Ident(ident)) => {
+            if let Some(val) = env.get_variable(&ident) {
+                Ok(val.clone())
+            } else {
+                miette::bail!("Variable not found: {}", ident);
+            }
+        }
+        Err(e) => Err(e),
+    }
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn new(env: &'a Environment) -> Self {
-        Self { env }
-    }
+fn eval_ast(env: &Environment, root: &TokenTree) -> Result<Object, Error> {
+    match root {
+        TokenTree::Atom(atom) => eval_atom(atom),
+        TokenTree::Cons(op, tokens) => Ok(Object::Value(eval_cons(env, op, tokens)?)),
+        TokenTree::Call { func, args } => {
+            let f = match eval_ast(env, func)? {
+                Object::Ident(name) => match env.get_function(&name) {
+                    Some(f) => f,
+                    None => miette::bail!("Function not found: {}", name),
+                },
+                _ => miette::bail!("Expected function name, found {:?}", func),
+            };
+            let args = args
+                .iter()
+                .map(|arg| eval_ast(env, arg)?.value(env))
+                .collect::<Result<Vec<_>, _>>()?;
 
-    pub fn eval(&self, program: &str) -> Result<Value, Error> {
-        let tree = Parser::new(program).parse()?;
-        match self.eval_ast(&tree) {
-            Ok(Object::Value(val)) => Ok(val),
-            Ok(Object::Reference(ident)) => {
-                if let Some(val) = self.env.get_variable(&ident) {
-                    Ok(val.clone())
-                } else {
-                    miette::bail!("Variable not found: {}", ident);
+            Ok(Object::Value(f(&args)?))
+        }
+    }
+}
+
+fn eval_atom(atom: &Atom) -> Result<Object, Error> {
+    let val = match atom {
+        Atom::Int(n) => Object::Value(Value::Int(*n)),
+        Atom::Uint(n) => Object::Value(Value::Uint(*n)),
+        Atom::Double(n) => Object::Value(Value::Double(*n)),
+        Atom::String(s) => Object::Value(Value::String(s.to_string())),
+        Atom::Bool(b) => Object::Value(Value::Bool(*b)),
+        Atom::Null => Object::Value(Value::Null),
+        Atom::Bytes(b) => Object::Value(Value::Bytes(b.clone().to_vec())),
+        Atom::Ident(ident) => Object::Ident(ident.to_string()),
+    };
+    Ok(val)
+}
+
+fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
+    let val = match op {
+        Op::Field => {
+            assert!(tokens.len() == 2);
+
+            todo!()
+        }
+        Op::Index => {
+            assert!(tokens.len() == 2);
+
+            match eval_ast(env, &tokens[0])?.value(env)? {
+                Value::List(list) => {
+                    let i = match eval_ast(env, &tokens[1])?.value(env)? {
+                        Value::Int(n) => n,
+                        _ => miette::bail!("Expected int index, found {:?}", tokens[1]),
+                    };
+
+                    match list {
+                        List::Empty => miette::bail!("Index out of bounds"),
+                        List::WithValue { inner, .. } => {
+                            if i < 0 || i as usize >= inner.len() {
+                                miette::bail!("Index out of bounds");
+                            }
+                            inner[i as usize].clone()
+                        }
+                    }
                 }
-            }
-            Err(e) => Err(e),
-        }
-    }
 
-    fn eval_ast(&self, root: &TokenTree) -> Result<Object, Error> {
-        match root {
-            TokenTree::Atom(atom) => self.eval_atom(atom),
-            TokenTree::Cons(op, tokens) => Ok(Object::Value(self.eval_cons(op, tokens)?)),
-            TokenTree::Call { func, args } => {
-                let f = match self.eval_ast(func)? {
-                    Object::Reference(name) => match self.env.get_function(&name) {
-                        Some(f) => f,
-                        None => miette::bail!("Function not found: {}", name),
-                    },
-                    _ => miette::bail!("Expected function name, found {:?}", func),
-                };
-                let args = args
-                    .iter()
-                    .map(|arg| self.eval_ast(arg)?.value(self.env))
-                    .collect::<Result<Vec<_>, _>>()?;
+                Value::Map(map) => {
+                    let key = MapKey::try_from(eval_ast(env, &tokens[1])?.value(env)?)?;
 
-                Ok(Object::Value(f(&args)?))
-            }
-        }
-    }
+                    match map {
+                        Map::Empty => miette::bail!("No such key {key}"),
+                        Map::WithValue {
+                            inner, key_kind, ..
+                        } => {
+                            if key_kind != key.kind() {
+                                miette::bail!("Invalid key type: {:?}", key);
+                            }
 
-    fn eval_atom(&self, atom: &Atom) -> Result<Object, Error> {
-        let val = match atom {
-            Atom::Int(n) => Object::Value(Value::Int(*n)),
-            Atom::Uint(n) => Object::Value(Value::Uint(*n)),
-            Atom::Double(n) => Object::Value(Value::Double(*n)),
-            Atom::String(s) => Object::Value(Value::String(s.to_string())),
-            Atom::Bool(b) => Object::Value(Value::Bool(*b)),
-            Atom::Null => Object::Value(Value::Null),
-            Atom::Bytes(b) => Object::Value(Value::Bytes(b.clone().to_vec())),
-            Atom::Ident(ident) => Object::Reference(ident.to_string()),
-        };
-        Ok(val)
-    }
-
-    fn eval_cons(&self, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
-        let val = match op {
-            Op::Field => {
-                assert!(tokens.len() == 2);
-
-                todo!()
-            }
-            Op::Index => {
-                assert!(tokens.len() == 2);
-
-                match self.eval_ast(&tokens[0])?.value(self.env)? {
-                    Value::List(list) => {
-                        let i = match self.eval_ast(&tokens[1])?.value(self.env)? {
-                            Value::Int(n) => n,
-                            _ => miette::bail!("Expected int index, found {:?}", tokens[1]),
-                        };
-
-                        match list {
-                            List::Empty => miette::bail!("Index out of bounds"),
-                            List::WithValue { inner, .. } => {
-                                if i < 0 || i as usize >= inner.len() {
-                                    miette::bail!("Index out of bounds");
-                                }
-                                inner[i as usize].clone()
+                            match inner.get(&key) {
+                                Some(val) => val.clone(),
+                                None => miette::bail!("No such key {key}"),
                             }
                         }
                     }
-
-                    Value::Map(map) => {
-                        let key = MapKey::try_from(self.eval_ast(&tokens[1])?.value(self.env)?)?;
-
-                        match map {
-                            Map::Empty => miette::bail!("No such key {key}"),
-                            Map::WithValue {
-                                inner, key_kind, ..
-                            } => {
-                                if key_kind != key.kind() {
-                                    miette::bail!("Invalid key type: {:?}", key);
-                                }
-
-                                match inner.get(&key) {
-                                    Some(val) => val.clone(),
-                                    None => miette::bail!("No such key {key}"),
-                                }
-                            }
-                        }
-                    }
-
-                    _ => miette::bail!("Expected reference to a list, found {:?}", tokens[0]),
-                }
-            }
-            Op::Not => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                match lhs {
-                    Value::Bool(b) => Value::Bool(!b),
-                    _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
-                }
-            }
-            Op::Plus => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs + rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs + rhs),
-                    (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs + rhs),
-                    (Value::String(s1), Value::String(s2)) => {
-                        Value::String(format!("{}{}", s1, s2))
-                    }
-                    (Value::Bytes(b1), Value::Bytes(b2)) => {
-                        Value::Bytes([b1.as_slice(), b2.as_slice()].concat())
-                    }
-                    _ => unimplemented!(),
-                }
-            }
-            Op::Minus => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs - rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs - rhs),
-                    (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs - rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::Multiply => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
-                    (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs * rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::Devide => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs / rhs),
-                    (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs / rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::Mod => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::And => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs && rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::Or => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    // short-circuit evaluation
-                    (Value::Bool(true), _) => Value::Bool(true),
-                    (_, Value::Bool(true)) => Value::Bool(true),
-                    // normal evaluation
-                    (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs || rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::NotEqual => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs != rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs != rhs),
-                    (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs != rhs),
-                    (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs != rhs),
-                    (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs != rhs),
-                    (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs != rhs),
-                    (Value::Null, Value::Null) => Value::Bool(false),
-                    (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs != rhs),
-                    (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs != rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::EqualEqual => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs == rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs == rhs),
-                    (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs == rhs),
-                    (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs == rhs),
-                    (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs == rhs),
-                    (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs == rhs),
-                    (Value::Null, Value::Null) => Value::Bool(true),
-                    (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs == rhs),
-                    (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs == rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::Greater => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs > rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs > rhs),
-                    (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs > rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::GreaterEqual => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs >= rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs >= rhs),
-                    (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs >= rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::Less => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs < rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs < rhs),
-                    (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs < rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::LessEqual => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                let rhs = self.eval_ast(&tokens[1])?.value(self.env)?;
-                match (lhs, rhs) {
-                    (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs <= rhs),
-                    (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs <= rhs),
-                    (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs <= rhs),
-                    _ => unimplemented!(),
-                }
-            }
-            Op::List => {
-                if tokens.is_empty() {
-                    return Ok(Value::List(List::Empty));
                 }
 
-                let mut list = Vec::with_capacity(tokens.len());
-                let mut iter = tokens.iter();
-                let first = self.eval_ast(iter.next().unwrap())?.value(self.env)?;
-                let kind = first.kind();
-                list.push(first);
-
-                for token in iter {
-                    let value = self.eval_ast(token)?.value(self.env)?;
-                    if value.kind() != kind {
-                        miette::bail!("List elements must have the same type");
-                    }
-                    list.push(value);
-                }
-
-                Value::List(List::WithValue {
-                    elem_kind: kind,
-                    inner: list,
-                })
+                _ => miette::bail!("Expected reference to a list, found {:?}", tokens[0]),
             }
-            Op::Map => {
-                if tokens.is_empty() {
-                    return Ok(Value::Map(Map::Empty));
-                }
-
-                let mut iter = tokens.iter();
-                let first_key = self
-                    .eval_ast(iter.next().expect("Key must be present"))?
-                    .value(self.env)?;
-                let first_value = self
-                    .eval_ast(iter.next().expect("Value must be present"))?
-                    .value(self.env)?;
-                let key_kind = MapKeyKind::try_from(first_key.kind())?;
-                let value_kind = first_value.kind();
-
-                let mut map = HashMap::new();
-                map.insert(MapKey::try_from(first_key)?, first_value);
-
-                while let (Some(key), Some(value)) = (iter.next(), iter.next()) {
-                    let key = self.eval_ast(key)?.value(self.env)?;
-                    let value = self.eval_ast(value)?.value(self.env)?;
-                    let kk = MapKeyKind::try_from(key.kind())?;
-                    if kk != key_kind || value.kind() != value_kind {
-                        miette::bail!("Map elements must have the same type");
-                    }
-                    map.insert(MapKey::try_from(key)?, value);
-                }
-
-                Value::Map(Map::WithValue {
-                    key_kind,
-                    value_kind,
-                    inner: map,
-                })
+        }
+        Op::Not => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            match lhs {
+                Value::Bool(b) => Value::Bool(!b),
+                _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
             }
-            Op::IfTernary => {
-                let lhs = match self.eval_ast(&tokens[0])?.value(self.env)? {
-                    Value::Bool(b) => b,
-                    _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
-                };
+        }
+        Op::Plus => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs + rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs + rhs),
+                (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs + rhs),
+                (Value::String(s1), Value::String(s2)) => Value::String(format!("{}{}", s1, s2)),
+                (Value::Bytes(b1), Value::Bytes(b2)) => {
+                    Value::Bytes([b1.as_slice(), b2.as_slice()].concat())
+                }
+                _ => unimplemented!(),
+            }
+        }
+        Op::Minus => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs - rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs - rhs),
+                (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs - rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::Multiply => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
+                (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs * rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::Devide => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs / rhs),
+                (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs / rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::Mod => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::And => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs && rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::Or => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                // short-circuit evaluation
+                (Value::Bool(true), _) => Value::Bool(true),
+                (_, Value::Bool(true)) => Value::Bool(true),
+                // normal evaluation
+                (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs || rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::NotEqual => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs != rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs != rhs),
+                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs != rhs),
+                (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs != rhs),
+                (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs != rhs),
+                (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs != rhs),
+                (Value::Null, Value::Null) => Value::Bool(false),
+                (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs != rhs),
+                (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs != rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::EqualEqual => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs == rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs == rhs),
+                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs == rhs),
+                (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs == rhs),
+                (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs == rhs),
+                (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs == rhs),
+                (Value::Null, Value::Null) => Value::Bool(true),
+                (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs == rhs),
+                (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs == rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::Greater => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs > rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs > rhs),
+                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs > rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::GreaterEqual => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs >= rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs >= rhs),
+                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs >= rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::Less => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs < rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs < rhs),
+                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs < rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::LessEqual => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+            match (lhs, rhs) {
+                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs <= rhs),
+                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs <= rhs),
+                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs <= rhs),
+                _ => unimplemented!(),
+            }
+        }
+        Op::List => {
+            if tokens.is_empty() {
+                return Ok(Value::List(List::Empty));
+            }
 
-                if lhs {
-                    self.eval_ast(&tokens[1])?.value(self.env)?
-                } else {
-                    self.eval_ast(&tokens[2])?.value(self.env)?
+            let mut list = Vec::with_capacity(tokens.len());
+            let mut iter = tokens.iter();
+            let first = eval_ast(env, iter.next().unwrap())?.value(env)?;
+            let kind = first.kind();
+            list.push(first);
+
+            for token in iter {
+                let value = eval_ast(env, token)?.value(env)?;
+                if value.kind() != kind {
+                    miette::bail!("List elements must have the same type");
                 }
+                list.push(value);
             }
-            Op::Group => self.eval_ast(&tokens[0])?.value(self.env)?,
-            Op::In => {
-                let lhs = self.eval_ast(&tokens[0])?.value(self.env)?;
-                match self.eval_ast(&tokens[1])?.value(self.env)? {
-                    Value::List(list) => match list {
-                        List::Empty => Value::Bool(false),
-                        List::WithValue { inner, .. } => Value::Bool(inner.contains(&lhs)),
-                    },
-                    _ => miette::bail!("Expected list, found {:?}", tokens[1]),
+
+            Value::List(List::WithValue {
+                elem_kind: kind,
+                inner: list,
+            })
+        }
+        Op::Map => {
+            if tokens.is_empty() {
+                return Ok(Value::Map(Map::Empty));
+            }
+
+            let mut iter = tokens.iter();
+            let first_key = eval_ast(env, iter.next().expect("Key must be present"))?.value(env)?;
+            let first_value =
+                eval_ast(env, iter.next().expect("Value must be present"))?.value(env)?;
+            let key_kind = MapKeyKind::try_from(first_key.kind())?;
+            let value_kind = first_value.kind();
+
+            let mut map = HashMap::new();
+            map.insert(MapKey::try_from(first_key)?, first_value);
+
+            while let (Some(key), Some(value)) = (iter.next(), iter.next()) {
+                let key = eval_ast(env, key)?.value(env)?;
+                let value = eval_ast(env, value)?.value(env)?;
+                let kk = MapKeyKind::try_from(key.kind())?;
+                if kk != key_kind || value.kind() != value_kind {
+                    miette::bail!("Map elements must have the same type");
                 }
+                map.insert(MapKey::try_from(key)?, value);
             }
-            Op::For => miette::bail!("For loop is not supported"),
-            Op::While => miette::bail!("While loop is not supported"),
-            _ => unimplemented!(),
-        };
-        Ok(val)
-    }
+
+            Value::Map(Map::WithValue {
+                key_kind,
+                value_kind,
+                inner: map,
+            })
+        }
+        Op::IfTernary => {
+            let lhs = match eval_ast(env, &tokens[0])?.value(env)? {
+                Value::Bool(b) => b,
+                _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
+            };
+
+            if lhs {
+                eval_ast(env, &tokens[1])?.value(env)?
+            } else {
+                eval_ast(env, &tokens[2])?.value(env)?
+            }
+        }
+        Op::Group => eval_ast(env, &tokens[0])?.value(env)?,
+        Op::In => {
+            let lhs = eval_ast(env, &tokens[0])?.value(env)?;
+            match eval_ast(env, &tokens[1])?.value(env)? {
+                Value::List(list) => match list {
+                    List::Empty => Value::Bool(false),
+                    List::WithValue { inner, .. } => Value::Bool(inner.contains(&lhs)),
+                },
+                _ => miette::bail!("Expected list, found {:?}", tokens[1]),
+            }
+        }
+        Op::For => miette::bail!("For loop is not supported"),
+        Op::While => miette::bail!("While loop is not supported"),
+        _ => unimplemented!(),
+    };
+    Ok(val)
 }
 
 #[derive(Debug, PartialEq, Clone)]
 enum Object {
     Value(Value),
-    Reference(String),
+    Ident(String),
 }
 
 impl Object {
     fn value(&self, env: &Environment) -> Result<Value, Error> {
         match self {
             Object::Value(val) => Ok(val.clone()),
-            Object::Reference(ident) => {
+            Object::Ident(ident) => {
                 if let Some(val) = env.get_variable(ident) {
                     Ok(val.clone())
                 } else {
@@ -681,16 +666,13 @@ mod tests {
     #[test]
     fn test_eval_primitives() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("42").expect("42"), Value::Int(42));
-        assert_eq!(interpreter.eval("true").expect("true"), Value::Bool(true));
+
+        assert_eq!(eval(&env, "42").expect("42"), Value::Int(42));
+        assert_eq!(eval(&env, "true").expect("true"), Value::Bool(true));
+        assert_eq!(eval(&env, "false").expect("false"), Value::Bool(false));
+        assert_eq!(eval(&env, "null").expect("null"), Value::Null);
         assert_eq!(
-            interpreter.eval("false").expect("false"),
-            Value::Bool(false)
-        );
-        assert_eq!(interpreter.eval("null").expect("null"), Value::Null);
-        assert_eq!(
-            interpreter.eval("\"hello\"").expect("hello"),
+            eval(&env, "\"hello\"").expect("hello"),
             Value::String("hello".to_string())
         );
     }
@@ -698,20 +680,15 @@ mod tests {
     #[test]
     fn test_eval_plus() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("1 + 2").expect("1 + 2"), Value::Int(3));
+
+        assert_eq!(eval(&env, "1 + 2").expect("1 + 2"), Value::Int(3));
+        assert_eq!(eval(&env, "1u + 2u").expect("1u + 2u"), Value::Uint(3));
         assert_eq!(
-            interpreter.eval("1u + 2u").expect("1u + 2u"),
-            Value::Uint(3)
-        );
-        assert_eq!(
-            interpreter.eval("1.0 + 2.0").expect("1.0 + 2.0"),
+            eval(&env, "1.0 + 2.0").expect("1.0 + 2.0"),
             Value::Double(3.0)
         );
         assert_eq!(
-            interpreter
-                .eval("\"hello\" + \"world\"")
-                .expect("\"hello\" + \"world\""),
+            eval(&env, "\"hello\" + \"world\"").expect("\"hello\" + \"world\""),
             Value::String("helloworld".to_string())
         );
     }
@@ -719,14 +696,11 @@ mod tests {
     #[test]
     fn test_eval_minus() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("1 - 2").expect("1 - 2"), Value::Int(-1));
+
+        assert_eq!(eval(&env, "1 - 2").expect("1 - 2"), Value::Int(-1));
+        assert_eq!(eval(&env, "2u - 1u").expect("2u - 1u"), Value::Uint(1));
         assert_eq!(
-            interpreter.eval("2u - 1u").expect("2u - 1u"),
-            Value::Uint(1)
-        );
-        assert_eq!(
-            interpreter.eval("1.0 - 2.0").expect("1.0 - 2.0"),
+            eval(&env, "1.0 - 2.0").expect("1.0 - 2.0"),
             Value::Double(-1.0)
         );
     }
@@ -734,14 +708,11 @@ mod tests {
     #[test]
     fn test_eval_multiply() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("2 * 3").expect("2 * 3"), Value::Int(6));
+
+        assert_eq!(eval(&env, "2 * 3").expect("2 * 3"), Value::Int(6));
+        assert_eq!(eval(&env, "2u * 3u").expect("2u * 3u"), Value::Uint(6));
         assert_eq!(
-            interpreter.eval("2u * 3u").expect("2u * 3u"),
-            Value::Uint(6)
-        );
-        assert_eq!(
-            interpreter.eval("2.0 * 3.0").expect("2.0 * 3.0"),
+            eval(&env, "2.0 * 3.0").expect("2.0 * 3.0"),
             Value::Double(6.0)
         );
     }
@@ -749,14 +720,11 @@ mod tests {
     #[test]
     fn test_eval_devide() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("6 / 3").expect("6 / 3"), Value::Int(2));
+
+        assert_eq!(eval(&env, "6 / 3").expect("6 / 3"), Value::Int(2));
+        assert_eq!(eval(&env, "6u / 3u").expect("6u / 3u"), Value::Uint(2));
         assert_eq!(
-            interpreter.eval("6u / 3u").expect("6u / 3u"),
-            Value::Uint(2)
-        );
-        assert_eq!(
-            interpreter.eval("6.0 / 3.0").expect("6.0 / 3.0"),
+            eval(&env, "6.0 / 3.0").expect("6.0 / 3.0"),
             Value::Double(2.0)
         );
     }
@@ -764,13 +732,13 @@ mod tests {
     #[test]
     fn test_eval_and() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
         assert_eq!(
-            interpreter.eval("true && false").expect("true && false"),
+            eval(&env, "true && false").expect("true && false"),
             Value::Bool(false)
         );
         assert_eq!(
-            interpreter.eval("true && true").expect("true && true"),
+            eval(&env, "true && true").expect("true && true"),
             Value::Bool(true)
         );
     }
@@ -778,13 +746,13 @@ mod tests {
     #[test]
     fn test_eval_or() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
         assert_eq!(
-            interpreter.eval("false || true").expect("false || true"),
+            eval(&env, "false || true").expect("false || true"),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("false || false").expect("false || false"),
+            eval(&env, "false || false").expect("false || false"),
             Value::Bool(false)
         );
     }
@@ -792,49 +760,36 @@ mod tests {
     #[test]
     fn test_eval_equal_equal() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
+        assert_eq!(eval(&env, "1 == 1").expect("1 == 1"), Value::Bool(true));
+        assert_eq!(eval(&env, "1 == 2").expect("1 == 2"), Value::Bool(false));
+        assert_eq!(eval(&env, "1u == 1u").expect("1u == 1u"), Value::Bool(true));
         assert_eq!(
-            interpreter.eval("1 == 1").expect("1 == 1"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("1 == 2").expect("1 == 2"),
+            eval(&env, "1u == 2u").expect("1u == 2u"),
             Value::Bool(false)
         );
         assert_eq!(
-            interpreter.eval("1u == 1u").expect("1u == 1u"),
+            eval(&env, "1.0 == 1.0").expect("1.0 == 1.0"),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("1u == 2u").expect("1u == 2u"),
+            eval(&env, "1.0 == 2.0").expect("1.0 == 2.0"),
             Value::Bool(false)
         );
         assert_eq!(
-            interpreter.eval("1.0 == 1.0").expect("1.0 == 1.0"),
+            eval(&env, "true == true").expect("true == true"),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("1.0 == 2.0").expect("1.0 == 2.0"),
+            eval(&env, "true == false").expect("true == false"),
             Value::Bool(false)
         );
         assert_eq!(
-            interpreter.eval("true == true").expect("true == true"),
+            eval(&env, "\"hello\" == \"hello\"").expect("\"hello\" == \"hello\""),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("true == false").expect("true == false"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter
-                .eval("\"hello\" == \"hello\"")
-                .expect("\"hello\" == \"hello\""),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter
-                .eval("\"hello\" == \"world\"")
-                .expect("\"hello\" == \"world\""),
+            eval(&env, "\"hello\" == \"world\"").expect("\"hello\" == \"world\""),
             Value::Bool(false)
         );
     }
@@ -842,49 +797,36 @@ mod tests {
     #[test]
     fn test_not_equal() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
+        assert_eq!(eval(&env, "1 != 1").expect("1 != 1"), Value::Bool(false));
+        assert_eq!(eval(&env, "1 != 2").expect("1 != 2"), Value::Bool(true));
         assert_eq!(
-            interpreter.eval("1 != 1").expect("1 != 1"),
+            eval(&env, "1u != 1u").expect("1u != 1u"),
+            Value::Bool(false)
+        );
+        assert_eq!(eval(&env, "1u != 2u").expect("1u != 2u"), Value::Bool(true));
+        assert_eq!(
+            eval(&env, "1.0 != 1.0").expect("1.0 != 1.0"),
             Value::Bool(false)
         );
         assert_eq!(
-            interpreter.eval("1 != 2").expect("1 != 2"),
+            eval(&env, "1.0 != 2.0").expect("1.0 != 2.0"),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("1u != 1u").expect("1u != 1u"),
+            eval(&env, "true != true").expect("true != true"),
             Value::Bool(false)
         );
         assert_eq!(
-            interpreter.eval("1u != 2u").expect("1u != 2u"),
+            eval(&env, "true != false").expect("true != false"),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("1.0 != 1.0").expect("1.0 != 1.0"),
+            eval(&env, "\"hello\" != \"hello\"").expect("\"hello\" != \"hello\""),
             Value::Bool(false)
         );
         assert_eq!(
-            interpreter.eval("1.0 != 2.0").expect("1.0 != 2.0"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("true != true").expect("true != true"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter.eval("true != false").expect("true != false"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter
-                .eval("\"hello\" != \"hello\"")
-                .expect("\"hello\" != \"hello\""),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter
-                .eval("\"hello\" != \"world\"")
-                .expect("\"hello\" != \"world\""),
+            eval(&env, "\"hello\" != \"world\"").expect("\"hello\" != \"world\""),
             Value::Bool(true)
         );
     }
@@ -892,26 +834,17 @@ mod tests {
     #[test]
     fn test_eval_greater() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("2 > 1").expect("2 > 1"), Value::Bool(true));
+
+        assert_eq!(eval(&env, "2 > 1").expect("2 > 1"), Value::Bool(true));
+        assert_eq!(eval(&env, "1 > 2").expect("1 > 2"), Value::Bool(false));
+        assert_eq!(eval(&env, "2u > 1u").expect("2u > 1u"), Value::Bool(true));
+        assert_eq!(eval(&env, "1u > 2u").expect("1u > 2u"), Value::Bool(false));
         assert_eq!(
-            interpreter.eval("1 > 2").expect("1 > 2"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter.eval("2u > 1u").expect("2u > 1u"),
+            eval(&env, "2.0 > 1.0").expect("2.0 > 1.0"),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("1u > 2u").expect("1u > 2u"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter.eval("2.0 > 1.0").expect("2.0 > 1.0"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("1.0 > 2.0").expect("1.0 > 2.0"),
+            eval(&env, "1.0 > 2.0").expect("1.0 > 2.0"),
             Value::Bool(false)
         );
     }
@@ -919,41 +852,26 @@ mod tests {
     #[test]
     fn test_eval_greater_equal() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
+        assert_eq!(eval(&env, "2 >= 1").expect("2 >= 1"), Value::Bool(true));
+        assert_eq!(eval(&env, "1 >= 2").expect("1 >= 2"), Value::Bool(false));
+        assert_eq!(eval(&env, "1 >= 1").expect("1 >= 1"), Value::Bool(true));
+        assert_eq!(eval(&env, "2u >= 1u").expect("2u >= 1u"), Value::Bool(true));
         assert_eq!(
-            interpreter.eval("2 >= 1").expect("2 >= 1"),
+            eval(&env, "1u >= 2u").expect("1u >= 2u"),
+            Value::Bool(false)
+        );
+        assert_eq!(eval(&env, "1u >= 1u").expect("1u >= 1u"), Value::Bool(true));
+        assert_eq!(
+            eval(&env, "2.0 >= 1.0").expect("2.0 >= 1.0"),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("1 >= 2").expect("1 >= 2"),
+            eval(&env, "1.0 >= 2.0").expect("1.0 >= 2.0"),
             Value::Bool(false)
         );
         assert_eq!(
-            interpreter.eval("1 >= 1").expect("1 >= 1"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("2u >= 1u").expect("2u >= 1u"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("1u >= 2u").expect("1u >= 2u"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter.eval("1u >= 1u").expect("1u >= 1u"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("2.0 >= 1.0").expect("2.0 >= 1.0"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("1.0 >= 2.0").expect("1.0 >= 2.0"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter.eval("1.0 >= 1.0").expect("1.0 >= 1.0"),
+            eval(&env, "1.0 >= 1.0").expect("1.0 >= 1.0"),
             Value::Bool(true)
         );
     }
@@ -961,26 +879,17 @@ mod tests {
     #[test]
     fn test_eval_less() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("1 < 2").expect("1 < 2"), Value::Bool(true));
+
+        assert_eq!(eval(&env, "1 < 2").expect("1 < 2"), Value::Bool(true));
+        assert_eq!(eval(&env, "2 < 1").expect("2 < 1"), Value::Bool(false));
+        assert_eq!(eval(&env, "1u < 2u").expect("1u < 2u"), Value::Bool(true));
+        assert_eq!(eval(&env, "2u < 1u").expect("2u < 1u"), Value::Bool(false));
         assert_eq!(
-            interpreter.eval("2 < 1").expect("2 < 1"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter.eval("1u < 2u").expect("1u < 2u"),
+            eval(&env, "1.0 < 2.0").expect("1.0 < 2.0"),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("2u < 1u").expect("2u < 1u"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter.eval("1.0 < 2.0").expect("1.0 < 2.0"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("2.0 < 1.0").expect("2.0 < 1.0"),
+            eval(&env, "2.0 < 1.0").expect("2.0 < 1.0"),
             Value::Bool(false)
         );
     }
@@ -988,41 +897,26 @@ mod tests {
     #[test]
     fn test_eval_less_equal() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
+        assert_eq!(eval(&env, "1 <= 2").expect("1 <= 2"), Value::Bool(true));
+        assert_eq!(eval(&env, "2 <= 1").expect("2 <= 1"), Value::Bool(false));
+        assert_eq!(eval(&env, "1 <= 1").expect("1 <= 1"), Value::Bool(true));
+        assert_eq!(eval(&env, "1u <= 2u").expect("1u <= 2u"), Value::Bool(true));
         assert_eq!(
-            interpreter.eval("1 <= 2").expect("1 <= 2"),
+            eval(&env, "2u <= 1u").expect("2u <= 1u"),
+            Value::Bool(false)
+        );
+        assert_eq!(eval(&env, "1u <= 1u").expect("1u <= 1u"), Value::Bool(true));
+        assert_eq!(
+            eval(&env, "1.0 <= 2.0").expect("1.0 <= 2.0"),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("2 <= 1").expect("2 <= 1"),
+            eval(&env, "2.0 <= 1.0").expect("2.0 <= 1.0"),
             Value::Bool(false)
         );
         assert_eq!(
-            interpreter.eval("1 <= 1").expect("1 <= 1"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("1u <= 2u").expect("1u <= 2u"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("2u <= 1u").expect("2u <= 1u"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter.eval("1u <= 1u").expect("1u <= 1u"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("1.0 <= 2.0").expect("1.0 <= 2.0"),
-            Value::Bool(true)
-        );
-        assert_eq!(
-            interpreter.eval("2.0 <= 1.0").expect("2.0 <= 1.0"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter.eval("1.0 <= 1.0").expect("1.0 <= 1.0"),
+            eval(&env, "1.0 <= 1.0").expect("1.0 <= 1.0"),
             Value::Bool(true)
         );
     }
@@ -1030,63 +924,47 @@ mod tests {
     #[test]
     fn test_eval_mod() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("5 % 2").expect("5 % 2"), Value::Int(1));
-        assert_eq!(
-            interpreter.eval("5u % 2u").expect("5u % 2u"),
-            Value::Uint(1)
-        );
+
+        assert_eq!(eval(&env, "5 % 2").expect("5 % 2"), Value::Int(1));
+        assert_eq!(eval(&env, "5u % 2u").expect("5u % 2u"), Value::Uint(1));
     }
 
     #[test]
     fn test_eval_not() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(
-            interpreter.eval("!true").expect("!true"),
-            Value::Bool(false)
-        );
-        assert_eq!(
-            interpreter.eval("!false").expect("!false"),
-            Value::Bool(true)
-        );
+
+        assert_eq!(eval(&env, "!true").expect("!true"), Value::Bool(false));
+        assert_eq!(eval(&env, "!false").expect("!false"), Value::Bool(true));
     }
 
     #[test]
     fn test_list() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
+        assert_eq!(eval(&env, "[]").expect("[]"), Value::List(List::Empty));
         assert_eq!(
-            interpreter.eval("[]").expect("[]"),
-            Value::List(List::Empty)
-        );
-        assert_eq!(
-            interpreter.eval("[1, 2, 3]").expect("[1, 2, 3]"),
+            eval(&env, "[1, 2, 3]").expect("[1, 2, 3]"),
             Value::List(List::WithValue {
                 elem_kind: ValueKind::Int,
                 inner: vec![Value::Int(1), Value::Int(2), Value::Int(3)]
             })
         );
         assert_eq!(
-            interpreter.eval("[1u, 2u, 3u]").expect("[1u, 2u, 3u]"),
+            eval(&env, "[1u, 2u, 3u]").expect("[1u, 2u, 3u]"),
             Value::List(List::WithValue {
                 elem_kind: ValueKind::Uint,
                 inner: vec![Value::Uint(1), Value::Uint(2), Value::Uint(3)]
             })
         );
         assert_eq!(
-            interpreter
-                .eval("[1.0, 2.0, 3.0]")
-                .expect("[1.0, 2.0, 3.0]"),
+            eval(&env, "[1.0, 2.0, 3.0]").expect("[1.0, 2.0, 3.0]"),
             Value::List(List::WithValue {
                 elem_kind: ValueKind::Double,
                 inner: vec![Value::Double(1.0), Value::Double(2.0), Value::Double(3.0)]
             })
         );
         assert_eq!(
-            interpreter
-                .eval("[\"hello\", \"world\"]")
-                .expect("[\"hello\", \"world\"]"),
+            eval(&env, "[\"hello\", \"world\"]").expect("[\"hello\", \"world\"]"),
             Value::List(List::WithValue {
                 elem_kind: ValueKind::String,
                 inner: vec![
@@ -1096,7 +974,7 @@ mod tests {
             })
         );
         assert_eq!(
-            interpreter.eval("[true, false]").expect("[true, false]"),
+            eval(&env, "[true, false]").expect("[true, false]"),
             Value::List(List::WithValue {
                 elem_kind: ValueKind::Bool,
                 inner: vec![Value::Bool(true), Value::Bool(false)]
@@ -1111,7 +989,7 @@ mod tests {
             "[1, true, 3]",
         ];
         for t in tt.iter() {
-            let result = interpreter.eval(t);
+            let result = eval(&env, t);
             assert!(result.is_err());
         }
     }
@@ -1164,9 +1042,9 @@ mod tests {
         ];
 
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
         for (input, expected) in tt.iter() {
-            let result = interpreter.eval(input).expect(input);
+            let result = eval(&env, input).expect(input);
             assert_eq!(result, *expected, "input: {}", input);
         }
 
@@ -1181,7 +1059,7 @@ mod tests {
         ];
 
         for (input, expected) in tt.iter() {
-            let result = interpreter.eval(input);
+            let result = eval(&env, input);
             assert!(result.is_err());
             assert_eq!(result.unwrap_err().to_string(), *expected);
         }
@@ -1190,13 +1068,13 @@ mod tests {
     #[test]
     fn test_if_ternary() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
         assert_eq!(
-            interpreter.eval("1 > 2 ? 1 : 2u").expect("1 > 2 ? 1 : 2u"),
+            eval(&env, "1 > 2 ? 1 : 2u").expect("1 > 2 ? 1 : 2u"),
             Value::Uint(2)
         );
         assert_eq!(
-            interpreter.eval("1 < 2 ? 1 : 2u").expect("1 < 2 ? 1 : 2u"),
+            eval(&env, "1 < 2 ? 1 : 2u").expect("1 < 2 ? 1 : 2u"),
             Value::Int(1)
         );
     }
@@ -1204,9 +1082,9 @@ mod tests {
     #[test]
     fn test_group() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
         assert_eq!(
-            interpreter.eval("(1 + 2) * 3").expect("(1 + 2) * 3"),
+            eval(&env, "(1 + 2) * 3").expect("(1 + 2) * 3"),
             Value::Int(9)
         );
     }
@@ -1214,13 +1092,13 @@ mod tests {
     #[test]
     fn test_in() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
         assert_eq!(
-            interpreter.eval("1 in [1, 2, 3]").expect("1 in [1, 2, 3]"),
+            eval(&env, "1 in [1, 2, 3]").expect("1 in [1, 2, 3]"),
             Value::Bool(true)
         );
         assert_eq!(
-            interpreter.eval("4 in [1, 2, 3]").expect("4 in [1, 2, 3]"),
+            eval(&env, "4 in [1, 2, 3]").expect("4 in [1, 2, 3]"),
             Value::Bool(false)
         );
     }
@@ -1229,43 +1107,28 @@ mod tests {
     fn test_variable() {
         let mut env = Environment::default();
         env.set_variable("x", 42i64.into());
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("x").expect("x"), Value::Int(42));
-        assert!(interpreter.eval("y").is_err());
+
+        assert_eq!(eval(&env, "x").expect("x"), Value::Int(42));
+        assert!(eval(&env, "y").is_err());
     }
 
     #[test]
     fn test_size() {
         let env = Environment::default();
-        let interpreter = Interpreter::new(&env);
+
+        assert_eq!(eval(&env, "size(\"\")").expect("size(\"\")"), Value::Int(0));
         assert_eq!(
-            interpreter.eval("size(\"\")").expect("size(\"\")"),
-            Value::Int(0)
-        );
-        assert_eq!(
-            interpreter
-                .eval("size(\"hello\")")
-                .expect("size(\"hello\")"),
+            eval(&env, "size(\"hello\")").expect("size(\"hello\")"),
             Value::Int(5)
         );
+        assert_eq!(eval(&env, "size([])").expect("size([])"), Value::Int(0));
         assert_eq!(
-            interpreter.eval("size([])").expect("size([])"),
-            Value::Int(0)
-        );
-        assert_eq!(
-            interpreter
-                .eval("size([1, 2, 3])")
-                .expect("size([1, 2, 3])"),
+            eval(&env, "size([1, 2, 3])").expect("size([1, 2, 3])"),
             Value::Int(3)
         );
+        assert_eq!(eval(&env, "size({})").expect("size({})"), Value::Int(0));
         assert_eq!(
-            interpreter.eval("size({})").expect("size({})"),
-            Value::Int(0)
-        );
-        assert_eq!(
-            interpreter
-                .eval("size({1: 2, 3: 4})")
-                .expect("size({1: 2, 3: 4})"),
+            eval(&env, "size({1: 2, 3: 4})").expect("size({1: 2, 3: 4})"),
             Value::Int(2)
         );
     }
@@ -1278,8 +1141,8 @@ mod tests {
             Box::new(|args: &[Value]| Ok(Value::Int(args.len() as i64))),
         );
         env.set_variable("x", 42i64.into());
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("x.foo()").expect("x.foo()"), Value::Int(1));
+
+        assert_eq!(eval(&env, "x.foo()").expect("x.foo()"), Value::Int(1));
     }
 
     #[test]
@@ -1314,11 +1177,8 @@ mod tests {
             })
         });
 
-        let interpreter = Interpreter::new(&env);
         assert_eq!(
-            interpreter
-                .eval("x[true][0][\"y\"]")
-                .expect("x[true][0][\"y\"]"),
+            eval(&env, "x[true][0][\"y\"]").expect("x[true][0][\"y\"]"),
             Value::Int(42)
         );
     }
@@ -1348,7 +1208,6 @@ mod tests {
             })
         });
 
-        let interpreter = Interpreter::new(&env);
-        assert_eq!(interpreter.eval("x.y.z").expect("x.y.z"), Value::Uint(42));
+        assert_eq!(eval(&env, "x.y.z").expect("x.y.z"), Value::Uint(42));
     }
 }
