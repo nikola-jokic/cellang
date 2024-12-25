@@ -11,40 +11,59 @@ use crate::{
 
 type Function = Box<dyn Fn(&[Value]) -> Result<Value, Error>>;
 
-pub struct Environment {
-    variables: HashMap<String, Value>,
-    functions: HashMap<String, Function>,
+pub struct Environment<'a> {
+    pub variables: Map,
+    pub functions: HashMap<String, Function>,
+    pub parent: Option<&'a Environment<'a>>,
 }
 
-impl Default for Environment {
+impl Default for Environment<'_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Environment {
+impl<'a> Environment<'a> {
+    /// The new returns a root environment.
     pub fn new() -> Self {
         Self {
-            variables: HashMap::new(),
+            variables: Map {
+                key_kind: Some(MapKeyKind::String),
+                inner: HashMap::new(),
+            },
             functions: {
                 let mut m = HashMap::new();
                 m.insert("size".to_string(), Box::new(fn_size) as Function);
                 m.insert("type".to_string(), Box::new(fn_type) as Function);
                 m
             },
+            parent: None,
+        }
+    }
+
+    pub fn new_child(&'a self) -> Self {
+        Self {
+            variables: Map::new(),
+            functions: HashMap::new(),
+            parent: Some(self),
         }
     }
 
     pub fn get_variable(&self, name: &str) -> Option<&Value> {
-        self.variables.get(name)
+        self.variables
+            .get(&MapKey::String(name.to_string()))
+            .or_else(|| self.parent.and_then(|parent| parent.get_variable(name)))
     }
 
     pub fn set_variable(&mut self, name: &str, value: Value) {
-        self.variables.insert(name.to_string(), value);
+        self.variables
+            .insert(MapKey::String(name.to_string()), value);
     }
 
     pub fn get_function(&self, name: &str) -> Option<&Function> {
-        self.functions.get(name)
+        self.functions
+            .get(name)
+            .or_else(|| self.parent.and_then(|parent| parent.get_function(name)))
     }
 
     pub fn set_function(&mut self, name: &str, function: Function) {
@@ -108,7 +127,15 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
         Op::Field => {
             assert!(tokens.len() == 2);
 
-            todo!()
+            let map = match eval_ast(env, &tokens[0])?.value(env)? {
+                Value::Map(map) => map,
+                _ => miette::bail!("Expected reference to a map, found {:?}", tokens[0]),
+            };
+
+            let mut env = env.new_child();
+            env.variables = map;
+
+            eval_ast(&env, &tokens[1])?.value(&env)?
         }
         Op::Index => {
             assert!(tokens.len() == 2);
@@ -120,38 +147,23 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                         _ => miette::bail!("Expected int index, found {:?}", tokens[1]),
                     };
 
-                    match list {
-                        List::Empty => miette::bail!("Index out of bounds"),
-                        List::WithValue { inner, .. } => {
-                            if i < 0 || i as usize >= inner.len() {
-                                miette::bail!("Index out of bounds");
-                            }
-                            inner[i as usize].clone()
-                        }
+                    if i < 0 || i >= list.inner.len() as i64 {
+                        miette::bail!("Index out of bounds: {}", i);
                     }
+
+                    list.inner[i as usize].clone()
                 }
 
                 Value::Map(map) => {
                     let key = MapKey::try_from(eval_ast(env, &tokens[1])?.value(env)?)?;
 
-                    match map {
-                        Map::Empty => miette::bail!("No such key {key}"),
-                        Map::WithValue {
-                            inner, key_kind, ..
-                        } => {
-                            if key_kind != key.kind() {
-                                miette::bail!("Invalid key type: {:?}", key);
-                            }
-
-                            match inner.get(&key) {
-                                Some(val) => val.clone(),
-                                None => miette::bail!("No such key {key}"),
-                            }
-                        }
+                    if let Some(val) = map.get(&key) {
+                        val.clone()
+                    } else {
+                        miette::bail!("Key not found: {}", key);
                     }
                 }
-
-                _ => miette::bail!("Expected reference to a list, found {:?}", tokens[0]),
+                _ => miette::bail!("Expected reference to a list or map, found {:?}", tokens[0]),
             }
         }
         Op::Not => {
@@ -308,7 +320,10 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
         }
         Op::List => {
             if tokens.is_empty() {
-                return Ok(Value::List(List::Empty));
+                return Ok(Value::List(List {
+                    elem_kind: None,
+                    inner: Vec::new(),
+                }));
             }
 
             let mut list = Vec::with_capacity(tokens.len());
@@ -325,14 +340,17 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 list.push(value);
             }
 
-            Value::List(List::WithValue {
-                elem_kind: kind,
+            Value::List(List {
+                elem_kind: Some(kind),
                 inner: list,
             })
         }
         Op::Map => {
             if tokens.is_empty() {
-                return Ok(Value::Map(Map::Empty));
+                return Ok(Value::Map(Map {
+                    key_kind: None,
+                    inner: HashMap::new(),
+                }));
             }
 
             let mut iter = tokens.iter();
@@ -340,7 +358,6 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             let first_value =
                 eval_ast(env, iter.next().expect("Value must be present"))?.value(env)?;
             let key_kind = MapKeyKind::try_from(first_key.kind())?;
-            let value_kind = first_value.kind();
 
             let mut map = HashMap::new();
             map.insert(MapKey::try_from(first_key)?, first_value);
@@ -349,15 +366,14 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 let key = eval_ast(env, key)?.value(env)?;
                 let value = eval_ast(env, value)?.value(env)?;
                 let kk = MapKeyKind::try_from(key.kind())?;
-                if kk != key_kind || value.kind() != value_kind {
+                if kk != key_kind {
                     miette::bail!("Map elements must have the same type");
                 }
                 map.insert(MapKey::try_from(key)?, value);
             }
 
-            Value::Map(Map::WithValue {
-                key_kind,
-                value_kind,
+            Value::Map(Map {
+                key_kind: Some(key_kind),
                 inner: map,
             })
         }
@@ -377,10 +393,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
         Op::In => {
             let lhs = eval_ast(env, &tokens[0])?.value(env)?;
             match eval_ast(env, &tokens[1])?.value(env)? {
-                Value::List(list) => match list {
-                    List::Empty => Value::Bool(false),
-                    List::WithValue { inner, .. } => Value::Bool(inner.contains(&lhs)),
-                },
+                Value::List(list) => Value::Bool(list.inner.contains(&lhs)),
                 _ => miette::bail!("Expected list, found {:?}", tokens[1]),
             }
         }
@@ -423,6 +436,7 @@ pub enum Value {
     List(List),
     Bytes(Vec<u8>),
     Null,
+    Any(Box<Value>),
 }
 
 impl fmt::Display for Value {
@@ -433,41 +447,52 @@ impl fmt::Display for Value {
             Value::Double(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
-            Value::Map(map) => match map {
-                Map::Empty => write!(f, "{{}}"),
-                Map::WithValue { inner, .. } => {
-                    write!(f, "{:?}", inner)
-                }
-            },
-            Value::List(list) => match list {
-                List::Empty => write!(f, "[]"),
-                List::WithValue { inner, .. } => {
-                    write!(f, "{:?}", inner)
-                }
-            },
+            Value::Map(map) => write!(f, "{:?}", map.inner),
+            Value::List(list) => write!(f, "{:?}", list.inner),
             Value::Bytes(b) => write!(f, "{:?}", b),
             Value::Null => write!(f, "null"),
+            Value::Any(v) => write!(f, "any({})", v),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Map {
-    Empty,
-    WithValue {
-        key_kind: MapKeyKind,
-        value_kind: ValueKind,
-        inner: HashMap<MapKey, Value>,
-    },
+pub struct Map {
+    key_kind: Option<MapKeyKind>,
+    inner: HashMap<MapKey, Value>,
+}
+
+impl Map {
+    pub fn new() -> Self {
+        Self {
+            key_kind: None,
+            inner: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, key: &MapKey) -> Option<&Value> {
+        self.inner.get(key)
+    }
+
+    pub fn insert(&mut self, key: MapKey, value: Value) {
+        self.inner.insert(key, value);
+    }
+
+    pub fn len(&self) -> i64 {
+        self.inner.len() as i64
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum List {
-    Empty,
-    WithValue {
-        elem_kind: ValueKind,
-        inner: Vec<Value>,
-    },
+pub struct List {
+    elem_kind: Option<ValueKind>,
+    inner: Vec<Value>,
+}
+
+impl List {
+    fn len(&self) -> i64 {
+        self.inner.len() as i64
+    }
 }
 
 impl From<i8> for Value {
@@ -536,6 +561,7 @@ impl Value {
             Value::List(_) => ValueKind::List,
             Value::Bytes(_) => ValueKind::Bytes,
             Value::Null => ValueKind::Null,
+            Value::Any(v) => v.kind(),
         }
     }
 }
@@ -627,14 +653,8 @@ fn fn_size(vals: &[Value]) -> Result<Value, Error> {
     let v = match &vals[0] {
         Value::Bytes(b) => Value::Int(b.len() as i64),
         Value::String(s) => Value::Int(s.len() as i64),
-        Value::List(list) => match list {
-            List::Empty => Value::Int(0),
-            List::WithValue { inner, .. } => Value::Int(inner.len() as i64),
-        },
-        Value::Map(map) => match map {
-            Map::Empty => Value::Int(0),
-            Map::WithValue { inner, .. } => Value::Int(inner.len() as i64),
-        },
+        Value::List(list) => Value::Int(list.len()),
+        Value::Map(map) => Value::Int(map.len()),
         _ => miette::bail!("Invalid type for size: {:?}", vals[0].kind()),
     };
 
@@ -656,6 +676,7 @@ fn fn_type(vals: &[Value]) -> Result<Value, Error> {
         Value::List(_) => Ok(Value::String("list".to_string())),
         Value::Bytes(_) => Ok(Value::String("bytes".to_string())),
         Value::Null => Ok(Value::String("null".to_string())),
+        Value::Any(v) => Ok(Value::String(fn_type(&[*v.clone()])?.to_string())),
     }
 }
 
@@ -941,32 +962,38 @@ mod tests {
     fn test_list() {
         let env = Environment::default();
 
-        assert_eq!(eval(&env, "[]").expect("[]"), Value::List(List::Empty));
+        assert_eq!(
+            eval(&env, "[]").expect("[]"),
+            Value::List(List {
+                elem_kind: None,
+                inner: Vec::new(),
+            })
+        );
         assert_eq!(
             eval(&env, "[1, 2, 3]").expect("[1, 2, 3]"),
-            Value::List(List::WithValue {
-                elem_kind: ValueKind::Int,
+            Value::List(List {
+                elem_kind: Some(ValueKind::Int),
                 inner: vec![Value::Int(1), Value::Int(2), Value::Int(3)]
             })
         );
         assert_eq!(
             eval(&env, "[1u, 2u, 3u]").expect("[1u, 2u, 3u]"),
-            Value::List(List::WithValue {
-                elem_kind: ValueKind::Uint,
+            Value::List(List {
+                elem_kind: Some(ValueKind::Uint),
                 inner: vec![Value::Uint(1), Value::Uint(2), Value::Uint(3)]
             })
         );
         assert_eq!(
             eval(&env, "[1.0, 2.0, 3.0]").expect("[1.0, 2.0, 3.0]"),
-            Value::List(List::WithValue {
-                elem_kind: ValueKind::Double,
+            Value::List(List {
+                elem_kind: Some(ValueKind::Double),
                 inner: vec![Value::Double(1.0), Value::Double(2.0), Value::Double(3.0)]
             })
         );
         assert_eq!(
             eval(&env, "[\"hello\", \"world\"]").expect("[\"hello\", \"world\"]"),
-            Value::List(List::WithValue {
-                elem_kind: ValueKind::String,
+            Value::List(List {
+                elem_kind: Some(ValueKind::String),
                 inner: vec![
                     Value::String("hello".to_string()),
                     Value::String("world".to_string())
@@ -975,8 +1002,8 @@ mod tests {
         );
         assert_eq!(
             eval(&env, "[true, false]").expect("[true, false]"),
-            Value::List(List::WithValue {
-                elem_kind: ValueKind::Bool,
+            Value::List(List {
+                elem_kind: Some(ValueKind::Bool),
                 inner: vec![Value::Bool(true), Value::Bool(false)]
             })
         );
@@ -997,14 +1024,19 @@ mod tests {
     #[test]
     fn test_map() {
         let tt = [
-            ("{}", Value::Map(Map::Empty)),
+            (
+                "{}",
+                Value::Map(Map {
+                    key_kind: None,
+                    inner: HashMap::new(),
+                }),
+            ),
             ("{1: 2, 3: 4}", {
                 let mut map = HashMap::new();
                 map.insert(MapKey::Int(1), Value::Int(2));
                 map.insert(MapKey::Int(3), Value::Int(4));
-                Value::Map(Map::WithValue {
-                    key_kind: MapKeyKind::Int,
-                    value_kind: ValueKind::Int,
+                Value::Map(Map {
+                    key_kind: Some(MapKeyKind::Int),
                     inner: map,
                 })
             }),
@@ -1012,9 +1044,8 @@ mod tests {
                 let mut map = HashMap::new();
                 map.insert(MapKey::Uint(1), Value::Uint(2));
                 map.insert(MapKey::Uint(3), Value::Uint(4));
-                Value::Map(Map::WithValue {
-                    key_kind: MapKeyKind::Uint,
-                    value_kind: ValueKind::Uint,
+                Value::Map(Map {
+                    key_kind: Some(MapKeyKind::Uint),
                     inner: map,
                 })
             }),
@@ -1024,18 +1055,16 @@ mod tests {
                     MapKey::String("hello".to_string()),
                     Value::String("world".to_string()),
                 );
-                Value::Map(Map::WithValue {
-                    key_kind: MapKeyKind::String,
-                    value_kind: ValueKind::String,
+                Value::Map(Map {
+                    key_kind: Some(MapKeyKind::String),
                     inner: map,
                 })
             }),
             ("{true: false}", {
                 let mut map = HashMap::new();
                 map.insert(MapKey::Bool(true), Value::Bool(false));
-                Value::Map(Map::WithValue {
-                    key_kind: MapKeyKind::Bool,
-                    value_kind: ValueKind::Bool,
+                Value::Map(Map {
+                    key_kind: Some(MapKeyKind::Bool),
                     inner: map,
                 })
             }),
@@ -1048,14 +1077,14 @@ mod tests {
             assert_eq!(result, *expected, "input: {}", input);
         }
 
+        // keys must be of same kind
         let tt = [
             ("{1: 2, 3u: 4}", "Map elements must have the same type"),
-            ("{1: 2, 3: 4u}", "Map elements must have the same type"),
             (
-                "{1: 2, 3: \"hello\"}",
+                "{1: 2, \"hello\": 4}",
                 "Map elements must have the same type",
             ),
-            ("{1: 2, 3: true}", "Map elements must have the same type"),
+            ("{1: 2, true: 4}", "Map elements must have the same type"),
         ];
 
         for (input, expected) in tt.iter() {
@@ -1152,27 +1181,24 @@ mod tests {
             let mut leaf = HashMap::new();
             leaf.insert(MapKey::String("y".to_string()), Value::Int(42));
 
-            let leaf = Value::Map(Map::WithValue {
-                key_kind: MapKeyKind::String,
-                value_kind: ValueKind::Int,
+            let leaf = Value::Map(Map {
+                key_kind: Some(MapKeyKind::String),
                 inner: leaf,
             });
 
             let mut middle_level = HashMap::new();
             middle_level.insert(MapKey::Int(0), leaf);
 
-            let middle_level = Value::Map(Map::WithValue {
-                key_kind: MapKeyKind::Int,
-                value_kind: ValueKind::Map,
+            let middle_level = Value::Map(Map {
+                key_kind: Some(MapKeyKind::Int),
                 inner: middle_level,
             });
 
             let mut root = HashMap::new();
             root.insert(MapKey::Bool(true), middle_level);
 
-            Value::Map(Map::WithValue {
-                key_kind: MapKeyKind::Bool,
-                value_kind: ValueKind::Map,
+            Value::Map(Map {
+                key_kind: Some(MapKeyKind::Bool),
                 inner: root,
             })
         });
@@ -1187,9 +1213,8 @@ mod tests {
     fn test_field_map_access() {
         let mut env = Environment::default();
         env.set_variable("x", {
-            let leaf = Value::Map(Map::WithValue {
-                key_kind: MapKeyKind::String,
-                value_kind: ValueKind::Int,
+            let leaf = Value::Map(Map {
+                key_kind: Some(MapKeyKind::String),
                 inner: {
                     let mut leaf = HashMap::new();
                     leaf.insert(MapKey::String("z".to_string()), Value::Uint(42));
@@ -1197,9 +1222,8 @@ mod tests {
                 },
             });
 
-            Value::Map(Map::WithValue {
-                key_kind: MapKeyKind::String,
-                value_kind: ValueKind::Map,
+            Value::Map(Map {
+                key_kind: Some(MapKeyKind::String),
                 inner: {
                     let mut root = HashMap::new();
                     root.insert(MapKey::String("y".to_string()), leaf);
