@@ -391,6 +391,45 @@ impl Value {
             _ => miette::bail!("Invalid types for minus: {:?} and {:?}", self, other),
         }
     }
+
+    pub fn equals(&self, other: &Value) -> Result<Value, Error> {
+        let v = match (self.downcast(), other.downcast()) {
+            (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs == rhs),
+            (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs == rhs),
+            (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs == rhs),
+            (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs == rhs),
+            (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs == rhs),
+            (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs == rhs),
+            (Value::Null, Value::Null) => Value::Bool(true),
+            (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs == rhs),
+            (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs == rhs),
+            (left, right) => miette::bail!("Cannot compare {:?} and {:?}", left, right),
+        };
+
+        Ok(v)
+    }
+
+    pub fn not_equals(&self, other: &Value) -> Result<Value, Error> {
+        match self.equals(other) {
+            Ok(Value::Bool(b)) => Ok(Value::Bool(!b)),
+            Ok(_) => miette::bail!("Invalid types for not_equals: {:?} and {:?}", self, other),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn greater(&self, other: &Value) -> Result<Value, Error> {
+        let v = match (self.downcast(), other.downcast()) {
+            (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs > rhs),
+            (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs > rhs),
+            (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs > rhs),
+            (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs > rhs),
+            (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs > rhs),
+            (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs > rhs),
+            (left, right) => miette::bail!("Cannot compare {:?} and {:?}", left, right),
+        };
+
+        Ok(v)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -477,19 +516,14 @@ impl Value {
 }
 
 impl_value_conversions! {
-    i8 => Value::Int as i64,
-    i32 => Value::Int as i64,
-    i64 => Value::Int as i64,
-    u8 => Value::Uint as u64,
-    u32 => Value::Uint as u64,
-    u64 => Value::Uint as u64,
-    f32 => Value::Double as f64,
-    f64 => Value::Double as f64,
-    String => Value::String as String,
-    bool => Value::Bool as bool,
-    Map => Value::Map as Map,
-    List => Value::List as List,
-    Vec<u8> => Value::Bytes as Vec<u8>,
+    i64 => Value::Int,
+    u64 => Value::Uint,
+    f64 => Value::Double,
+    String => Value::String,
+    bool => Value::Bool,
+    Map => Value::Map,
+    List => Value::List,
+    Vec<u8> => Value::Bytes,
 }
 
 impl From<&str> for Value {
@@ -498,7 +532,7 @@ impl From<&str> for Value {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
 pub enum ValueKind {
     Int,
     Uint,
@@ -511,7 +545,7 @@ pub enum ValueKind {
     Null,
 }
 
-#[derive(Debug, PartialEq, Clone, Hash, Eq)]
+#[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
 pub enum KeyType {
     Int,
     Uint,

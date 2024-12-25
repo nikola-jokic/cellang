@@ -40,12 +40,12 @@ pub fn eval_ast(env: &Environment, root: &TokenTree) -> Result<Object, Error> {
                 _ => miette::bail!("Expected function name, found {:?}", func),
             };
 
-            Ok(Object::Value(f(env, &args)?))
+            Ok(Object::Value(f(env, args.as_ref())?))
         }
     }
 }
 
-fn eval_atom(atom: &Atom) -> Result<Object, Error> {
+pub fn eval_atom(atom: &Atom) -> Result<Object, Error> {
     let val = match atom {
         Atom::Int(n) => Object::Value(Value::Int(*n)),
         Atom::Uint(n) => Object::Value(Value::Uint(*n)),
@@ -59,7 +59,7 @@ fn eval_atom(atom: &Atom) -> Result<Object, Error> {
     Ok(val)
 }
 
-fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
     let val = match op {
         Op::Call => panic!("Call should be handled in eval_ast"),
         Op::Field => {
@@ -183,46 +183,18 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
         Op::NotEqual => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs != rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs != rhs),
-                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs != rhs),
-                (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs != rhs),
-                (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs != rhs),
-                (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs != rhs),
-                (Value::Null, Value::Null) => Value::Bool(false),
-                (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs != rhs),
-                (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs != rhs),
-                (Value::Any(ref v), Value::Any(ref w)) => Value::Bool(v != w),
-                (left, right) => miette::bail!("Cannot compare {:?} and {:?}", left, right),
-            }
+            lhs.not_equals(&rhs)?
         }
         Op::EqualEqual => {
+            assert!(tokens.len() == 2);
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs == rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs == rhs),
-                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs == rhs),
-                (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs == rhs),
-                (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs == rhs),
-                (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs == rhs),
-                (Value::Null, Value::Null) => Value::Bool(true),
-                (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs == rhs),
-                (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs == rhs),
-                (Value::Any(ref v), Value::Any(ref w)) => Value::Bool(v == w),
-                (left, right) => miette::bail!("Cannot compare {:?} and {:?}", left, right),
-            }
+            lhs.equals(&rhs)?
         }
         Op::Greater => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs > rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs > rhs),
-                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs > rhs),
-                _ => unimplemented!(),
-            }
+            lhs.greater(&rhs)?
         }
         Op::GreaterEqual => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
