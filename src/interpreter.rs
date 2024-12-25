@@ -127,6 +127,7 @@ fn eval_atom(atom: &Atom) -> Result<Object, Error> {
 
 fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
     let val = match op {
+        Op::Call => panic!("Call should be handled in eval_ast"),
         Op::Field => {
             assert!(tokens.len() == 2);
 
@@ -187,7 +188,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 (Value::Bytes(b1), Value::Bytes(b2)) => {
                     Value::Bytes([b1.as_slice(), b2.as_slice()].concat())
                 }
-                _ => unimplemented!(),
+                _ => miette::bail!("Expected numbers or strings, found {:?}", tokens),
             }
         }
         Op::Minus => {
@@ -197,7 +198,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs - rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs - rhs),
                 (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs - rhs),
-                _ => unimplemented!(),
+                _ => miette::bail!("Expected numbers, found {:?}", tokens),
             }
         }
         Op::Multiply => {
@@ -207,7 +208,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
                 (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs * rhs),
-                _ => unimplemented!(),
+                _ => miette::bail!("Expected numbers, found {:?}", tokens),
             }
         }
         Op::Devide => {
@@ -217,7 +218,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs / rhs),
                 (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs / rhs),
-                _ => unimplemented!(),
+                _ => miette::bail!("Expected numbers, found {:?}", tokens),
             }
         }
         Op::Mod => {
@@ -226,7 +227,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             match (lhs, rhs) {
                 (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
                 (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
-                _ => unimplemented!(),
+                _ => miette::bail!("Expected numbers, found {:?}", tokens),
             }
         }
         Op::And => {
@@ -234,7 +235,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             let rhs = eval_ast(env, &tokens[1])?.value(env)?;
             match (lhs, rhs) {
                 (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs && rhs),
-                _ => unimplemented!(),
+                _ => miette::bail!("Expected bool, found {:?}", tokens),
             }
         }
         Op::Or => {
@@ -246,7 +247,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 (_, Value::Bool(true)) => Value::Bool(true),
                 // normal evaluation
                 (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs || rhs),
-                _ => unimplemented!(),
+                _ => miette::bail!("Expected bool, found {:?}", tokens),
             }
         }
         Op::NotEqual => {
@@ -262,7 +263,8 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 (Value::Null, Value::Null) => Value::Bool(false),
                 (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs != rhs),
                 (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs != rhs),
-                _ => unimplemented!(),
+                (Value::Any(ref v), Value::Any(ref w)) => Value::Bool(v != w),
+                (left, right) => miette::bail!("Cannot compare {:?} and {:?}", left, right),
             }
         }
         Op::EqualEqual => {
@@ -278,7 +280,8 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 (Value::Null, Value::Null) => Value::Bool(true),
                 (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs == rhs),
                 (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs == rhs),
-                _ => unimplemented!(),
+                (Value::Any(ref v), Value::Any(ref w)) => Value::Bool(v == w),
+                (left, right) => miette::bail!("Cannot compare {:?} and {:?}", left, right),
             }
         }
         Op::Greater => {
@@ -390,7 +393,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
         }
         Op::For => miette::bail!("For loop is not supported"),
         Op::While => miette::bail!("While loop is not supported"),
-        _ => unimplemented!(),
+        Op::Var => miette::bail!("Var is not supported"),
     };
     Ok(val)
 }
