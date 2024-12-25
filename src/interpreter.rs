@@ -180,16 +180,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
         Op::Plus => {
             let lhs = eval_ast(env, &tokens[0])?.value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs + rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs + rhs),
-                (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs + rhs),
-                (Value::String(s1), Value::String(s2)) => Value::String(format!("{}{}", s1, s2)),
-                (Value::Bytes(b1), Value::Bytes(b2)) => {
-                    Value::Bytes([b1.as_slice(), b2.as_slice()].concat())
-                }
-                _ => miette::bail!("Expected numbers or strings, found {:?}", tokens),
-            }
+            lhs.plus(&rhs)?
         }
         Op::Minus => {
             let lhs = eval_ast(env, &tokens[0])?.value(env)?;

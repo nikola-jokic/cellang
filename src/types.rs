@@ -160,6 +160,28 @@ impl fmt::Display for Value {
     }
 }
 
+impl Value {
+    pub fn downcast(&self) -> &Value {
+        match self {
+            Value::Any(v) => v.downcast(),
+            _ => self,
+        }
+    }
+
+    pub fn plus(&self, other: &Value) -> Result<Value, Error> {
+        match (self.downcast(), other.downcast()) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
+            (Value::Uint(a), Value::Uint(b)) => Ok(Value::Uint(a + b)),
+            (Value::Double(a), Value::Double(b)) => Ok(Value::Double(a + b)),
+            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
+            (Value::Bytes(a), Value::Bytes(b)) => {
+                Ok(Value::Bytes([a.as_slice(), b.as_slice()].concat()))
+            }
+            _ => miette::bail!("Invalid types for plus: {:?} and {:?}", self, other),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct List {
     elem_type: Option<ValueKind>,
