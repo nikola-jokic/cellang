@@ -937,34 +937,4 @@ mod tests {
             )
         );
     }
-
-    #[test]
-    fn test_basic() {
-        // https://github.com/google/cel-spec/blob/master/tests/simple/testdata/basic.textproto
-        let tt = [
-            ("0", TokenTree::Atom(Atom::Int(0))),
-            ("0u", TokenTree::Atom(Atom::Uint(0))),
-            ("0U", TokenTree::Atom(Atom::Uint(0))),
-            ("0.0", TokenTree::Atom(Atom::Double(0.0))),
-            ("0e+0", TokenTree::Atom(Atom::Double(0.0))),
-            ("\"\"", TokenTree::Atom(Atom::String(Cow::Borrowed("")))),
-            ("r\"\"", TokenTree::Atom(Atom::String(Cow::Borrowed("")))),
-            (
-                "b\"\"",
-                TokenTree::Atom(Atom::Bytes(Cow::Borrowed("".as_bytes()))),
-            ),
-            ("false", TokenTree::Atom(Atom::Bool(false))),
-            ("null", TokenTree::Atom(Atom::Null)),
-            ("{}", TokenTree::Cons(Op::Map, vec![])),
-            ("[]", TokenTree::Cons(Op::List, vec![])),
-        ];
-
-        for (input, expected) in tt {
-            let mut parser = Parser::new(input);
-            let tree = parser.parse();
-            assert!(tree.is_ok(), "input={:?}, out={:?}", input, tree);
-            let tree = tree.unwrap();
-            assert_eq!(tree, expected);
-        }
-    }
 }

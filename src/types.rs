@@ -3,12 +3,14 @@ use std::collections::hash_map::{Drain, Entry};
 use std::collections::HashMap;
 use std::fmt;
 
+use crate::impl_value_conversions;
+
 pub type Function = Box<dyn Fn(&[Value]) -> Result<Value, Error>>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Map {
-    key_type: Option<MapKeyType>,
-    inner: HashMap<MapKey, Value>,
+    key_type: Option<KeyType>,
+    inner: HashMap<Key, Value>,
 }
 
 impl Default for Map {
@@ -17,8 +19,8 @@ impl Default for Map {
     }
 }
 
-impl From<HashMap<MapKey, Value>> for Map {
-    fn from(inner: HashMap<MapKey, Value>) -> Self {
+impl From<HashMap<Key, Value>> for Map {
+    fn from(inner: HashMap<Key, Value>) -> Self {
         if inner.is_empty() {
             Self::new()
         } else {
@@ -39,7 +41,7 @@ impl Map {
         }
     }
 
-    pub fn new_with_key_type(key_type: MapKeyType) -> Self {
+    pub fn new_with_key_type(key_type: KeyType) -> Self {
         Self {
             key_type: Some(key_type),
             inner: HashMap::new(),
@@ -61,7 +63,7 @@ impl Map {
     /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.contains_key
     /// It checks if the key type is the same as the key kind.
     /// If the key type is not set (map must be empty), it returns false.
-    pub fn contains_key(&self, key: &MapKey) -> Result<bool, Error> {
+    pub fn contains_key(&self, key: &Key) -> Result<bool, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
                 miette::bail!("Invalid key type: {:?}", key.kind());
@@ -74,7 +76,7 @@ impl Map {
     }
 
     /// Wrapper for https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.drain
-    pub fn drain(&mut self) -> Drain<MapKey, Value> {
+    pub fn drain(&mut self) -> Drain<Key, Value> {
         self.inner.drain()
     }
 
@@ -82,7 +84,7 @@ impl Map {
     /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.entry
     /// It checks if the key type is the same as the key kind.
     /// If the key type is not set (map must be empty), it sets the key type.
-    pub fn entry(&mut self, key: MapKey) -> Result<Entry<MapKey, Value>, Error> {
+    pub fn entry(&mut self, key: Key) -> Result<Entry<Key, Value>, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
                 miette::bail!("Invalid key type: {:?}", key.kind());
@@ -95,7 +97,7 @@ impl Map {
     }
 
     /// Wrapper for https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.reserve
-    pub fn get(&self, key: &MapKey) -> Result<Option<&Value>, Error> {
+    pub fn get(&self, key: &Key) -> Result<Option<&Value>, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
                 miette::bail!("Invalid key type: {:?}", key.kind());
@@ -107,7 +109,7 @@ impl Map {
         }
     }
 
-    pub fn insert(&mut self, key: MapKey, value: Value) -> Result<&mut Self, Error> {
+    pub fn insert(&mut self, key: Key, value: Value) -> Result<&mut Self, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
                 miette::bail!("Invalid key type: {:?}", key.kind());
@@ -180,6 +182,15 @@ impl Value {
             _ => miette::bail!("Invalid types for plus: {:?} and {:?}", self, other),
         }
     }
+
+    pub fn minus(&self, other: &Value) -> Result<Value, Error> {
+        match (self.downcast(), other.downcast()) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
+            (Value::Uint(a), Value::Uint(b)) => Ok(Value::Uint(a - b)),
+            (Value::Double(a), Value::Double(b)) => Ok(Value::Double(a - b)),
+            _ => miette::bail!("Invalid types for minus: {:?} and {:?}", self, other),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -248,60 +259,6 @@ impl Default for List {
     }
 }
 
-impl From<i8> for Value {
-    fn from(n: i8) -> Self {
-        Value::Int(n as i64)
-    }
-}
-
-impl From<i16> for Value {
-    fn from(n: i16) -> Self {
-        Value::Int(n as i64)
-    }
-}
-
-impl From<i32> for Value {
-    fn from(n: i32) -> Self {
-        Value::Int(n as i64)
-    }
-}
-
-impl From<i64> for Value {
-    fn from(n: i64) -> Self {
-        Value::Int(n)
-    }
-}
-
-impl From<u8> for Value {
-    fn from(n: u8) -> Self {
-        Value::Uint(n as u64)
-    }
-}
-
-impl From<u16> for Value {
-    fn from(n: u16) -> Self {
-        Value::Uint(n as u64)
-    }
-}
-
-impl From<u32> for Value {
-    fn from(n: u32) -> Self {
-        Value::Uint(n as u64)
-    }
-}
-
-impl From<u64> for Value {
-    fn from(n: u64) -> Self {
-        Value::Uint(n)
-    }
-}
-
-impl From<String> for Value {
-    fn from(s: String) -> Self {
-        Value::String(s)
-    }
-}
-
 impl Value {
     pub fn kind(&self) -> ValueKind {
         match self {
@@ -319,6 +276,28 @@ impl Value {
     }
 }
 
+impl_value_conversions! {
+    i8 => Value::Int as i64,
+    i32 => Value::Int as i64,
+    i64 => Value::Int as i64,
+    u8 => Value::Uint as u64,
+    u32 => Value::Uint as u64,
+    u64 => Value::Uint as u64,
+    f32 => Value::Double as f64,
+    f64 => Value::Double as f64,
+    String => Value::String as String,
+    bool => Value::Bool as bool,
+    Map => Value::Map as Map,
+    List => Value::List as List,
+    Vec<u8> => Value::Bytes as Vec<u8>,
+}
+
+impl From<&str> for Value {
+    fn from(value: &str) -> Self {
+        Value::String(value.to_string())
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum ValueKind {
     Int,
@@ -333,66 +312,66 @@ pub enum ValueKind {
 }
 
 #[derive(Debug, PartialEq, Clone, Hash, Eq)]
-pub enum MapKeyType {
+pub enum KeyType {
     Int,
     Uint,
     String,
     Bool,
 }
 
-impl TryFrom<ValueKind> for MapKeyType {
+impl TryFrom<ValueKind> for KeyType {
     type Error = Error;
 
     fn try_from(kind: ValueKind) -> Result<Self, Self::Error> {
         match kind {
-            ValueKind::Int => Ok(MapKeyType::Int),
-            ValueKind::Uint => Ok(MapKeyType::Uint),
-            ValueKind::String => Ok(MapKeyType::String),
-            ValueKind::Bool => Ok(MapKeyType::Bool),
+            ValueKind::Int => Ok(KeyType::Int),
+            ValueKind::Uint => Ok(KeyType::Uint),
+            ValueKind::String => Ok(KeyType::String),
+            ValueKind::Bool => Ok(KeyType::Bool),
             _ => miette::bail!("Invalid map key kind: {:?}", kind),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub enum MapKey {
+pub enum Key {
     Int(i64),
     Uint(u64),
     String(String),
     Bool(bool),
 }
 
-impl MapKey {
-    fn kind(&self) -> MapKeyType {
+impl Key {
+    fn kind(&self) -> KeyType {
         match self {
-            MapKey::Int(_) => MapKeyType::Int,
-            MapKey::Uint(_) => MapKeyType::Uint,
-            MapKey::String(_) => MapKeyType::String,
-            MapKey::Bool(_) => MapKeyType::Bool,
+            Key::Int(_) => KeyType::Int,
+            Key::Uint(_) => KeyType::Uint,
+            Key::String(_) => KeyType::String,
+            Key::Bool(_) => KeyType::Bool,
         }
     }
 }
 
-impl fmt::Display for MapKey {
+impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            MapKey::Int(n) => write!(f, "{}", n),
-            MapKey::Uint(n) => write!(f, "{}", n),
-            MapKey::String(s) => write!(f, "{}", s),
-            MapKey::Bool(b) => write!(f, "{}", b),
+            Key::Int(n) => write!(f, "{}", n),
+            Key::Uint(n) => write!(f, "{}", n),
+            Key::String(s) => write!(f, "{}", s),
+            Key::Bool(b) => write!(f, "{}", b),
         }
     }
 }
 
-impl TryFrom<Value> for MapKey {
+impl TryFrom<Value> for Key {
     type Error = Error;
 
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         match value {
-            Value::Int(n) => Ok(MapKey::Int(n)),
-            Value::Uint(n) => Ok(MapKey::Uint(n)),
-            Value::String(s) => Ok(MapKey::String(s)),
-            Value::Bool(b) => Ok(MapKey::Bool(b)),
+            Value::Int(n) => Ok(Key::Int(n)),
+            Value::Uint(n) => Ok(Key::Uint(n)),
+            Value::String(s) => Ok(Key::String(s)),
+            Value::Bool(b) => Ok(Key::Bool(b)),
             _ => miette::bail!("Invalid map key: {:?}", value),
         }
     }

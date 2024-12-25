@@ -726,19 +726,39 @@ impl<'src> Iterator for Lexer<'src> {
                             "[line {line}] Error: Unexpected character: {c}",
                         }));
                     }
-                    let end = rest
-                        .find(|c: char| !c.is_ascii_hexdigit())
-                        .unwrap_or(rest.len());
 
-                    let literal = &c_onwards[..end + 2]; // + starting 0x
-                    let extra_bytes = literal.len() - c.len_utf8();
+                    let mut end = 0;
+                    for c in rest.chars() {
+                        match c {
+                            'u' | 'U' => {
+                                end += 1;
+                                break;
+                            }
+                            c if c.is_ascii_hexdigit() => end += c.len_utf8(),
+                            _ => break,
+                        }
+                    }
+
+                    let extra_bytes = end + 2 - c.len_utf8();
                     self.read_extra(extra_bytes);
-                    Some(Ok(Token {
-                        kind: TokenKind::Int(i64::from_str_radix(&literal[2..], 16).unwrap()),
-                        line: self.line,
-                        offset: c_at,
-                        origin: literal,
-                    }))
+
+                    if c_onwards[..end + 2].ends_with(['u', 'U']) {
+                        let literal = &c_onwards[..end + 2 - 1]; // ignore u
+                        Some(Ok(Token {
+                            kind: TokenKind::Uint(u64::from_str_radix(&literal[2..], 16).unwrap()),
+                            line: self.line,
+                            offset: c_at,
+                            origin: literal,
+                        }))
+                    } else {
+                        let literal = &c_onwards[..end + 2];
+                        Some(Ok(Token {
+                            kind: TokenKind::Int(i64::from_str_radix(&literal[2..], 16).unwrap()),
+                            line: self.line,
+                            offset: c_at,
+                            origin: literal,
+                        }))
+                    }
                 }
                 Started::OrEqual(token, or_else) => {
                     if self.rest.starts_with('=') {

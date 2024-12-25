@@ -1,6 +1,6 @@
 use crate::{
     functions::{size, type_fn},
-    types::{Function, Map, MapKey, MapKeyType, Value},
+    types::{Function, Key, KeyType, Map, Value},
     List,
 };
 use miette::Error;
@@ -46,7 +46,7 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn get_variable(&self, name: &MapKey) -> Result<Option<&Value>, Error> {
+    pub fn get_variable(&self, name: &Key) -> Result<Option<&Value>, Error> {
         if let Some(val) = self.variables.get(name)? {
             Ok(Some(val))
         } else if let Some(parent) = self.parent {
@@ -58,7 +58,7 @@ impl<'a> Environment<'a> {
 
     pub fn set_variable(&mut self, name: &str, value: Value) -> Result<&mut Self, Error> {
         self.variables
-            .insert(MapKey::String(name.to_string()), value)?;
+            .insert(Key::String(name.to_string()), value)?;
         Ok(self)
     }
 
@@ -78,7 +78,7 @@ pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
     match eval_ast(env, &tree) {
         Ok(Object::Value(val)) => Ok(val),
         Ok(Object::Ident(ident)) => {
-            let key = MapKey::String(ident);
+            let key = Key::String(ident);
             if let Some(val) = env.get_variable(&key)? {
                 Ok(val.clone())
             } else {
@@ -159,7 +159,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 }
 
                 Value::Map(map) => {
-                    let key = MapKey::try_from(eval_ast(env, &tokens[1])?.value(env)?)?;
+                    let key = Key::try_from(eval_ast(env, &tokens[1])?.value(env)?)?;
 
                     if let Some(val) = map.get(&key)? {
                         val.clone()
@@ -184,12 +184,17 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
         }
         Op::Minus => {
             let lhs = eval_ast(env, &tokens[0])?.value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs - rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs - rhs),
-                (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs - rhs),
-                _ => miette::bail!("Expected numbers, found {:?}", tokens),
+            match tokens.len() {
+                1 => match lhs {
+                    Value::Int(n) => Value::Int(-n),
+                    Value::Double(n) => Value::Double(-n),
+                    _ => miette::bail!("Expected number, found {:?}", tokens[0]),
+                },
+                2 => {
+                    let rhs = eval_ast(env, &tokens[1])?.value(env)?;
+                    lhs.minus(&rhs)?
+                }
+                _ => miette::bail!("Expected 1 or 2 arguments, found {}", tokens.len()),
             }
         }
         Op::Multiply => {
@@ -345,19 +350,19 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
             let first_key = eval_ast(env, iter.next().expect("Key must be present"))?.value(env)?;
             let first_value =
                 eval_ast(env, iter.next().expect("Value must be present"))?.value(env)?;
-            let key_kind = MapKeyType::try_from(first_key.kind())?;
+            let key_kind = KeyType::try_from(first_key.kind())?;
 
             let mut map = HashMap::new();
-            map.insert(MapKey::try_from(first_key)?, first_value);
+            map.insert(Key::try_from(first_key)?, first_value);
 
             while let (Some(key), Some(value)) = (iter.next(), iter.next()) {
                 let key = eval_ast(env, key)?.value(env)?;
                 let value = eval_ast(env, value)?.value(env)?;
-                let kk = MapKeyType::try_from(key.kind())?;
+                let kk = KeyType::try_from(key.kind())?;
                 if kk != key_kind {
                     miette::bail!("Map elements must have the same type");
                 }
-                map.insert(MapKey::try_from(key)?, value);
+                map.insert(Key::try_from(key)?, value);
             }
 
             Value::Map(map.into())
@@ -400,7 +405,7 @@ impl Object {
         match self {
             Object::Value(val) => Ok(val.clone()),
             Object::Ident(ident) => {
-                let ident = MapKey::String(ident.clone());
+                let ident = Key::String(ident.clone());
                 if let Some(val) = env.get_variable(&ident)? {
                     Ok(val.clone())
                 } else {
@@ -684,7 +689,6 @@ mod tests {
     #[test]
     fn test_eval_not() {
         let env = Environment::default();
-
         assert_eq!(eval(&env, "!true").expect("!true"), Value::Bool(false));
         assert_eq!(eval(&env, "!false").expect("!false"), Value::Bool(true));
     }
@@ -740,27 +744,27 @@ mod tests {
             ("{}", Value::Map(Map::new())),
             ("{1: 2, 3: 4}", {
                 let mut map = HashMap::new();
-                map.insert(MapKey::Int(1), Value::Int(2));
-                map.insert(MapKey::Int(3), Value::Int(4));
+                map.insert(Key::Int(1), Value::Int(2));
+                map.insert(Key::Int(3), Value::Int(4));
                 Value::Map(map.into())
             }),
             ("{1u: 2u, 3u: 4u}", {
                 let mut map = HashMap::new();
-                map.insert(MapKey::Uint(1), Value::Uint(2));
-                map.insert(MapKey::Uint(3), Value::Uint(4));
+                map.insert(Key::Uint(1), Value::Uint(2));
+                map.insert(Key::Uint(3), Value::Uint(4));
                 Value::Map(map.into())
             }),
             ("{\"hello\": \"world\"}", {
                 let mut map = HashMap::new();
                 map.insert(
-                    MapKey::String("hello".to_string()),
+                    Key::String("hello".to_string()),
                     Value::String("world".to_string()),
                 );
                 Value::Map(map.into())
             }),
             ("{true: false}", {
                 let mut map = HashMap::new();
-                map.insert(MapKey::Bool(true), Value::Bool(false));
+                map.insert(Key::Bool(true), Value::Bool(false));
                 Value::Map(map.into())
             }),
         ];
@@ -876,17 +880,17 @@ mod tests {
         let mut env = Environment::default();
         env.set_variable("x", {
             let mut leaf = HashMap::new();
-            leaf.insert(MapKey::String("y".to_string()), Value::Int(42));
+            leaf.insert(Key::String("y".to_string()), Value::Int(42));
 
             let leaf = Value::Map(leaf.into());
 
             let mut middle_level = HashMap::new();
-            middle_level.insert(MapKey::Int(0), leaf);
+            middle_level.insert(Key::Int(0), leaf);
 
             let middle_level = Value::Map(middle_level.into());
 
             let mut root = HashMap::new();
-            root.insert(MapKey::Bool(true), middle_level);
+            root.insert(Key::Bool(true), middle_level);
 
             Value::Map(root.into())
         })
@@ -903,15 +907,79 @@ mod tests {
         let mut env = Environment::default();
         env.set_variable("x", {
             let mut leaf = HashMap::new();
-            leaf.insert(MapKey::String("z".to_string()), Value::Uint(42));
+            leaf.insert(Key::String("z".to_string()), Value::Uint(42));
             let leaf = Value::Map(leaf.into());
 
             let mut root = HashMap::new();
-            root.insert(MapKey::String("y".to_string()), leaf);
+            root.insert(Key::String("y".to_string()), leaf);
             Value::Map(root.into())
         })
         .expect("to set variable");
 
         assert_eq!(eval(&env, "x.y.z").expect("x.y.z"), Value::Uint(42));
+    }
+
+    #[test]
+    fn test_basic_zeroish() {
+        // https://github.com/google/cel-spec/blob/master/tests/simple/testdata/basic.textproto
+        let tt = [
+            ("0", 0i64.into()),
+            ("0u", 0u64.into()),
+            ("0U", 0u64.into()),
+            ("0.0", 0.0.into()),
+            ("0e+0", 0.0.into()),
+            ("\"\"", "".into()),
+            ("r\"\"", "".into()),
+            ("b\"\"", Value::Bytes(vec![])),
+            ("false", false.into()),
+            ("null", Value::Null),
+            ("{}", Value::Map(Map::new())),
+            ("[]", Value::List(List::new())),
+            (r#""""""""#, "".into()),
+            (r#"''''''"#, "".into()),
+        ];
+
+        for (input, expected) in tt {
+            let result = eval(&Environment::default(), input).expect(input);
+            assert_eq!(result, expected, "input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_basic_nonzeroish() {
+        // https://github.com/google/cel-spec/blob/master/tests/simple/testdata/basic.textproto
+        let tt = [
+            ("42", 42i64.into()),
+            ("123456789u", 123456789u64.into()),
+            ("123456789U", 123456789u64.into()),
+            ("-92233720368547758", (-92233720368547758i64).into()),
+            ("-2.3e+1", (-23.0).into()),
+            ("\"!\"", "!".into()),
+            ("'\\''", "'".into()),
+            ("b'ÿ'", Value::Bytes("ÿ".as_bytes().to_vec())),
+            ("[-1]", Value::List(List::from(vec![Value::Int(-1)]))),
+            (r#"{"k":"v"}"#, {
+                let mut map = HashMap::new();
+                map.insert(Key::String("k".to_string()), Value::String("v".to_string()));
+                Value::Map(map.into())
+            }),
+            ("true", true.into()),
+            ("0x55555555", 0x55555555i64.into()),
+            ("-0x55555555", (-0x55555555i64).into()),
+            ("0x55555555u", 0x55555555u64.into()),
+            ("0x55555555U", 0x55555555u64.into()),
+            (r#""\u270c""#, "\u{270c}".into()),
+            (r#""\U0001f431""#, Value::from("\u{1f431}")),
+            (
+                "\"\\a\\b\\f\\n\\r\\t\\v\\\\\\'\\\"\"",
+                "\x07\x08\x0c\n\r\t\x0b\\'\"".into(),
+            ),
+        ];
+
+        for (input, expected) in tt {
+            let result = eval(&Environment::default(), input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {}", input);
+        }
     }
 }
