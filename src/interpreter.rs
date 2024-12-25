@@ -1,4 +1,8 @@
-use core::fmt;
+use crate::{
+    functions::{size, type_fn},
+    types::{Function, Map, MapKey, MapKeyType, Value},
+    List,
+};
 use miette::Error;
 use std::collections::HashMap;
 
@@ -6,10 +10,6 @@ use crate::{
     parser::{Atom, Op, TokenTree},
     Parser,
 };
-
-// DO THIS BY REFERENCES AND NOT WITH CLONES
-
-type Function = Box<dyn Fn(&[Value]) -> Result<Value, Error>>;
 
 pub struct Environment<'a> {
     pub variables: Map,
@@ -27,14 +27,11 @@ impl<'a> Environment<'a> {
     /// The new returns a root environment.
     pub fn new() -> Self {
         Self {
-            variables: Map {
-                key_type: Some(MapKeyType::String),
-                inner: HashMap::new(),
-            },
+            variables: Map::new(),
             functions: {
                 let mut m = HashMap::new();
-                m.insert("size".to_string(), Box::new(fn_size) as Function);
-                m.insert("type".to_string(), Box::new(fn_type) as Function);
+                m.insert("size".to_string(), Box::new(size) as Function);
+                m.insert("type".to_string(), Box::new(type_fn) as Function);
                 m
             },
             parent: None,
@@ -153,11 +150,11 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                         _ => miette::bail!("Expected int index, found {:?}", tokens[1]),
                     };
 
-                    if i < 0 || i >= list.inner.len() as i64 {
+                    if i < 0 || i >= list.len() as i64 {
                         miette::bail!("Index out of bounds: {}", i);
                     }
 
-                    list.inner[i as usize].clone()
+                    list.get(i as usize).unwrap().clone()
                 }
 
                 Value::Map(map) => {
@@ -326,10 +323,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
         }
         Op::List => {
             if tokens.is_empty() {
-                return Ok(Value::List(List {
-                    elem_type: None,
-                    inner: Vec::new(),
-                }));
+                return Ok(Value::List(List::new()));
             }
 
             let mut list = Vec::with_capacity(tokens.len());
@@ -346,17 +340,11 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 list.push(value);
             }
 
-            Value::List(List {
-                elem_type: Some(kind),
-                inner: list,
-            })
+            Value::List(list.into())
         }
         Op::Map => {
             if tokens.is_empty() {
-                return Ok(Value::Map(Map {
-                    key_type: None,
-                    inner: HashMap::new(),
-                }));
+                return Ok(Value::Map(Map::new()));
             }
 
             let mut iter = tokens.iter();
@@ -378,10 +366,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
                 map.insert(MapKey::try_from(key)?, value);
             }
 
-            Value::Map(Map {
-                key_type: Some(key_kind),
-                inner: map,
-            })
+            Value::Map(map.into())
         }
         Op::IfTernary => {
             let lhs = match eval_ast(env, &tokens[0])?.value(env)? {
@@ -399,7 +384,7 @@ fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, 
         Op::In => {
             let lhs = eval_ast(env, &tokens[0])?.value(env)?;
             match eval_ast(env, &tokens[1])?.value(env)? {
-                Value::List(list) => Value::Bool(list.inner.contains(&lhs)),
+                Value::List(list) => Value::Bool(list.contains(&lhs)?),
                 _ => miette::bail!("Expected list, found {:?}", tokens[1]),
             }
         }
@@ -429,301 +414,6 @@ impl Object {
                 }
             }
         }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Value {
-    Int(i64),
-    Uint(u64),
-    Double(f64),
-    String(String),
-    Bool(bool),
-    Map(Map),
-    List(List),
-    Bytes(Vec<u8>),
-    Null,
-    Any(Box<Value>),
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Value::Int(n) => write!(f, "{}", n),
-            Value::Uint(n) => write!(f, "{}", n),
-            Value::Double(n) => write!(f, "{}", n),
-            Value::String(s) => write!(f, "{}", s),
-            Value::Bool(b) => write!(f, "{}", b),
-            Value::Map(map) => write!(f, "{:?}", map.inner),
-            Value::List(list) => write!(f, "{:?}", list.inner),
-            Value::Bytes(b) => write!(f, "{:?}", b),
-            Value::Null => write!(f, "null"),
-            Value::Any(v) => write!(f, "any({})", v),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Map {
-    key_type: Option<MapKeyType>,
-    inner: HashMap<MapKey, Value>,
-}
-
-impl Default for Map {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Map {
-    /// The new returns a map with no key type and no elements.
-    pub fn new() -> Self {
-        Self {
-            key_type: None,
-            inner: HashMap::new(),
-        }
-    }
-
-    /// Wrapper for https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.capacity
-    pub fn capacity(&self) -> usize {
-        self.inner.capacity()
-    }
-
-    /// Wrapper for https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.clear
-    /// It doesn't clear the key type.
-    pub fn clear(&mut self) {
-        self.inner.clear();
-    }
-
-    /// Wrapper for https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.reserve
-    pub fn get(&self, key: &MapKey) -> Result<Option<&Value>, Error> {
-        if let Some(ref key_type) = self.key_type {
-            if *key_type != key.kind() {
-                miette::bail!("Invalid key type: {:?}", key.kind());
-            }
-
-            Ok(self.inner.get(key))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn insert(&mut self, key: MapKey, value: Value) -> Result<&mut Self, Error> {
-        if let Some(ref key_type) = self.key_type {
-            if *key_type != key.kind() {
-                miette::bail!("Invalid key type: {:?}", key.kind());
-            }
-        } else {
-            self.key_type = Some(key.kind());
-        }
-
-        self.inner.insert(key, value);
-        Ok(self)
-    }
-
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct List {
-    elem_type: Option<ValueKind>,
-    inner: Vec<Value>,
-}
-
-impl List {
-    fn len(&self) -> usize {
-        self.inner.len()
-    }
-}
-
-impl From<i8> for Value {
-    fn from(n: i8) -> Self {
-        Value::Int(n as i64)
-    }
-}
-
-impl From<i16> for Value {
-    fn from(n: i16) -> Self {
-        Value::Int(n as i64)
-    }
-}
-
-impl From<i32> for Value {
-    fn from(n: i32) -> Self {
-        Value::Int(n as i64)
-    }
-}
-
-impl From<i64> for Value {
-    fn from(n: i64) -> Self {
-        Value::Int(n)
-    }
-}
-
-impl From<u8> for Value {
-    fn from(n: u8) -> Self {
-        Value::Uint(n as u64)
-    }
-}
-
-impl From<u16> for Value {
-    fn from(n: u16) -> Self {
-        Value::Uint(n as u64)
-    }
-}
-
-impl From<u32> for Value {
-    fn from(n: u32) -> Self {
-        Value::Uint(n as u64)
-    }
-}
-
-impl From<u64> for Value {
-    fn from(n: u64) -> Self {
-        Value::Uint(n)
-    }
-}
-
-impl From<String> for Value {
-    fn from(s: String) -> Self {
-        Value::String(s)
-    }
-}
-
-impl Value {
-    fn kind(&self) -> ValueKind {
-        match self {
-            Value::Int(_) => ValueKind::Int,
-            Value::Uint(_) => ValueKind::Uint,
-            Value::Double(_) => ValueKind::Double,
-            Value::String(_) => ValueKind::String,
-            Value::Bool(_) => ValueKind::Bool,
-            Value::Map(_) => ValueKind::Map,
-            Value::List(_) => ValueKind::List,
-            Value::Bytes(_) => ValueKind::Bytes,
-            Value::Null => ValueKind::Null,
-            Value::Any(v) => v.kind(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub enum ValueKind {
-    Int,
-    Uint,
-    Double,
-    String,
-    Bool,
-    Map,
-    List,
-    Bytes,
-    Null,
-}
-
-#[derive(Debug, PartialEq, Clone, Hash, Eq)]
-pub enum MapKeyType {
-    Int,
-    Uint,
-    String,
-    Bool,
-}
-
-impl TryFrom<ValueKind> for MapKeyType {
-    type Error = Error;
-
-    fn try_from(kind: ValueKind) -> Result<Self, Self::Error> {
-        match kind {
-            ValueKind::Int => Ok(MapKeyType::Int),
-            ValueKind::Uint => Ok(MapKeyType::Uint),
-            ValueKind::String => Ok(MapKeyType::String),
-            ValueKind::Bool => Ok(MapKeyType::Bool),
-            _ => miette::bail!("Invalid map key kind: {:?}", kind),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub enum MapKey {
-    Int(i64),
-    Uint(u64),
-    String(String),
-    Bool(bool),
-}
-
-impl MapKey {
-    fn kind(&self) -> MapKeyType {
-        match self {
-            MapKey::Int(_) => MapKeyType::Int,
-            MapKey::Uint(_) => MapKeyType::Uint,
-            MapKey::String(_) => MapKeyType::String,
-            MapKey::Bool(_) => MapKeyType::Bool,
-        }
-    }
-}
-
-impl fmt::Display for MapKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            MapKey::Int(n) => write!(f, "{}", n),
-            MapKey::Uint(n) => write!(f, "{}", n),
-            MapKey::String(s) => write!(f, "{}", s),
-            MapKey::Bool(b) => write!(f, "{}", b),
-        }
-    }
-}
-
-impl TryFrom<Value> for MapKey {
-    type Error = Error;
-
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
-        match value {
-            Value::Int(n) => Ok(MapKey::Int(n)),
-            Value::Uint(n) => Ok(MapKey::Uint(n)),
-            Value::String(s) => Ok(MapKey::String(s)),
-            Value::Bool(b) => Ok(MapKey::Bool(b)),
-            _ => miette::bail!("Invalid map key: {:?}", value),
-        }
-    }
-}
-
-fn fn_size(vals: &[Value]) -> Result<Value, Error> {
-    if vals.len() != 1 {
-        miette::bail!("Expected 1 argument, found {}", vals.len());
-    }
-
-    let v = match &vals[0] {
-        Value::Bytes(b) => Value::Int(b.len() as i64),
-        Value::String(s) => Value::Int(s.len() as i64),
-        Value::List(list) => Value::Int(list.len() as i64),
-        Value::Map(map) => Value::Int(map.len() as i64),
-        _ => miette::bail!("Invalid type for size: {:?}", vals[0].kind()),
-    };
-
-    Ok(v)
-}
-
-fn fn_type(vals: &[Value]) -> Result<Value, Error> {
-    if vals.len() != 1 {
-        miette::bail!("Expected 1 argument, found {}", vals.len());
-    }
-
-    match &vals[0] {
-        Value::Int(_) => Ok(Value::String("int".to_string())),
-        Value::Uint(_) => Ok(Value::String("uint".to_string())),
-        Value::Double(_) => Ok(Value::String("double".to_string())),
-        Value::String(_) => Ok(Value::String("string".to_string())),
-        Value::Bool(_) => Ok(Value::String("bool".to_string())),
-        Value::Map(_) => Ok(Value::String("map".to_string())),
-        Value::List(_) => Ok(Value::String("list".to_string())),
-        Value::Bytes(_) => Ok(Value::String("bytes".to_string())),
-        Value::Null => Ok(Value::String("null".to_string())),
-        Value::Any(v) => Ok(Value::String(fn_type(&[*v.clone()])?.to_string())),
     }
 }
 
@@ -1009,50 +699,32 @@ mod tests {
     fn test_list() {
         let env = Environment::default();
 
-        assert_eq!(
-            eval(&env, "[]").expect("[]"),
-            Value::List(List {
-                elem_type: None,
-                inner: Vec::new(),
-            })
-        );
+        assert_eq!(eval(&env, "[]").expect("[]"), Value::List(List::new()));
         assert_eq!(
             eval(&env, "[1, 2, 3]").expect("[1, 2, 3]"),
-            Value::List(List {
-                elem_type: Some(ValueKind::Int),
-                inner: vec![Value::Int(1), Value::Int(2), Value::Int(3)]
-            })
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)].into())
         );
         assert_eq!(
             eval(&env, "[1u, 2u, 3u]").expect("[1u, 2u, 3u]"),
-            Value::List(List {
-                elem_type: Some(ValueKind::Uint),
-                inner: vec![Value::Uint(1), Value::Uint(2), Value::Uint(3)]
-            })
+            Value::List(vec![Value::Uint(1), Value::Uint(2), Value::Uint(3)].into())
         );
         assert_eq!(
             eval(&env, "[1.0, 2.0, 3.0]").expect("[1.0, 2.0, 3.0]"),
-            Value::List(List {
-                elem_type: Some(ValueKind::Double),
-                inner: vec![Value::Double(1.0), Value::Double(2.0), Value::Double(3.0)]
-            })
+            Value::List(vec![Value::Double(1.0), Value::Double(2.0), Value::Double(3.0)].into())
         );
         assert_eq!(
             eval(&env, "[\"hello\", \"world\"]").expect("[\"hello\", \"world\"]"),
-            Value::List(List {
-                elem_type: Some(ValueKind::String),
-                inner: vec![
+            Value::List(
+                vec![
                     Value::String("hello".to_string()),
                     Value::String("world".to_string())
                 ]
-            })
+                .into()
+            )
         );
         assert_eq!(
             eval(&env, "[true, false]").expect("[true, false]"),
-            Value::List(List {
-                elem_type: Some(ValueKind::Bool),
-                inner: vec![Value::Bool(true), Value::Bool(false)]
-            })
+            Value::List(vec![Value::Bool(true), Value::Bool(false)].into())
         );
 
         // list elements must have the same type
@@ -1071,30 +743,18 @@ mod tests {
     #[test]
     fn test_map() {
         let tt = [
-            (
-                "{}",
-                Value::Map(Map {
-                    key_type: None,
-                    inner: HashMap::new(),
-                }),
-            ),
+            ("{}", Value::Map(Map::new())),
             ("{1: 2, 3: 4}", {
                 let mut map = HashMap::new();
                 map.insert(MapKey::Int(1), Value::Int(2));
                 map.insert(MapKey::Int(3), Value::Int(4));
-                Value::Map(Map {
-                    key_type: Some(MapKeyType::Int),
-                    inner: map,
-                })
+                Value::Map(map.into())
             }),
             ("{1u: 2u, 3u: 4u}", {
                 let mut map = HashMap::new();
                 map.insert(MapKey::Uint(1), Value::Uint(2));
                 map.insert(MapKey::Uint(3), Value::Uint(4));
-                Value::Map(Map {
-                    key_type: Some(MapKeyType::Uint),
-                    inner: map,
-                })
+                Value::Map(map.into())
             }),
             ("{\"hello\": \"world\"}", {
                 let mut map = HashMap::new();
@@ -1102,18 +762,12 @@ mod tests {
                     MapKey::String("hello".to_string()),
                     Value::String("world".to_string()),
                 );
-                Value::Map(Map {
-                    key_type: Some(MapKeyType::String),
-                    inner: map,
-                })
+                Value::Map(map.into())
             }),
             ("{true: false}", {
                 let mut map = HashMap::new();
                 map.insert(MapKey::Bool(true), Value::Bool(false));
-                Value::Map(Map {
-                    key_type: Some(MapKeyType::Bool),
-                    inner: map,
-                })
+                Value::Map(map.into())
             }),
         ];
 
@@ -1230,26 +884,17 @@ mod tests {
             let mut leaf = HashMap::new();
             leaf.insert(MapKey::String("y".to_string()), Value::Int(42));
 
-            let leaf = Value::Map(Map {
-                key_type: Some(MapKeyType::String),
-                inner: leaf,
-            });
+            let leaf = Value::Map(leaf.into());
 
             let mut middle_level = HashMap::new();
             middle_level.insert(MapKey::Int(0), leaf);
 
-            let middle_level = Value::Map(Map {
-                key_type: Some(MapKeyType::Int),
-                inner: middle_level,
-            });
+            let middle_level = Value::Map(middle_level.into());
 
             let mut root = HashMap::new();
             root.insert(MapKey::Bool(true), middle_level);
 
-            Value::Map(Map {
-                key_type: Some(MapKeyType::Bool),
-                inner: root,
-            })
+            Value::Map(root.into())
         })
         .expect("to set variable");
 
@@ -1263,23 +908,13 @@ mod tests {
     fn test_field_map_access() {
         let mut env = Environment::default();
         env.set_variable("x", {
-            let leaf = Value::Map(Map {
-                key_type: Some(MapKeyType::String),
-                inner: {
-                    let mut leaf = HashMap::new();
-                    leaf.insert(MapKey::String("z".to_string()), Value::Uint(42));
-                    leaf
-                },
-            });
+            let mut leaf = HashMap::new();
+            leaf.insert(MapKey::String("z".to_string()), Value::Uint(42));
+            let leaf = Value::Map(leaf.into());
 
-            Value::Map(Map {
-                key_type: Some(MapKeyType::String),
-                inner: {
-                    let mut root = HashMap::new();
-                    root.insert(MapKey::String("y".to_string()), leaf);
-                    root
-                },
-            })
+            let mut root = HashMap::new();
+            root.insert(MapKey::String("y".to_string()), leaf);
+            Value::Map(root.into())
         })
         .expect("to set variable");
 
