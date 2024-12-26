@@ -1,4 +1,5 @@
 use miette::Error;
+use serde::{ser::Serializer, Deserialize, Serialize};
 use std::collections::hash_map::{Drain, Entry, IntoValues, Iter, IterMut, Keys, RandomState};
 use std::collections::HashMap;
 use std::fmt;
@@ -331,6 +332,15 @@ impl Map {
     }
 }
 
+impl Serialize for Map {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.inner.serialize(serializer)
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Int(i64),
@@ -343,6 +353,23 @@ pub enum Value {
     Bytes(Vec<u8>),
     Null,
     Any(Box<Value>),
+}
+
+impl_value_conversions! {
+    i64 => Value::Int,
+    u64 => Value::Uint,
+    f64 => Value::Double,
+    String => Value::String,
+    bool => Value::Bool,
+    Map => Value::Map,
+    List => Value::List,
+    Vec<u8> => Value::Bytes,
+}
+
+impl From<&str> for Value {
+    fn from(value: &str) -> Self {
+        Value::String(value.to_string())
+    }
 }
 
 impl fmt::Display for Value {
@@ -367,6 +394,21 @@ impl Value {
         match self {
             Value::Any(v) => v.downcast(),
             _ => self,
+        }
+    }
+
+    pub fn kind(&self) -> ValueKind {
+        match self {
+            Value::Int(_) => ValueKind::Int,
+            Value::Uint(_) => ValueKind::Uint,
+            Value::Double(_) => ValueKind::Double,
+            Value::String(_) => ValueKind::String,
+            Value::Bool(_) => ValueKind::Bool,
+            Value::Map(_) => ValueKind::Map,
+            Value::List(_) => ValueKind::List,
+            Value::Bytes(_) => ValueKind::Bytes,
+            Value::Null => ValueKind::Null,
+            Value::Any(v) => v.kind(),
         }
     }
 
@@ -429,6 +471,26 @@ impl Value {
         };
 
         Ok(v)
+    }
+}
+
+impl Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Value::Int(n) => serializer.serialize_i64(*n),
+            Value::Uint(n) => serializer.serialize_u64(*n),
+            Value::Double(n) => serializer.serialize_f64(*n),
+            Value::String(s) => serializer.serialize_str(s),
+            Value::Bool(b) => serializer.serialize_bool(*b),
+            Value::Map(map) => map.serialize(serializer),
+            Value::List(list) => list.serialize(serializer),
+            Value::Bytes(b) => serializer.serialize_bytes(b),
+            Value::Null => serializer.serialize_none(),
+            Value::Any(v) => v.serialize(serializer),
+        }
     }
 }
 
@@ -502,37 +564,12 @@ impl Default for List {
     }
 }
 
-impl Value {
-    pub fn kind(&self) -> ValueKind {
-        match self {
-            Value::Int(_) => ValueKind::Int,
-            Value::Uint(_) => ValueKind::Uint,
-            Value::Double(_) => ValueKind::Double,
-            Value::String(_) => ValueKind::String,
-            Value::Bool(_) => ValueKind::Bool,
-            Value::Map(_) => ValueKind::Map,
-            Value::List(_) => ValueKind::List,
-            Value::Bytes(_) => ValueKind::Bytes,
-            Value::Null => ValueKind::Null,
-            Value::Any(v) => v.kind(),
-        }
-    }
-}
-
-impl_value_conversions! {
-    i64 => Value::Int,
-    u64 => Value::Uint,
-    f64 => Value::Double,
-    String => Value::String,
-    bool => Value::Bool,
-    Map => Value::Map,
-    List => Value::List,
-    Vec<u8> => Value::Bytes,
-}
-
-impl From<&str> for Value {
-    fn from(value: &str) -> Self {
-        Value::String(value.to_string())
+impl Serialize for List {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.inner.serialize(serializer)
     }
 }
 
@@ -571,7 +608,8 @@ impl TryFrom<ValueKind> for KeyType {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum Key {
     Int(i64),
     Uint(u64),
