@@ -5,6 +5,7 @@ use serde::{ser::Serializer, Deserialize, Serialize};
 use std::collections::hash_map::{self, Entry, IntoValues, Iter, IterMut, Keys, RandomState};
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 /// Map is a wrapper around HashMap with additional type checking.
 #[derive(Debug, PartialEq, Clone)]
@@ -358,7 +359,7 @@ impl From<serde_json::Value> for Map {
             serde_json::Value::Object(inner) => Map::from(
                 inner
                     .into_iter()
-                    .map(|(k, v)| (Key::String(k), Value::from(v)))
+                    .map(|(k, v)| (Key::String(Arc::new(k)), Value::from(v)))
                     .collect::<HashMap<Key, Value>>(),
             ),
             _ => Map::new(),
@@ -376,7 +377,7 @@ impl<'de> Deserialize<'de> for Map {
             Ok(Map::from(
                 inner
                     .into_iter()
-                    .map(|(k, v)| (Key::String(k), Value::from(v)))
+                    .map(|(k, v)| (Key::String(Arc::new(k)), Value::from(v)))
                     .collect::<HashMap<Key, Value>>(),
             ))
         } else {
@@ -398,18 +399,9 @@ mod tests {
         }));
 
         assert_eq!(map.len(), 3);
-        assert_eq!(
-            map.get(&Key::String("a".to_string())).unwrap().unwrap(),
-            &Value::Int(1)
-        );
-        assert_eq!(
-            map.get(&Key::String("b".to_string())).unwrap().unwrap(),
-            &Value::Int(2)
-        );
-        assert_eq!(
-            map.get(&Key::String("c".to_string())).unwrap().unwrap(),
-            &Value::Int(3)
-        );
+        assert_eq!(map.get(&Key::from("a")).unwrap().unwrap(), &Value::Int(1));
+        assert_eq!(map.get(&Key::from("b")).unwrap().unwrap(), &Value::Int(2));
+        assert_eq!(map.get(&Key::from("c")).unwrap().unwrap(), &Value::Int(3));
     }
 }
 
@@ -435,13 +427,42 @@ impl TryFrom<ValueKind> for KeyKind {
     }
 }
 
+fn arc_string_deserializer<'de, D>(deserializer: D) -> Result<Arc<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = String::deserialize(deserializer)?;
+    Ok(Arc::new(s))
+}
+
+fn arc_string_serializer<S>(s: &Arc<String>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(s)
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Key {
     Int(i64),
     Uint(u64),
-    String(String),
+    #[serde(deserialize_with = "arc_string_deserializer")]
+    #[serde(serialize_with = "arc_string_serializer")]
+    String(Arc<String>),
     Bool(bool),
+}
+
+impl From<&str> for Key {
+    fn from(value: &str) -> Self {
+        Key::String(Arc::new(value.to_string()))
+    }
+}
+
+impl From<String> for Key {
+    fn from(value: String) -> Self {
+        Key::String(Arc::new(value))
+    }
 }
 
 impl TryFrom<Value> for Key {
@@ -455,12 +476,6 @@ impl TryFrom<Value> for Key {
             Value::Bool(b) => Ok(Key::Bool(b)),
             _ => miette::bail!("Invalid map key: {:?}", value),
         }
-    }
-}
-
-impl From<&str> for Key {
-    fn from(value: &str) -> Self {
-        Key::String(value.to_string())
     }
 }
 

@@ -20,6 +20,7 @@ where
         } else {
             let mut list = List::with_capacity(values.len());
             list.inner = values.into_iter().map(Into::into).collect();
+            list.elem_type = list.inner.first().map(Value::kind);
             list
         }
     }

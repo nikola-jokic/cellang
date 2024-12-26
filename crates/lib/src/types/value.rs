@@ -1,30 +1,9 @@
 use super::{Key, List, Map};
 use miette::Error;
 use serde::{ser::Serializer, Serialize};
-use std::collections::HashMap;
 use std::fmt;
+use std::{collections::HashMap, sync::Arc};
 use time::{Duration, OffsetDateTime};
-
-macro_rules! impl_value_conversions {
-    ($($target_type: ty => $value_variant:path),* $(,)?) => {
-        $(
-            impl From<$target_type> for Value {
-                fn from(value: $target_type) -> Self {
-                    $value_variant(value)
-                }
-            }
-
-            impl From<Value> for $target_type {
-                fn from(value: Value) -> Self {
-                    match value {
-                        $value_variant(v) => v,
-                        _ => panic!("Invalid conversion from {:?} to {:?}", value, stringify!($target_type)),
-                    }
-                }
-            }
-        )*
-    }
-}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
 pub enum ValueKind {
@@ -46,7 +25,7 @@ pub enum Value {
     Int(i64),
     Uint(u64),
     Double(f64),
-    String(String),
+    String(Arc<String>),
     Bool(bool),
     Map(Map),
     List(List),
@@ -70,7 +49,7 @@ impl From<serde_json::Value> for Value {
                     Value::Double(n.as_f64().unwrap())
                 }
             }
-            serde_json::Value::String(s) => Value::String(s),
+            serde_json::Value::String(s) => Value::String(Arc::new(s)),
             serde_json::Value::Array(a) => {
                 if a.is_empty() {
                     Value::List(List::new())
@@ -86,7 +65,7 @@ impl From<serde_json::Value> for Value {
                 } else {
                     Value::Map(Map::from(
                         o.into_iter()
-                            .map(|(k, v)| (Key::String(k), Value::from(v)))
+                            .map(|(k, v)| (Key::from(k), Value::from(v)))
                             .collect::<HashMap<Key, Value>>(),
                     ))
                 }
@@ -95,20 +74,58 @@ impl From<serde_json::Value> for Value {
     }
 }
 
-impl_value_conversions! {
+macro_rules! impl_owned_value_conversions {
+    ($($target_type: ty => $value_variant:path),* $(,)?) => {
+        $(
+            impl From<$target_type> for Value {
+                fn from(value: $target_type) -> Self {
+                    $value_variant(value)
+                }
+            }
+
+            impl From<Value> for $target_type {
+                fn from(value: Value) -> Self {
+                    match value {
+                        $value_variant(v) => v,
+                        _ => panic!("Invalid conversion from {:?} to {:?}", value, stringify!($target_type)),
+                    }
+                }
+            }
+        )*
+    }
+}
+
+impl_owned_value_conversions! {
     i64 => Value::Int,
     u64 => Value::Uint,
     f64 => Value::Double,
-    String => Value::String,
     bool => Value::Bool,
+    Arc<String> => Value::String,
     Map => Value::Map,
     List => Value::List,
     Vec<u8> => Value::Bytes,
+    OffsetDateTime => Value::Timestamp,
+    Duration => Value::Duration,
+}
+
+impl From<String> for Value {
+    fn from(value: String) -> Self {
+        Value::String(Arc::new(value))
+    }
+}
+
+impl From<Value> for String {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::String(s) => s.as_ref().clone(),
+            _ => panic!("Invalid conversion from {:?} to String", value),
+        }
+    }
 }
 
 impl From<&str> for Value {
     fn from(value: &str) -> Self {
-        Value::String(value.to_string())
+        Value::String(Arc::new(value.to_string()))
     }
 }
 
@@ -152,7 +169,9 @@ impl Value {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
             (Value::Uint(a), Value::Uint(b)) => Ok(Value::Uint(a + b)),
             (Value::Double(a), Value::Double(b)) => Ok(Value::Double(a + b)),
-            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
+            (Value::String(a), Value::String(b)) => {
+                Ok(Value::String(Arc::new(format!("{}{}", a, b))))
+            }
             (Value::Bytes(a), Value::Bytes(b)) => {
                 Ok(Value::Bytes([a.as_slice(), b.as_slice()].concat()))
             }

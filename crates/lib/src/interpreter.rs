@@ -1,15 +1,11 @@
 use crate::{
     environment::Environment,
+    parser::{Atom, Op, TokenTree},
     types::{Key, KeyKind, Map, Value},
-    List,
+    List, Parser,
 };
 use miette::Error;
 use std::collections::HashMap;
-
-use crate::{
-    parser::{Atom, Op, TokenTree},
-    Parser,
-};
 
 /// Evaluate the given program in the given environment.
 /// The program is a string representation of the program.
@@ -18,7 +14,7 @@ pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
     match eval_ast(env, &tree) {
         Ok(Object::Value(val)) => Ok(val),
         Ok(Object::Ident(ident)) => {
-            let key = Key::String(ident);
+            let key = Key::from(ident);
             if let Some(val) = env.lookup_variable(&key)? {
                 Ok(val.clone())
             } else {
@@ -60,7 +56,7 @@ pub fn eval_atom(atom: &Atom) -> Result<Object, Error> {
         Atom::Int(n) => Object::Value(Value::Int(*n)),
         Atom::Uint(n) => Object::Value(Value::Uint(*n)),
         Atom::Double(n) => Object::Value(Value::Double(*n)),
-        Atom::String(s) => Object::Value(Value::String(s.to_string())),
+        Atom::String(s) => Object::Value(s.to_string().into()),
         Atom::Bool(b) => Object::Value(Value::Bool(*b)),
         Atom::Null => Object::Value(Value::Null),
         Atom::Bytes(b) => Object::Value(Value::Bytes(b.clone().to_vec())),
@@ -322,7 +318,7 @@ impl Object {
         match self {
             Object::Value(value) => Ok(value.clone()),
             Object::Ident(ident) => {
-                let ident = Key::String(ident.clone());
+                let ident = Key::from(ident.as_str());
                 if let Some(val) = env.lookup_variable(&ident)? {
                     Ok(val.clone())
                 } else {
@@ -345,10 +341,7 @@ mod tests {
         assert_eq!(eval(&env, "true").expect("true"), Value::Bool(true));
         assert_eq!(eval(&env, "false").expect("false"), Value::Bool(false));
         assert_eq!(eval(&env, "null").expect("null"), Value::Null);
-        assert_eq!(
-            eval(&env, "\"hello\"").expect("hello"),
-            Value::String("hello".to_string())
-        );
+        assert_eq!(eval(&env, "\"hello\"").expect("hello"), "hello".into());
     }
 
     #[test]
@@ -363,7 +356,7 @@ mod tests {
         );
         assert_eq!(
             eval(&env, "\"hello\" + \"world\"").expect("\"hello\" + \"world\""),
-            Value::String("helloworld".to_string())
+            "helloworld".into()
         );
     }
 
@@ -629,13 +622,7 @@ mod tests {
         );
         assert_eq!(
             eval(&env, "[\"hello\", \"world\"]").expect("[\"hello\", \"world\"]"),
-            Value::List(
-                vec![
-                    Value::String("hello".to_string()),
-                    Value::String("world".to_string())
-                ]
-                .into()
-            )
+            Value::List(vec!["hello".into(), Value::String("world".to_string().into())].into())
         );
         assert_eq!(
             eval(&env, "[true, false]").expect("[true, false]"),
@@ -673,10 +660,7 @@ mod tests {
             }),
             ("{\"hello\": \"world\"}", {
                 let mut map = HashMap::new();
-                map.insert(
-                    Key::String("hello".to_string()),
-                    Value::String("world".to_string()),
-                );
+                map.insert(Key::from("hello"), "world".into());
                 Value::Map(map.into())
             }),
             ("{true: false}", {
@@ -751,7 +735,7 @@ mod tests {
     #[test]
     fn test_variable() {
         let mut env = Environment::default();
-        env.set_variable(Key::String("x".to_string()), 42i64.into())
+        env.set_variable(Key::from("x"), 42i64.into())
             .expect("to set variable");
 
         assert_eq!(eval(&env, "x").expect("x"), Value::Int(42));
@@ -797,7 +781,7 @@ mod tests {
         let mut env = Environment::default();
         env.set_variable("x".into(), {
             let mut leaf = HashMap::new();
-            leaf.insert(Key::String("y".to_string()), Value::Int(42));
+            leaf.insert(Key::from("y"), Value::Int(42));
 
             let leaf = Value::Map(leaf.into());
 
@@ -824,11 +808,11 @@ mod tests {
         let mut env = Environment::default();
         env.set_variable("x".into(), {
             let mut leaf = HashMap::new();
-            leaf.insert(Key::String("z".to_string()), Value::Uint(42));
+            leaf.insert(Key::from("z"), Value::Uint(42));
             let leaf = Value::Map(leaf.into());
 
             let mut root = HashMap::new();
-            root.insert(Key::String("y".to_string()), leaf);
+            root.insert(Key::from("y"), leaf);
             Value::Map(root.into())
         })
         .expect("to set variable");
@@ -877,7 +861,7 @@ mod tests {
             ("[-1]", Value::List(List::from(vec![Value::Int(-1)]))),
             (r#"{"k":"v"}"#, {
                 let mut map = HashMap::new();
-                map.insert(Key::String("k".to_string()), Value::String("v".to_string()));
+                map.insert(Key::from("k".to_string()), "v".to_string().into());
                 Value::Map(map.into())
             }),
             ("true", true.into()),
