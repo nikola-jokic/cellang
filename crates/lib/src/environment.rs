@@ -1,4 +1,4 @@
-use crate::functions::{size, type_fn};
+use crate::functions;
 use crate::types::{Key, Value};
 use crate::{Function, Map};
 use miette::Error;
@@ -23,8 +23,23 @@ impl<'a> Environment<'a> {
             variables: Map::new(),
             functions: {
                 let mut m = HashMap::new();
-                m.insert("size".to_string(), Box::new(size) as Function);
-                m.insert("type".to_string(), Box::new(type_fn) as Function);
+                m.insert("size".to_string(), Box::new(functions::size) as Function);
+                m.insert("type".to_string(), Box::new(functions::type_fn) as Function);
+                m.insert("has".to_string(), Box::new(functions::has) as Function);
+                m.insert("all".to_string(), Box::new(functions::all) as Function);
+                m.insert(
+                    "exists".to_string(),
+                    Box::new(functions::exists) as Function,
+                );
+                m.insert(
+                    "exists_one".to_string(),
+                    Box::new(functions::exists_one) as Function,
+                );
+                m.insert("map".to_string(), Box::new(functions::map) as Function);
+                m.insert(
+                    "filter".to_string(),
+                    Box::new(functions::filter) as Function,
+                );
                 m
             },
             parent: None,

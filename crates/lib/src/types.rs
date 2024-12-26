@@ -588,10 +588,6 @@ impl List {
         }
     }
 
-    pub fn into_iter(self) -> vec::IntoIter<Value> {
-        self.inner.into_iter()
-    }
-
     pub fn element_type(&self) -> Option<ValueKind> {
         self.elem_type.clone()
     }
