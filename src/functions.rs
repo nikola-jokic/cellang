@@ -1,4 +1,8 @@
-use crate::{eval_ast, parser::TokenTree, Environment, Value};
+use crate::{
+    eval_ast,
+    parser::{Atom, Op, TokenTree},
+    Environment, Key, Value,
+};
 use miette::Error;
 
 pub fn size(env: &Environment, vals: &[TokenTree]) -> Result<Value, Error> {
@@ -39,9 +43,32 @@ pub fn type_fn(env: &Environment, vals: &[TokenTree]) -> Result<Value, Error> {
 }
 
 pub fn has(env: &Environment, vals: &[TokenTree]) -> Result<Value, Error> {
-    if vals.len() != 2 {
-        miette::bail!("Expected 2 arguments, found {}", vals.len());
+    if vals.len() != 1 {
+        miette::bail!("expected 1 argument, found {}", vals.len());
     }
 
-    todo!()
+    match &vals[0] {
+        TokenTree::Cons(op, tokens) if matches!(op, Op::Field | Op::Index) => {
+            let map = match eval_ast(env, &tokens[0])?.to_value(env)? {
+                Value::Map(m) => m,
+                _ => miette::bail!("Invalid type for has: {:?}", vals[0]),
+            };
+
+            match &tokens[1] {
+                TokenTree::Atom(Atom::Ident(ident)) => {
+                    if !matches!(*op, Op::Field) {
+                        miette::bail!("Invalid type for has: {:?}", vals[0]);
+                    }
+                    let key = Key::String(ident.to_string());
+                    Ok(Value::Bool(map.contains_key(&key)?))
+                }
+                TokenTree::Cons(_op, tokens) => {
+                    let env = env.new_child().with_variables(map);
+                    has(&env, tokens)
+                }
+                tree => miette::bail!("Invalid type for has: {:?}", tree),
+            }
+        }
+        tree => miette::bail!("Invalid type for has: {:?}", tree),
+    }
 }

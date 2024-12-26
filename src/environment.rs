@@ -39,6 +39,10 @@ impl<'a> Environment<'a> {
         }
     }
 
+    pub fn with_variables(self, variables: Map) -> Self {
+        Self { variables, ..self }
+    }
+
     pub fn get_variable(&self, name: &Key) -> Result<Option<&Value>, Error> {
         if let Some(val) = self.variables.get(name)? {
             Ok(Some(val))

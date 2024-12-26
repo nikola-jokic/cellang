@@ -631,6 +631,32 @@ mod tests {
                 ]
             )
         );
+
+        let input = "foo.check['bar'].baz";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Field,
+                vec![
+                    TokenTree::Atom(Atom::Ident("foo")),
+                    TokenTree::Cons(
+                        Op::Field,
+                        vec![
+                            TokenTree::Cons(
+                                Op::Index,
+                                vec![
+                                    TokenTree::Atom(Atom::Ident("check")),
+                                    TokenTree::Atom(Atom::String(Cow::Borrowed("bar"))),
+                                ]
+                            ),
+                            TokenTree::Atom(Atom::Ident("baz")),
+                        ]
+                    )
+                ]
+            )
+        );
     }
 
     #[test]
