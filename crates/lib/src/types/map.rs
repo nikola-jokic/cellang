@@ -33,15 +33,20 @@ impl Default for Map {
     }
 }
 
-impl From<HashMap<Key, Value>> for Map {
-    fn from(inner: HashMap<Key, Value>) -> Self {
+impl<K, V> From<HashMap<K, V>> for Map
+where
+    K: Into<Key>,
+    V: Into<Value>,
+{
+    fn from(inner: HashMap<K, V>) -> Self {
         if inner.is_empty() {
             Self::new()
         } else {
-            Self {
-                key_type: Some(inner.keys().next().unwrap().kind()),
-                inner,
+            let mut map = Map::new();
+            for (k, v) in inner {
+                map.insert(k.into(), v.into()).unwrap();
             }
+            map
         }
     }
 }
@@ -386,31 +391,18 @@ impl<'de> Deserialize<'de> for Map {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_deserialize_map() {
-        let map = Map::from(serde_json::json!({
-            "a": 1,
-            "b": 2,
-            "c": 3,
-        }));
-
-        assert_eq!(map.len(), 3);
-        assert_eq!(map.get(&Key::from("a")).unwrap().unwrap(), &Value::Int(1));
-        assert_eq!(map.get(&Key::from("b")).unwrap().unwrap(), &Value::Int(2));
-        assert_eq!(map.get(&Key::from("c")).unwrap().unwrap(), &Value::Int(3));
-    }
-}
-
 #[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
 pub enum KeyKind {
     Int,
     Uint,
     String,
     Bool,
+}
+
+impl From<Key> for KeyKind {
+    fn from(key: Key) -> Self {
+        key.kind()
+    }
 }
 
 impl TryFrom<ValueKind> for KeyKind {
@@ -490,6 +482,34 @@ impl Key {
     }
 }
 
+macro_rules! impl_owned_key_conversions {
+    ($($target_type: ty => $value_variant:path),* $(,)?) => {
+        $(
+            impl From<$target_type> for Key {
+                fn from(value: $target_type) -> Self {
+                    $value_variant(value)
+                }
+            }
+
+            impl From<Key> for $target_type {
+                fn from(value: Key) -> Self {
+                    match value {
+                        $value_variant(v) => v,
+                        _ => panic!("Invalid conversion from {:?} to {:?}", value, stringify!($target_type)),
+                    }
+                }
+            }
+        )*
+    }
+}
+
+impl_owned_key_conversions! {
+    i64 => Key::Int,
+    u64 => Key::Uint,
+    Arc<String> => Key::String,
+    bool => Key::Bool,
+}
+
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -498,5 +518,24 @@ impl fmt::Display for Key {
             Key::String(s) => write!(f, "{s}"),
             Key::Bool(b) => write!(f, "{b}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_map() {
+        let map = Map::from(serde_json::json!({
+            "a": 1,
+            "b": 2,
+            "c": 3,
+        }));
+
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.get(&Key::from("a")).unwrap().unwrap(), &Value::Int(1));
+        assert_eq!(map.get(&Key::from("b")).unwrap().unwrap(), &Value::Int(2));
+        assert_eq!(map.get(&Key::from("c")).unwrap().unwrap(), &Value::Int(3));
     }
 }

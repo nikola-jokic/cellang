@@ -861,7 +861,7 @@ mod tests {
             ("[-1]", Value::List(List::from(vec![Value::Int(-1)]))),
             (r#"{"k":"v"}"#, {
                 let mut map = HashMap::new();
-                map.insert("k".into(), "v".into());
+                map.insert("k", "v");
                 Value::Map(map.into())
             }),
             ("true", true.into()),

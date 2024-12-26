@@ -129,6 +129,25 @@ impl From<&str> for Value {
     }
 }
 
+impl<T> From<Vec<T>> for Value
+where
+    T: Into<Value>,
+{
+    fn from(value: Vec<T>) -> Self {
+        Value::List(List::from(value))
+    }
+}
+
+impl<K, V> From<HashMap<K, V>> for Value
+where
+    K: Into<Key>,
+    V: Into<Value>,
+{
+    fn from(v: HashMap<K, V>) -> Value {
+        Value::Map(Map::from(v))
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

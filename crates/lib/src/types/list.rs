@@ -12,7 +12,7 @@ pub struct List {
 
 impl<T> From<Vec<T>> for List
 where
-    T: Into<Value> + Clone,
+    T: Into<Value>,
 {
     fn from(values: Vec<T>) -> Self {
         if values.is_empty() {

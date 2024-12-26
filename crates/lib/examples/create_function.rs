@@ -54,26 +54,12 @@ fn main() {
 
     // Evaluate a simple expression
     let value = eval(&env, "'a,b,c'.split(',')").unwrap();
-    assert_eq!(
-        value,
-        Value::List(List::from(vec![
-            "a".to_string(),
-            "b".to_string(),
-            "c".to_string()
-        ]))
-    );
+    assert_eq!(value, Value::List(List::from(vec!["a", "b", "c",])));
 
     // Evaluate a simple expression with variables
     let mut variables = Map::new();
     variables.insert("x".into(), "a,b,c".into()).unwrap();
     let env = env.child().with_variables(variables);
     let value = eval(&env, "x.split(',')").unwrap();
-    assert_eq!(
-        value,
-        Value::List(List::from(vec![
-            "a".to_string(),
-            "b".to_string(),
-            "c".to_string()
-        ]))
-    );
+    assert_eq!(value, Value::List(List::from(vec!["a", "b", "c",])));
 }
