@@ -1,4 +1,5 @@
 use miette::Error;
+use serde::Deserializer;
 use serde::{ser::Serializer, Deserialize, Serialize};
 use std::collections::hash_map::{self, Entry, IntoValues, Iter, IterMut, Keys, RandomState};
 use std::collections::HashMap;
@@ -343,6 +344,39 @@ impl Serialize for Map {
     }
 }
 
+impl From<serde_json::Value> for Map {
+    fn from(value: serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::Object(inner) => Map::from(
+                inner
+                    .into_iter()
+                    .map(|(k, v)| (Key::String(k), Value::from(v)))
+                    .collect::<HashMap<Key, Value>>(),
+            ),
+            _ => Map::new(),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Map {
+    fn deserialize<D>(deserializer: D) -> Result<Map, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
+        if let serde_json::Value::Object(inner) = value {
+            Ok(Map::from(
+                inner
+                    .into_iter()
+                    .map(|(k, v)| (Key::String(k), Value::from(v)))
+                    .collect::<HashMap<Key, Value>>(),
+            ))
+        } else {
+            Err(serde::de::Error::custom("Invalid map"))
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Int(i64),
@@ -377,9 +411,7 @@ impl From<serde_json::Value> for Value {
                     Value::List(List::new())
                 } else {
                     Value::List(List::from(
-                        a.into_iter()
-                            .map(|v| Value::from(v))
-                            .collect::<Vec<Value>>(),
+                        a.into_iter().map(Value::from).collect::<Vec<Value>>(),
                     ))
                 }
             }
@@ -979,10 +1011,38 @@ impl Key {
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Key::Int(n) => write!(f, "{}", n),
-            Key::Uint(n) => write!(f, "{}", n),
-            Key::String(s) => write!(f, "{}", s),
-            Key::Bool(b) => write!(f, "{}", b),
+            Key::Int(n) => write!(f, "{n}"),
+            Key::Uint(n) => write!(f, "{n}"),
+            Key::String(s) => write!(f, "{s}"),
+            Key::Bool(b) => write!(f, "{b}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_map() {
+        let map = Map::from(serde_json::json!({
+            "a": 1,
+            "b": 2,
+            "c": 3,
+        }));
+
+        assert_eq!(map.len(), 3);
+        assert_eq!(
+            map.get(&Key::String("a".to_string())).unwrap().unwrap(),
+            &Value::Int(1)
+        );
+        assert_eq!(
+            map.get(&Key::String("b".to_string())).unwrap().unwrap(),
+            &Value::Int(2)
+        );
+        assert_eq!(
+            map.get(&Key::String("c".to_string())).unwrap().unwrap(),
+            &Value::Int(3)
+        );
     }
 }
