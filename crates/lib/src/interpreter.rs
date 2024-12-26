@@ -274,6 +274,7 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             match eval_ast(env, &tokens[1])?.to_value(env)? {
                 Value::List(list) => Value::Bool(list.contains(&lhs)?),
+                Value::Map(map) => Value::Bool(map.contains_key(&Key::try_from(lhs)?)?),
                 _ => miette::bail!("Expected list, found {:?}", tokens[1]),
             }
         }

@@ -496,6 +496,11 @@ impl Value {
             (Value::Bytes(a), Value::Bytes(b)) => {
                 Ok(Value::Bytes([a.as_slice(), b.as_slice()].concat()))
             }
+            (Value::List(a), Value::List(b)) => {
+                let mut list = a.clone();
+                list.append(&mut b.clone())?;
+                Ok(Value::List(list))
+            }
             _ => miette::bail!("Invalid types for plus: {:?} and {:?}", self, other),
         }
     }
