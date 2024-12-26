@@ -4,6 +4,11 @@ use crate::{Function, Map};
 use miette::Error;
 use std::collections::HashMap;
 
+/// The environment is a collection of variables and functions.
+/// The environment can have a parent environment, which is used for scoping.
+/// When looking up a variable or function, the environment will first look in its own variables
+/// and functions. If the variable or function is not found, it will look in the parent
+/// environment.
 pub struct Environment<'a> {
     pub variables: Map,
     pub functions: HashMap<String, Function>,
@@ -79,6 +84,8 @@ impl<'a> Environment<'a> {
         }
     }
 
+    /// The child returns a new environment with the current environment as its parent.
+    /// This environment can be used during evaluating sub-expressions, creating a new scope, etc.
     pub fn child(&'a self) -> Self {
         Self {
             variables: Map::new(),
@@ -87,14 +94,17 @@ impl<'a> Environment<'a> {
         }
     }
 
+    /// Replaces the variables in the environment with the given variables.
     pub fn with_variables(self, variables: Map) -> Self {
         Self { variables, ..self }
     }
 
+    /// Replaces the functions in the environment with the given functions.
     pub fn with_functions(self, functions: HashMap<String, Function>) -> Self {
         Self { functions, ..self }
     }
 
+    /// Replaces the parent environment with the given parent environment.
     pub fn with_parent(self, parent: &'a Environment<'a>) -> Self {
         Self {
             parent: Some(parent),
@@ -102,6 +112,8 @@ impl<'a> Environment<'a> {
         }
     }
 
+    /// Looks up the variable with the given name in the environment, going from the current
+    /// environment to the parent environment.
     pub fn lookup_variable(&self, name: &Key) -> Result<Option<&Value>, Error> {
         if let Some(val) = self.variables.get(name)? {
             Ok(Some(val))
@@ -112,9 +124,8 @@ impl<'a> Environment<'a> {
         }
     }
 
-    pub fn set_variable(&mut self, name: &str, value: Value) -> Result<&mut Self, Error> {
-        self.variables
-            .insert(Key::String(name.to_string()), value)?;
+    pub fn set_variable(&mut self, name: Key, value: Value) -> Result<&mut Self, Error> {
+        self.variables.insert(name, value)?;
         Ok(self)
     }
 

@@ -1009,6 +1009,12 @@ impl TryFrom<Value> for Key {
     }
 }
 
+impl From<&str> for Key {
+    fn from(value: &str) -> Self {
+        Key::String(value.to_string())
+    }
+}
+
 impl Key {
     fn kind(&self) -> KeyKind {
         match self {

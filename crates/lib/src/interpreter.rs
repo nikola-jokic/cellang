@@ -738,7 +738,7 @@ mod tests {
     #[test]
     fn test_variable() {
         let mut env = Environment::default();
-        env.set_variable("x", 42i64.into())
+        env.set_variable(Key::String("x".to_string()), 42i64.into())
             .expect("to set variable");
 
         assert_eq!(eval(&env, "x").expect("x"), Value::Int(42));
@@ -773,7 +773,7 @@ mod tests {
             "foo",
             Box::new(|_env, args: &[TokenTree]| Ok(Value::Int(args.len() as i64))),
         );
-        env.set_variable("x", 42i64.into())
+        env.set_variable("x".into(), 42i64.into())
             .expect("to set variable");
 
         assert_eq!(eval(&env, "x.foo()").expect("x.foo()"), Value::Int(1));
@@ -782,7 +782,7 @@ mod tests {
     #[test]
     fn test_index_map_access() {
         let mut env = Environment::default();
-        env.set_variable("x", {
+        env.set_variable("x".into(), {
             let mut leaf = HashMap::new();
             leaf.insert(Key::String("y".to_string()), Value::Int(42));
 
@@ -809,7 +809,7 @@ mod tests {
     #[test]
     fn test_field_map_access() {
         let mut env = Environment::default();
-        env.set_variable("x", {
+        env.set_variable("x".into(), {
             let mut leaf = HashMap::new();
             leaf.insert(Key::String("z".to_string()), Value::Uint(42));
             let leaf = Value::Map(leaf.into());

@@ -695,7 +695,7 @@ mod tests {
     fn test_has() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "a",
+            Key::String("a".to_string()),
             Value::Map(
                 Map::new()
                     .insert(
@@ -747,7 +747,7 @@ mod tests {
     fn test_all_list() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "list",
+            Key::String("list".to_string()),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -785,7 +785,7 @@ mod tests {
     fn test_all_map() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "m",
+            Key::String("m".to_string()),
             Value::Map(
                 Map::new()
                     .insert(Key::String("a".to_string()), Value::Int(1))
@@ -823,7 +823,7 @@ mod tests {
     fn test_exists_list() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "list",
+            Key::String("list".to_string()),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -861,7 +861,7 @@ mod tests {
     fn test_exists_map() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "m",
+            Key::String("m".to_string()),
             Value::Map(
                 Map::new()
                     .insert(Key::String("a".to_string()), Value::Int(1))
@@ -899,7 +899,7 @@ mod tests {
     fn test_exists_one_list() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "list",
+            Key::String("list".to_string()),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -937,7 +937,7 @@ mod tests {
     fn test_exists_one_map() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "m",
+            Key::String("m".to_string()),
             Value::Map(
                 Map::new()
                     .insert(Key::String("a".to_string()), Value::Int(1))
@@ -975,7 +975,7 @@ mod tests {
     fn test_map_list_3_args() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "list",
+            Key::String("list".to_string()),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -1014,7 +1014,7 @@ mod tests {
     fn test_map_map_3_args() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "m",
+            Key::String("m".to_string()),
             Value::Map(
                 Map::new()
                     .insert(Key::String("a".to_string()), Value::Int(1))
@@ -1053,7 +1053,7 @@ mod tests {
     fn test_map_list_4_args() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "list",
+            Key::String("list".to_string()),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -1094,7 +1094,7 @@ mod tests {
     fn test_map_map_4_args() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "m",
+            Key::String("m".to_string()),
             Value::Map(
                 Map::new()
                     .insert(Key::String("a".to_string()), Value::Int(1))
@@ -1135,7 +1135,7 @@ mod tests {
     fn test_filter_list() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "list",
+            Key::String("list".to_string()),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -1172,7 +1172,7 @@ mod tests {
     fn test_filter_map() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            "m",
+            Key::String("m".to_string()),
             Value::Map(
                 Map::new()
                     .insert(Key::String("a".to_string()), Value::Int(1))
