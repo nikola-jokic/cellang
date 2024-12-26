@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = "^4"
+clap = { version = "^4", features = ["derive"] }
+miette = { version="^7", features = ["fancy"] }
+cellang = { path = "../lib" }

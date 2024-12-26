@@ -21,94 +21,6 @@ pub struct Token<'src> {
     pub kind: TokenKind,
 }
 
-pub fn unescape(s: &str) -> Cow<'_, str> {
-    if !s.contains('\\') {
-        return Cow::Borrowed(s);
-    }
-
-    let mut buf = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c != '\\' {
-            buf.push(c);
-            continue;
-        }
-
-        let c = match chars.next() {
-            Some(c) => c,
-            None => break,
-        };
-
-        if let Some(c) = single_char_escape().get(&c) {
-            buf.push(*c);
-            continue;
-        }
-
-        match c {
-            'x' => {
-                let c = u8::from_str_radix(
-                    &read_chars_tested(&mut chars, 2, is_hex, "Expected 2 hex numbers after \\x")
-                        .expect("should be handled in lexing stage"),
-                    16,
-                )
-                .unwrap();
-                buf.push(c as char);
-            }
-            'u' => {
-                let c = char::from_u32(
-                    u32::from_str_radix(
-                        &read_chars_tested(
-                            &mut chars,
-                            4,
-                            is_hex,
-                            "Expected 4 hex numbers after \\u",
-                        )
-                        .expect("should be handled in lexing stage"),
-                        16,
-                    )
-                    .unwrap(),
-                )
-                .unwrap();
-                buf.push(c);
-            }
-            'U' => {
-                let c = char::from_u32(
-                    u32::from_str_radix(
-                        &read_chars_tested(
-                            &mut chars,
-                            8,
-                            is_hex,
-                            "Expected 8 hex numbers after \\U",
-                        )
-                        .expect("should be handled in lexing stage"),
-                        16,
-                    )
-                    .unwrap(),
-                )
-                .unwrap();
-                buf.push(c);
-            }
-            '0'..='7' => {
-                let c = u8::from_str_radix(
-                    &read_chars_tested(
-                        &mut chars,
-                        3,
-                        is_octal,
-                        "Expected 3 octal numbers after \\",
-                    )
-                    .expect("should be handled in lexing stage"),
-                    8,
-                )
-                .unwrap();
-                buf.push(c as char);
-            }
-            _ => unimplemented!(),
-        }
-    }
-
-    Cow::Owned(buf)
-}
-
 impl Token<'_> {
     pub fn unescape(s: &str) -> Cow<'_, str> {
         unescape(s)
@@ -971,6 +883,94 @@ fn read_chars_tested(
         buf.push(c);
     }
     Ok(buf)
+}
+
+pub fn unescape(s: &str) -> Cow<'_, str> {
+    if !s.contains('\\') {
+        return Cow::Borrowed(s);
+    }
+
+    let mut buf = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            buf.push(c);
+            continue;
+        }
+
+        let c = match chars.next() {
+            Some(c) => c,
+            None => break,
+        };
+
+        if let Some(c) = single_char_escape().get(&c) {
+            buf.push(*c);
+            continue;
+        }
+
+        match c {
+            'x' => {
+                let c = u8::from_str_radix(
+                    &read_chars_tested(&mut chars, 2, is_hex, "Expected 2 hex numbers after \\x")
+                        .expect("should be handled in lexing stage"),
+                    16,
+                )
+                .unwrap();
+                buf.push(c as char);
+            }
+            'u' => {
+                let c = char::from_u32(
+                    u32::from_str_radix(
+                        &read_chars_tested(
+                            &mut chars,
+                            4,
+                            is_hex,
+                            "Expected 4 hex numbers after \\u",
+                        )
+                        .expect("should be handled in lexing stage"),
+                        16,
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+                buf.push(c);
+            }
+            'U' => {
+                let c = char::from_u32(
+                    u32::from_str_radix(
+                        &read_chars_tested(
+                            &mut chars,
+                            8,
+                            is_hex,
+                            "Expected 8 hex numbers after \\U",
+                        )
+                        .expect("should be handled in lexing stage"),
+                        16,
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+                buf.push(c);
+            }
+            '0'..='7' => {
+                let c = u8::from_str_radix(
+                    &read_chars_tested(
+                        &mut chars,
+                        3,
+                        is_octal,
+                        "Expected 3 octal numbers after \\",
+                    )
+                    .expect("should be handled in lexing stage"),
+                    8,
+                )
+                .unwrap();
+                buf.push(c as char);
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    Cow::Owned(buf)
 }
 
 #[cfg(test)]
