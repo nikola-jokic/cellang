@@ -6,6 +6,7 @@ use crate::{
 };
 use miette::Error;
 use regex::Regex;
+use time::{format_description::well_known::Iso8601, Duration, OffsetDateTime};
 
 /// Returns the size of a value.
 pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
@@ -464,12 +465,141 @@ pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
+pub fn int(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 1 {
+        miette::bail!("expected 1 argument, found {}", tokens.len());
+    }
+
+    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::Int(i) => Value::Int(i),
+        Value::Uint(u) => Value::Int(u as i64),
+        Value::Double(d) => Value::Int(d as i64),
+        Value::String(s) => match s.parse::<i64>() {
+            Ok(i) => Value::Int(i),
+            Err(_) => miette::bail!("Invalid type for int: {:?}", tokens[0]),
+        },
+        Value::Timestamp(t) => Value::Int(t.unix_timestamp()),
+        _ => miette::bail!("Invalid type for int: {:?}", tokens[0]),
+    };
+
+    Ok(v)
+}
+
+pub fn string(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 1 {
+        miette::bail!("expected 1 argument, found {}", tokens.len());
+    }
+
+    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::Int(i) => Value::String(i.to_string()),
+        Value::Uint(u) => Value::String(u.to_string()),
+        Value::Double(d) => Value::String(d.to_string()),
+        Value::String(s) => Value::String(s),
+        Value::Bytes(s) => Value::String(String::from_utf8_lossy(&s).to_string()),
+        Value::Bool(b) => Value::String(b.to_string()),
+        Value::Null => Value::String("null".to_string()),
+        Value::Timestamp(t) => Value::String(t.to_string()),
+        Value::Duration(d) => Value::String(d.to_string()),
+        _ => miette::bail!("Invalid type for string: {:?}", tokens[0]),
+    };
+
+    Ok(v)
+}
+
+pub fn timestamp(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 1 {
+        miette::bail!("expected 1 argument, found {}", tokens.len());
+    }
+
+    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::String(s) => {
+            let t = match OffsetDateTime::parse(&s, &Iso8601::PARSING) {
+                Ok(t) => t,
+                Err(e) => miette::bail!("Invalid timestamp: {:?}", e),
+            };
+
+            Value::Timestamp(t)
+        }
+        _ => miette::bail!("Invalid type for timestamp: {:?}", tokens[0]),
+    };
+
+    Ok(v)
+}
+
 pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
 
     let v = eval_ast(env, &tokens[0])?.to_value(env)?;
+
+    Ok(v)
+}
+
+pub fn duration(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 1 {
+        miette::bail!("expected 1 argument, found {}", tokens.len());
+    }
+
+    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::String(s) => {
+            let mut result = Duration::ZERO;
+            let mut acc = 0i64;
+            let mut chars = s.chars().peekable();
+            while let Some(c) = chars.next() {
+                match c {
+                    c if c.is_ascii_digit() => {
+                        let d = c.to_digit(10).unwrap() as i64;
+                        acc *= 10 + d;
+                        continue;
+                    }
+                    'd' => {
+                        result += Duration::days(acc);
+                        acc = 0;
+                    }
+                    'h' => {
+                        result += Duration::hours(acc);
+                        acc = 0;
+                    }
+                    'm' => {
+                        if chars.peek() == Some(&'s') {
+                            result += Duration::milliseconds(acc);
+                            chars.next();
+                            acc = 0;
+                        } else {
+                            result += Duration::minutes(acc);
+                            acc = 0;
+                        }
+                    }
+                    's' => {
+                        result += Duration::seconds(acc);
+                        acc = 0;
+                    }
+                    'n' => {
+                        if chars.peek() == Some(&'s') {
+                            result += Duration::nanoseconds(acc);
+                            chars.next();
+                            acc = 0;
+                        } else {
+                            miette::bail!("Invalid type for duration: {:?}", tokens[0]);
+                        }
+                    }
+                    _ => miette::bail!("Invalid type for duration: {:?}", tokens[0]),
+                }
+            }
+
+            if acc != 0 {
+                miette::bail!("Invalid type for duration: {:?}", tokens[0]);
+            }
+
+            if result == Duration::ZERO {
+                miette::bail!("Invalid type for duration: {:?}", tokens[0]);
+            }
+
+            Value::Duration(result)
+        }
+        _ => miette::bail!("Invalid type for duration: {:?}", tokens[0]),
+    };
 
     Ok(v)
 }
@@ -495,7 +625,11 @@ mod tests {
         is_function(Box::new(starts_with));
         is_function(Box::new(matches));
         is_function(Box::new(uint));
+        is_function(Box::new(int));
+        is_function(Box::new(string));
         is_function(Box::new(dyn_fn));
+        is_function(Box::new(duration));
+        is_function(Box::new(timestamp));
     }
 
     #[test]

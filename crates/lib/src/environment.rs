@@ -53,10 +53,26 @@ impl<'a> Environment<'a> {
                     Box::new(functions::matches) as Function,
                 );
                 m.insert(
+                    "int".to_string(), // for some reason, this is cammel case in spec
+                    Box::new(functions::int) as Function,
+                );
+                m.insert(
                     "uint".to_string(), // for some reason, this is cammel case in spec
                     Box::new(functions::uint) as Function,
                 );
+                m.insert(
+                    "string".to_string(), // for some reason, this is cammel case in spec
+                    Box::new(functions::string) as Function,
+                );
+                m.insert(
+                    "timestamp".to_string(),
+                    Box::new(functions::timestamp) as Function,
+                );
                 m.insert("dyn".to_string(), Box::new(functions::dyn_fn) as Function);
+                m.insert(
+                    "duration".to_string(),
+                    Box::new(functions::duration) as Function,
+                );
                 m
             },
             parent: None,

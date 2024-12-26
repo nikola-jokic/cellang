@@ -648,7 +648,7 @@ impl Serialize for Value {
             Value::List(list) => list.serialize(serializer),
             Value::Bytes(b) => serializer.serialize_bytes(b),
             Value::Null => serializer.serialize_none(),
-            Value::Timestamp(t) => serializer.serialize_str(&t.to_string()),
+            Value::Timestamp(t) => time::serde::iso8601::serialize(t, serializer),
             Value::Duration(d) => serializer.serialize_str(&d.to_string()),
         }
     }
