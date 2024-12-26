@@ -8,13 +8,12 @@ use miette::Error;
 use regex::Regex;
 
 /// Returns the size of a value.
-/// This is an implementation of https://github.com/google/cel-spec/blob/master/doc/langdef.md#functions
 pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("Expected 1 argument, found {}", tokens.len());
     }
 
-    let v = match eval_ast(env, &tokens[0])?.to_value(env)?.downcast() {
+    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
         Value::Bytes(b) => Value::Int(b.len() as i64),
         Value::String(s) => Value::Int(s.len() as i64),
         Value::List(list) => Value::Int(list.len() as i64),
@@ -30,7 +29,7 @@ pub fn type_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> 
         miette::bail!("Expected 1 argument, found {}", tokens.len());
     }
 
-    let v = match eval_ast(env, &tokens[0])?.to_value(env)?.downcast() {
+    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
         Value::Int(_) => Value::String("int".to_string()),
         Value::Uint(_) => Value::String("uint".to_string()),
         Value::Double(_) => Value::String("double".to_string()),
@@ -40,7 +39,8 @@ pub fn type_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> 
         Value::List(_) => Value::String("list".to_string()),
         Value::Bytes(_) => Value::String("bytes".to_string()),
         Value::Null => Value::String("null".to_string()),
-        Value::Any(_) => unreachable!(),
+        Value::Timestamp(_) => Value::String("timestamp".to_string()),
+        Value::Duration(_) => Value::String("duration".to_string()),
     };
 
     Ok(v)
@@ -445,6 +445,35 @@ pub fn matches(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> 
     }
 }
 
+pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 1 {
+        miette::bail!("expected 1 argument, found {}", tokens.len());
+    }
+
+    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::Int(i) => Value::Uint(i as u64),
+        Value::Uint(u) => Value::Uint(u),
+        Value::Double(d) => Value::Uint(d as u64),
+        Value::String(s) => match s.parse::<u64>() {
+            Ok(u) => Value::Uint(u),
+            Err(_) => miette::bail!("Invalid type for uint: {:?}", tokens[0]),
+        },
+        _ => miette::bail!("Invalid type for uint: {:?}", tokens[0]),
+    };
+
+    Ok(v)
+}
+
+pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 1 {
+        miette::bail!("expected 1 argument, found {}", tokens.len());
+    }
+
+    let v = eval_ast(env, &tokens[0])?.to_value(env)?;
+
+    Ok(v)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -465,6 +494,8 @@ mod tests {
         is_function(Box::new(contains));
         is_function(Box::new(starts_with));
         is_function(Box::new(matches));
+        is_function(Box::new(uint));
+        is_function(Box::new(dyn_fn));
     }
 
     #[test]

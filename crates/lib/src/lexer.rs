@@ -15,6 +15,8 @@ impl fmt::Display for Eof {
 impl std::error::Error for Eof {}
 
 /// Token represents a single token in the source code.
+/// The token from the lexer is used by the parser to build the AST (or a TokenTree).
+/// It is up to the parser to decide how to use the token.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token<'src> {
     pub origin: &'src str,
@@ -33,6 +35,9 @@ impl Token<'_> {
     }
 }
 
+/// TokenKind represents the kind of token.
+/// It is used by the parser to build the AST.
+/// The parser is responsible for deciding how to interpret the token.
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TokenKind {
     LeftParen,
@@ -204,6 +209,10 @@ impl fmt::Display for Token<'_> {
     }
 }
 
+/// Lexer is a simple lexer that tokenizes the source code.
+/// It is used by the parser to build the AST.
+///
+/// The lexer implements the Iterator trait and returns a token at a time.
 pub struct Lexer<'src> {
     whole: &'src str,
     rest: &'src str,
@@ -213,6 +222,7 @@ pub struct Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
+    /// Create a new lexer from the source code.
     pub fn new(input: &'src str) -> Self {
         Self {
             whole: input,
@@ -223,6 +233,10 @@ impl<'src> Lexer<'src> {
         }
     }
 
+    /// Expect a token of a specific kind.
+    /// If the next token is not of the expected kind, an error is returned
+    /// with a labeled span pointing to the unexpected token and an error message
+    /// provided by the caller.
     pub fn expect(
         &mut self,
         expected: TokenKind,
@@ -231,6 +245,10 @@ impl<'src> Lexer<'src> {
         self.expect_where(|next| next.kind == expected, unexpected)
     }
 
+    /// Expect a token that satisfies a predicate.
+    /// If the next token does not satisfy the predicate, an error is returned
+    /// with a labeled span pointing to the unexpected token and an error message
+    /// provided by the caller.
     pub fn expect_where(
         &mut self,
         mut check: impl FnMut(&Token<'src>) -> bool,
@@ -251,6 +269,8 @@ impl<'src> Lexer<'src> {
         }
     }
 
+    /// Peek at the next token without consuming it.
+    /// The peeked token is returned by the next call to next().
     pub fn peek(&mut self) -> Option<&Result<Token<'src>, miette::Error>> {
         if self.peeked.is_none() {
             self.peeked = self.next();
@@ -272,6 +292,7 @@ impl<'src> Lexer<'src> {
 impl<'src> Iterator for Lexer<'src> {
     type Item = Result<Token<'src>, Error>;
 
+    /// Get the next token from the source code.
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(peeked) = self.peeked.take() {
             return Some(peeked);
@@ -887,7 +908,7 @@ fn read_chars_tested(
     Ok(buf)
 }
 
-pub fn unescape(s: &str) -> Cow<'_, str> {
+pub(crate) fn unescape(s: &str) -> Cow<'_, str> {
     if !s.contains('\\') {
         return Cow::Borrowed(s);
     }

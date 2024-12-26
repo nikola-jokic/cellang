@@ -52,6 +52,11 @@ impl<'a> Environment<'a> {
                     "matches".to_string(),
                     Box::new(functions::matches) as Function,
                 );
+                m.insert(
+                    "uint".to_string(), // for some reason, this is cammel case in spec
+                    Box::new(functions::uint) as Function,
+                );
+                m.insert("dyn".to_string(), Box::new(functions::dyn_fn) as Function);
                 m
             },
             parent: None,

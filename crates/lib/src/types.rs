@@ -5,10 +5,12 @@ use std::collections::hash_map::{self, Entry, IntoValues, Iter, IterMut, Keys, R
 use std::collections::HashMap;
 use std::fmt;
 use std::vec;
+use time::{Duration, OffsetDateTime};
 
 use crate::parser::TokenTree;
 use crate::{impl_value_conversions, Environment};
 
+/// Function is a wrapper for a dynamic function that can be registered in the environment.
 pub type Function = Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error>>;
 
 /// Map is a wrapper around HashMap with additional type checking.
@@ -388,7 +390,8 @@ pub enum Value {
     List(List),
     Bytes(Vec<u8>),
     Null,
-    Any(Box<Value>),
+    Timestamp(OffsetDateTime),
+    Duration(Duration),
 }
 
 impl From<serde_json::Value> for Value {
@@ -450,28 +453,22 @@ impl From<&str> for Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Value::Int(n) => write!(f, "{}", n),
-            Value::Uint(n) => write!(f, "{}", n),
-            Value::Double(n) => write!(f, "{}", n),
-            Value::String(s) => write!(f, "{}", s),
-            Value::Bool(b) => write!(f, "{}", b),
+            Value::Int(n) => write!(f, "{n}"),
+            Value::Uint(n) => write!(f, "{n}"),
+            Value::Double(n) => write!(f, "{n}"),
+            Value::String(s) => write!(f, "{s}"),
+            Value::Bool(b) => write!(f, "{b}"),
             Value::Map(map) => write!(f, "{:?}", map.inner),
             Value::List(list) => write!(f, "{:?}", list.inner),
-            Value::Bytes(b) => write!(f, "{:?}", b),
+            Value::Bytes(b) => write!(f, "{b:?}"),
             Value::Null => write!(f, "null"),
-            Value::Any(v) => write!(f, "any({})", v),
+            Value::Timestamp(v) => write!(f, "{v}"),
+            Value::Duration(v) => write!(f, "{v:?}"),
         }
     }
 }
 
 impl Value {
-    pub fn downcast(&self) -> &Value {
-        match self {
-            Value::Any(v) => v.downcast(),
-            _ => self,
-        }
-    }
-
     pub fn kind(&self) -> ValueKind {
         match self {
             Value::Int(_) => ValueKind::Int,
@@ -483,12 +480,13 @@ impl Value {
             Value::List(_) => ValueKind::List,
             Value::Bytes(_) => ValueKind::Bytes,
             Value::Null => ValueKind::Null,
-            Value::Any(v) => v.kind(),
+            Value::Timestamp(_) => ValueKind::Timestamp,
+            Value::Duration(_) => ValueKind::Duration,
         }
     }
 
     pub fn plus(&self, other: &Value) -> Result<Value, Error> {
-        match (self.downcast(), other.downcast()) {
+        match (self, other) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
             (Value::Uint(a), Value::Uint(b)) => Ok(Value::Uint(a + b)),
             (Value::Double(a), Value::Double(b)) => Ok(Value::Double(a + b)),
@@ -501,34 +499,33 @@ impl Value {
                 list.append(&mut b.clone())?;
                 Ok(Value::List(list))
             }
+            (Value::Timestamp(t), Value::Duration(d)) => Ok(Value::Timestamp(*t + *d)),
+            (Value::Duration(d), Value::Timestamp(t)) => Ok(Value::Timestamp(*t + *d)),
+            (Value::Duration(d1), Value::Duration(d2)) => Ok(Value::Duration(*d1 + *d2)),
+
             _ => miette::bail!("Invalid types for plus: {:?} and {:?}", self, other),
         }
     }
 
     pub fn minus(&self, other: &Value) -> Result<Value, Error> {
-        match (self.downcast(), other.downcast()) {
+        match (self, other) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
             (Value::Uint(a), Value::Uint(b)) => Ok(Value::Uint(a - b)),
             (Value::Double(a), Value::Double(b)) => Ok(Value::Double(a - b)),
+            (Value::Timestamp(t), Value::Duration(d)) => Ok(Value::Timestamp(*t - *d)),
+            (Value::Duration(d), Value::Timestamp(t)) => Ok(Value::Timestamp(*t - *d)),
+            (Value::Duration(d1), Value::Duration(d2)) => Ok(Value::Duration(*d1 - *d2)),
             _ => miette::bail!("Invalid types for minus: {:?} and {:?}", self, other),
         }
     }
 
+    /// The equal method compares two values and returns a boolean value.
+    /// Values MUST be of the same type. If they are not, an error is returned.
     pub fn equal(&self, other: &Value) -> Result<Value, Error> {
-        let v = match (self.downcast(), other.downcast()) {
-            (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs == rhs),
-            (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs == rhs),
-            (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs == rhs),
-            (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs == rhs),
-            (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs == rhs),
-            (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs == rhs),
-            (Value::Null, Value::Null) => Value::Bool(true),
-            (Value::List(lhs), Value::List(rhs)) => Value::Bool(lhs == rhs),
-            (Value::Map(lhs), Value::Map(rhs)) => Value::Bool(lhs == rhs),
-            (left, right) => miette::bail!("Cannot compare {:?} and {:?}", left, right),
-        };
-
-        Ok(v)
+        if self.kind() != other.kind() {
+            miette::bail!("Cannot compare {:?} and {:?}", self, other);
+        }
+        Ok(Value::Bool(self == other))
     }
 
     pub fn not_equal(&self, other: &Value) -> Result<Value, Error> {
@@ -540,13 +537,15 @@ impl Value {
     }
 
     pub fn greater(&self, other: &Value) -> Result<Value, Error> {
-        let v = match (self.downcast(), other.downcast()) {
+        let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs > rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs > rhs),
             (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs > rhs),
             (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs > rhs),
             (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs > rhs),
             (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs > rhs),
+            (Value::Timestamp(t1), Value::Timestamp(t2)) => Value::Bool(t1 > t2),
+            (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 > d2),
             (left, right) => miette::bail!("Cannot compare {:?} and {:?}", left, right),
         };
 
@@ -554,13 +553,15 @@ impl Value {
     }
 
     pub fn greater_equal(&self, other: &Value) -> Result<Value, Error> {
-        let v = match (self.downcast(), other.downcast()) {
+        let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs >= rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs >= rhs),
             (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs >= rhs),
             (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs >= rhs),
             (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs >= rhs),
             (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs >= rhs),
+            (Value::Timestamp(t1), Value::Timestamp(t2)) => Value::Bool(t1 >= t2),
+            (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 >= d2),
             _ => miette::bail!("Failed to compare {self:?} >= {other:?}"),
         };
 
@@ -568,13 +569,15 @@ impl Value {
     }
 
     pub fn less(&self, other: &Value) -> Result<Value, Error> {
-        let v = match (self.downcast(), other.downcast()) {
+        let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs < rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs < rhs),
             (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs < rhs),
             (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs < rhs),
             (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs < rhs),
             (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs < rhs),
+            (Value::Timestamp(t1), Value::Timestamp(t2)) => Value::Bool(t1 < t2),
+            (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 < d2),
             _ => miette::bail!("Failed to compare {self:?} < {other:?}"),
         };
 
@@ -582,13 +585,15 @@ impl Value {
     }
 
     pub fn less_equal(&self, other: &Value) -> Result<Value, Error> {
-        let v = match (self.downcast(), other.downcast()) {
+        let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs <= rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs <= rhs),
             (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs <= rhs),
             (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs <= rhs),
             (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs <= rhs),
             (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs <= rhs),
+            (Value::Timestamp(t1), Value::Timestamp(t2)) => Value::Bool(t1 <= t2),
+            (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 <= d2),
             _ => miette::bail!("Failed to compare {self:?} <= {other:?}"),
         };
 
@@ -596,7 +601,7 @@ impl Value {
     }
 
     pub fn multiply(&self, other: &Value) -> Result<Value, Error> {
-        let v = match (self.downcast(), other.downcast()) {
+        let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
             (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs * rhs),
@@ -607,7 +612,7 @@ impl Value {
     }
 
     pub fn devide(&self, other: &Value) -> Result<Value, Error> {
-        let v = match (self.downcast(), other.downcast()) {
+        let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs / rhs),
             (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs / rhs),
@@ -618,7 +623,7 @@ impl Value {
     }
 
     pub fn reminder(&self, other: &Value) -> Result<Value, Error> {
-        let v = match (self.downcast(), other.downcast()) {
+        let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
             _ => miette::bail!("Failed to get reminder {self:?} % {other:?}"),
@@ -643,7 +648,8 @@ impl Serialize for Value {
             Value::List(list) => list.serialize(serializer),
             Value::Bytes(b) => serializer.serialize_bytes(b),
             Value::Null => serializer.serialize_none(),
-            Value::Any(v) => v.serialize(serializer),
+            Value::Timestamp(t) => serializer.serialize_str(&t.to_string()),
+            Value::Duration(d) => serializer.serialize_str(&d.to_string()),
         }
     }
 }
@@ -953,6 +959,8 @@ pub enum ValueKind {
     Map,
     List,
     Bytes,
+    Timestamp,
+    Duration,
     Null,
 }
 
@@ -996,7 +1004,6 @@ impl TryFrom<Value> for Key {
             Value::Uint(n) => Ok(Key::Uint(n)),
             Value::String(s) => Ok(Key::String(s)),
             Value::Bool(b) => Ok(Key::Bool(b)),
-            Value::Any(v) => Key::try_from(*v),
             _ => miette::bail!("Invalid map key: {:?}", value),
         }
     }

@@ -285,6 +285,14 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
     Ok(val)
 }
 
+/// Object represents a value or an identifier.
+/// If the object is an identifier, identifier can either be a variable or a function.
+/// Value variant is a primitive value
+/// Ident variant is a variable or a function name
+///
+/// The identifier resolution is done in some context. If it is a function call,
+/// then the lookup should be performed in function list.
+/// Otherwise, it should be looked up in the variable list.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     Value(Value),
@@ -292,19 +300,14 @@ pub enum Object {
 }
 
 impl Object {
-    /// Get the value of the object. If the object is an identifier, look up the value in the
-    /// environment.
+    /// Get the value of the object. If the object is an identifier,
+    /// look up the value in the environment.
+    /// It always resolves to a variable lookup since function is not a value.
+    ///
+    /// If the function resolution is needed, it should be done in the caller.
     pub fn to_value(&self, env: &Environment) -> Result<Value, Error> {
         match self {
-            Object::Value(value) => {
-                let value = match value {
-                    Value::Any(v) => v.downcast(),
-                    value => value,
-                };
-
-                Ok(value.clone())
-            }
-
+            Object::Value(value) => Ok(value.clone()),
             Object::Ident(ident) => {
                 let ident = Key::String(ident.clone());
                 if let Some(val) = env.lookup_variable(&ident)? {
