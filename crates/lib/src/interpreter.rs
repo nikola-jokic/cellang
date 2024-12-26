@@ -161,12 +161,19 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
             }
         }
         Op::And => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            match (lhs, rhs) {
-                (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs && rhs),
-                _ => miette::bail!("Expected bool, found {:?}", tokens),
+            let lhs = eval_ast(env, &tokens[0])
+                .unwrap_or(Object::Value(Value::Bool(false)))
+                .to_value(env)
+                .unwrap_or(Value::Bool(false));
+
+            if lhs == Value::Bool(false) {
+                return Ok(Value::Bool(false));
             }
+
+            eval_ast(env, &tokens[1])
+                .unwrap_or(Object::Value(Value::Bool(false)))
+                .to_value(env)
+                .unwrap_or(Value::Bool(false))
         }
         Op::Or => {
             assert!(tokens.len() == 2);
@@ -176,19 +183,14 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
                 .to_value(env)
                 .unwrap_or(Value::Bool(false));
 
-            let rhs = eval_ast(env, &tokens[1])
+            if lhs == Value::Bool(true) {
+                return Ok(Value::Bool(true));
+            }
+
+            eval_ast(env, &tokens[1])
                 .unwrap_or(Object::Value(Value::Bool(false)))
                 .to_value(env)
-                .unwrap_or(Value::Bool(false));
-
-            match (lhs, rhs) {
-                // short-circuit evaluation
-                (Value::Bool(true), _) => Value::Bool(true),
-                (_, Value::Bool(true)) => Value::Bool(true),
-                // normal evaluation
-                (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs || rhs),
-                _ => miette::bail!("Expected bool, found {:?}", tokens),
-            }
+                .unwrap_or(Value::Bool(false))
         }
         Op::NotEqual => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;

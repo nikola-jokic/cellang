@@ -42,7 +42,7 @@ impl Map {
         }
     }
 
-    pub fn new_with_key_type(key_type: KeyType) -> Self {
+    pub fn with_key_type(key_type: KeyType) -> Self {
         Self {
             key_type: Some(key_type),
             inner: HashMap::new(),
@@ -457,6 +457,10 @@ impl List {
             elem_type: None,
             inner: Vec::new(),
         }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Value> {
+        self.inner.iter()
     }
 
     pub fn new_with_type(elem_type: ValueKind) -> Self {

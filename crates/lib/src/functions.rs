@@ -1,7 +1,8 @@
 use crate::{
     eval_ast,
     parser::{Atom, Op, TokenTree},
-    Environment, Key, Value,
+    types::Map,
+    Environment, Key, KeyType, Value,
 };
 use miette::Error;
 
@@ -70,5 +71,199 @@ pub fn has(env: &Environment, vals: &[TokenTree]) -> Result<Value, Error> {
             }
         }
         tree => miette::bail!("Invalid type for has: {:?}", tree),
+    }
+}
+
+pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 3 {
+        miette::bail!("expected 3 arguments, found {}", tokens.len());
+    }
+
+    // expect first parameter to be a list
+    let list = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::List(l) => l,
+        _ => miette::bail!("Invalid type for all: {:?}", tokens[0]),
+    };
+
+    // expect second parameter to be an identifier
+    let ident = match &tokens[1] {
+        TokenTree::Atom(Atom::Ident(ident)) => ident,
+        _ => miette::bail!("Invalid type for all: {:?}", tokens[1]),
+    };
+
+    // expect third parameter to be a lambda
+    let lambda = &tokens[2];
+
+    let mut env = env.new_child();
+    let key = Key::String(ident.to_string());
+    let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
+
+    let mut all = true;
+    for item in list.iter() {
+        variables.insert(key.clone(), item.clone())?;
+        env.variables = variables.clone();
+        match eval_ast(&env, lambda)?.to_value(&env)? {
+            Value::Bool(b) => {
+                if !b {
+                    all = false;
+                    break;
+                }
+            }
+            _ => miette::bail!("Invalid type for all: {:?}", lambda),
+        }
+    }
+
+    Ok(Value::Bool(all))
+}
+
+pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 3 {
+        miette::bail!("expected 3 arguments, found {}", tokens.len());
+    }
+
+    // expect first parameter to be a list
+    let list = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::List(l) => l,
+        _ => miette::bail!("Invalid type for exists: {:?}", tokens[0]),
+    };
+
+    // expect second parameter to be an identifier
+    let ident = match &tokens[1] {
+        TokenTree::Atom(Atom::Ident(ident)) => ident,
+        _ => miette::bail!("Invalid type for exists: {:?}", tokens[1]),
+    };
+
+    // expect third parameter to be a lambda
+    let lambda = &tokens[2];
+
+    let mut env = env.new_child();
+    let key = Key::String(ident.to_string());
+    let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
+
+    let mut exists = false;
+    for item in list.iter() {
+        variables.insert(key.clone(), item.clone())?;
+        env.variables = variables.clone();
+        match eval_ast(&env, lambda)?.to_value(&env)? {
+            Value::Bool(b) => {
+                if b {
+                    exists = true;
+                    break;
+                }
+            }
+            _ => miette::bail!("Invalid type for exists: {:?}", lambda),
+        }
+    }
+
+    Ok(Value::Bool(exists))
+}
+
+pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 3 {
+        miette::bail!("expected 3 arguments, found {}", tokens.len());
+    }
+
+    // expect first parameter to be a list
+    let list = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::List(l) => l,
+        _ => miette::bail!("Invalid type for exists_one: {:?}", tokens[0]),
+    };
+
+    // expect second parameter to be an identifier
+    let ident = match &tokens[1] {
+        TokenTree::Atom(Atom::Ident(ident)) => ident,
+        _ => miette::bail!("Invalid type for exists_one: {:?}", tokens[1]),
+    };
+
+    // expect third parameter to be a lambda
+    let lambda = &tokens[2];
+
+    let mut env = env.new_child();
+    let key = Key::String(ident.to_string());
+    let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
+
+    let mut found = false;
+    for item in list.iter() {
+        variables.insert(key.clone(), item.clone())?;
+        env.variables = variables.clone();
+        match eval_ast(&env, lambda)?.to_value(&env)? {
+            Value::Bool(b) => {
+                if b {
+                    if found {
+                        found = false;
+                        break;
+                    }
+                    found = true;
+                }
+            }
+            _ => miette::bail!("Invalid type for exists_one: {:?}", lambda),
+        }
+    }
+
+    Ok(Value::Bool(found))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Parser;
+
+    #[test]
+    fn test_size_primitive() {
+        let env = crate::Environment::default();
+
+        for tt in [
+            ("b'hello'", Value::Int(5)),
+            ("'hello'", Value::Int(5)),
+            ("[1, 2, 3]", Value::Int(3)),
+            ("{'a': 1, 'b': 2}", Value::Int(2)),
+        ] {
+            let program = tt.0;
+            let tree = Parser::new(program).parse().unwrap();
+            let v = size(&env, &[tree]);
+            assert!(
+                v.is_ok(),
+                "expected ok got err: program='{program}, result={:?}",
+                v
+            );
+            assert_eq!(v.unwrap(), tt.1);
+        }
+
+        for tt in ["1", "1.0", "true", "null"] {
+            let program = tt;
+            let tree = Parser::new(program).parse().unwrap();
+            let v = size(&env, &[tree]);
+            assert!(
+                v.is_err(),
+                "expected err got ok: program='{program}, result={:?}",
+                v
+            );
+        }
+    }
+
+    #[test]
+    fn test_type_fn_primitive() {
+        let env = crate::Environment::default();
+
+        for tt in [
+            ("1", Value::String("int".to_string())),
+            ("1u", Value::String("uint".to_string())),
+            ("1.0", Value::String("double".to_string())),
+            ("true", Value::String("bool".to_string())),
+            ("'hello'", Value::String("string".to_string())),
+            ("null", Value::String("null".to_string())),
+            ("[1, 2, 3]", Value::String("list".to_string())),
+            ("{'a': 1, 'b': 2}", Value::String("map".to_string())),
+        ] {
+            let program = tt.0;
+            let tree = Parser::new(program).parse().unwrap();
+            let v = type_fn(&env, &[tree]);
+            assert!(
+                v.is_ok(),
+                "expected ok got err: program='{program}, result={:?}",
+                v
+            );
+            assert_eq!(v.unwrap(), tt.1);
+        }
     }
 }
