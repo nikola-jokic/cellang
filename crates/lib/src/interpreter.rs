@@ -1,6 +1,6 @@
 use crate::{
     environment::Environment,
-    types::{Key, KeyType, Map, Value},
+    types::{Key, KeyKind, Map, Value},
     List,
 };
 use miette::Error;
@@ -240,7 +240,7 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
                 eval_ast(env, iter.next().expect("Key must be present"))?.to_value(env)?;
             let first_value =
                 eval_ast(env, iter.next().expect("Value must be present"))?.to_value(env)?;
-            let key_kind = KeyType::try_from(first_key.kind())?;
+            let key_kind = KeyKind::try_from(first_key.kind())?;
 
             let mut map = HashMap::new();
             map.insert(Key::try_from(first_key)?, first_value);
@@ -248,7 +248,7 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
             while let (Some(key), Some(value)) = (iter.next(), iter.next()) {
                 let key = eval_ast(env, key)?.to_value(env)?;
                 let value = eval_ast(env, value)?.to_value(env)?;
-                let kk = KeyType::try_from(key.kind())?;
+                let kk = KeyKind::try_from(key.kind())?;
                 if kk != key_kind {
                     miette::bail!("Map elements must have the same type");
                 }

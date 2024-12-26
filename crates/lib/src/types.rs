@@ -13,7 +13,7 @@ pub type Function = Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Erro
 /// Map is a wrapper around HashMap with additional type checking.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Map {
-    key_type: Option<KeyType>,
+    key_type: Option<KeyKind>,
     inner: HashMap<Key, Value>,
 }
 
@@ -45,7 +45,7 @@ impl Map {
         }
     }
 
-    pub fn with_key_type(key_type: KeyType) -> Self {
+    pub fn with_key_type(key_type: KeyKind) -> Self {
         Self {
             key_type: Some(key_type),
             inner: HashMap::new(),
@@ -290,7 +290,7 @@ impl Map {
         }
     }
 
-    pub fn with_type_and_capacity(key_type: KeyType, capacity: usize) -> Self {
+    pub fn with_type_and_capacity(key_type: KeyKind, capacity: usize) -> Self {
         Self {
             key_type: Some(key_type),
             inner: HashMap::with_capacity(capacity),
@@ -307,7 +307,7 @@ impl Map {
     }
 
     pub fn with_type_capacity_and_hasher(
-        key_type: KeyType,
+        key_type: KeyKind,
         capacity: usize,
         hash_builder: RandomState,
     ) -> Self {
@@ -326,7 +326,7 @@ impl Map {
         }
     }
 
-    pub fn with_type_and_hasher(key_type: KeyType, hash_builder: RandomState) -> Self {
+    pub fn with_type_and_hasher(key_type: KeyKind, hash_builder: RandomState) -> Self {
         Self {
             key_type: Some(key_type),
             inner: HashMap::with_hasher(hash_builder),
@@ -355,6 +355,47 @@ pub enum Value {
     Bytes(Vec<u8>),
     Null,
     Any(Box<Value>),
+}
+
+impl From<serde_json::Value> for Value {
+    fn from(value: serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::Null => Value::Null,
+            serde_json::Value::Bool(b) => Value::Bool(b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Value::Int(i)
+                } else if let Some(u) = n.as_u64() {
+                    Value::Uint(u)
+                } else {
+                    Value::Double(n.as_f64().unwrap())
+                }
+            }
+            serde_json::Value::String(s) => Value::String(s),
+            serde_json::Value::Array(a) => {
+                if a.is_empty() {
+                    Value::List(List::new())
+                } else {
+                    Value::List(List::from(
+                        a.into_iter()
+                            .map(|v| Value::from(v))
+                            .collect::<Vec<Value>>(),
+                    ))
+                }
+            }
+            serde_json::Value::Object(o) => {
+                if o.is_empty() {
+                    Value::Map(Map::new())
+                } else {
+                    Value::Map(Map::from(
+                        o.into_iter()
+                            .map(|(k, v)| (Key::String(k), Value::from(v)))
+                            .collect::<HashMap<Key, Value>>(),
+                    ))
+                }
+            }
+        }
+    }
 }
 
 impl_value_conversions! {
@@ -480,6 +521,9 @@ impl Value {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs >= rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs >= rhs),
             (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs >= rhs),
+            (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs >= rhs),
+            (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs >= rhs),
+            (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs >= rhs),
             _ => miette::bail!("Failed to compare {self:?} >= {other:?}"),
         };
 
@@ -491,6 +535,9 @@ impl Value {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs < rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs < rhs),
             (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs < rhs),
+            (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs < rhs),
+            (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs < rhs),
+            (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs < rhs),
             _ => miette::bail!("Failed to compare {self:?} < {other:?}"),
         };
 
@@ -502,6 +549,9 @@ impl Value {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs <= rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs <= rhs),
             (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs <= rhs),
+            (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs <= rhs),
+            (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs <= rhs),
+            (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs <= rhs),
             _ => miette::bail!("Failed to compare {self:?} <= {other:?}"),
         };
 
@@ -870,22 +920,22 @@ pub enum ValueKind {
 }
 
 #[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
-pub enum KeyType {
+pub enum KeyKind {
     Int,
     Uint,
     String,
     Bool,
 }
 
-impl TryFrom<ValueKind> for KeyType {
+impl TryFrom<ValueKind> for KeyKind {
     type Error = Error;
 
     fn try_from(kind: ValueKind) -> Result<Self, Self::Error> {
         match kind {
-            ValueKind::Int => Ok(KeyType::Int),
-            ValueKind::Uint => Ok(KeyType::Uint),
-            ValueKind::String => Ok(KeyType::String),
-            ValueKind::Bool => Ok(KeyType::Bool),
+            ValueKind::Int => Ok(KeyKind::Int),
+            ValueKind::Uint => Ok(KeyKind::Uint),
+            ValueKind::String => Ok(KeyKind::String),
+            ValueKind::Bool => Ok(KeyKind::Bool),
             _ => miette::bail!("Invalid map key kind: {:?}", kind),
         }
     }
@@ -916,12 +966,12 @@ impl TryFrom<Value> for Key {
 }
 
 impl Key {
-    fn kind(&self) -> KeyType {
+    fn kind(&self) -> KeyKind {
         match self {
-            Key::Int(_) => KeyType::Int,
-            Key::Uint(_) => KeyType::Uint,
-            Key::String(_) => KeyType::String,
-            Key::Bool(_) => KeyType::Bool,
+            Key::Int(_) => KeyKind::Int,
+            Key::Uint(_) => KeyKind::Uint,
+            Key::String(_) => KeyKind::String,
+            Key::Bool(_) => KeyKind::Bool,
         }
     }
 }

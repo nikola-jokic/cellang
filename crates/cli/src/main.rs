@@ -1,4 +1,4 @@
-use cellang::{Lexer, Parser};
+use cellang::{Environment, Lexer, Map, Parser};
 use clap::{Parser as ClapParser, Subcommand};
 use miette::{Error, IntoDiagnostic, WrapErr};
 use std::{fs, path::PathBuf};
@@ -64,9 +64,13 @@ fn main() -> Result<(), Error> {
                 .into_diagnostic()
                 .wrap_err("Failed to read file")?;
 
-            let env = fs::read_to_string(env)
-                .into_diagnostic()
-                .wrap_err("Failed to read file")?;
+            let variables: Map = serde_json::from_str(
+                &fs::read_to_string(env)
+                    .into_diagnostic()
+                    .wrap_err("Failed to read file")?,
+            )
+            .into_diagnostic()
+            .wrap_err("Failed to deserialize environment")?;
 
             todo!()
         }
