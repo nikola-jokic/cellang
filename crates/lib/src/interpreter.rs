@@ -11,6 +11,8 @@ use crate::{
     Parser,
 };
 
+/// Evaluate the given program in the given environment.
+/// The program is a string representation of the program.
 pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
     let tree = Parser::new(program).parse()?;
     match eval_ast(env, &tree) {
@@ -27,6 +29,8 @@ pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
     }
 }
 
+/// Evaluate the given AST in the given environment.
+/// The AST is a token tree representation of the program or a subprogram.
 pub fn eval_ast(env: &Environment, root: &TokenTree) -> Result<Object, Error> {
     match root {
         TokenTree::Atom(atom) => eval_atom(atom),
@@ -45,6 +49,12 @@ pub fn eval_ast(env: &Environment, root: &TokenTree) -> Result<Object, Error> {
     }
 }
 
+/// Evaluate the given atom in the given environment and returns an Object.
+/// If the atom is a value, it returns Object::Value.
+/// If the atom is an identifier, it returns Object::Ident. Identifier should
+/// be resolved by the caller based on the context in which it is used.
+/// For example, identifier for a `Op::Call` should be resolved to a function.
+/// For the rest of the operations, it should be resolved to a variable.
 pub fn eval_atom(atom: &Atom) -> Result<Object, Error> {
     let val = match atom {
         Atom::Int(n) => Object::Value(Value::Int(*n)),
@@ -59,6 +69,9 @@ pub fn eval_atom(atom: &Atom) -> Result<Object, Error> {
     Ok(val)
 }
 
+/// Evaluate the given cons in the given environment.
+/// The cons is a list of tokens with an operator.
+/// The operator is used to determine the operation to be performed.
 pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
     let val = match op {
         Op::Call => panic!("Call should be handled in eval_ast"),

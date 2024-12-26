@@ -95,6 +95,66 @@ pub enum TokenKind {
     While,
 }
 
+impl fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TokenKind::LeftParen => write!(f, "'('"),
+            TokenKind::RightParen => write!(f, "')'"),
+            TokenKind::LeftBracket => write!(f, "'['"),
+            TokenKind::RightBracket => write!(f, "']'"),
+            TokenKind::LeftBrace => write!(f, "'{{'"),
+            TokenKind::RightBrace => write!(f, "'}}'"),
+            TokenKind::Dot => write!(f, "'.'"),
+            TokenKind::Comma => write!(f, "','"),
+            TokenKind::Plus => write!(f, "'+'"),
+            TokenKind::Percent => write!(f, "'%'"),
+            TokenKind::Minus => write!(f, "'-'"),
+            TokenKind::Semicolon => write!(f, "'-'"),
+            TokenKind::Not => write!(f, "'!'"),
+            TokenKind::NotEqual => write!(f, "'!='"),
+            TokenKind::Equal => write!(f, "'='"),
+            TokenKind::EqualEqual => write!(f, "'=='"),
+            TokenKind::Greater => write!(f, "'>'"),
+            TokenKind::GreaterEqual => write!(f, "'>='"),
+            TokenKind::Less => write!(f, "'<'"),
+            TokenKind::QuestionMark => write!(f, "'?'"),
+            TokenKind::LessEqual => write!(f, "'<='"),
+            TokenKind::Slash => write!(f, "'/'"),
+            TokenKind::Colon => write!(f, "':'"),
+            TokenKind::RawString => write!(f, "RAW_STRING"),
+            TokenKind::Star => write!(f, "'*'"),
+            TokenKind::String => write!(f, "STRING"),
+            TokenKind::Bytes => write!(f, "BYTES"),
+            TokenKind::RawBytes => write!(f, "RAW_BYTES"),
+            TokenKind::Ident => write!(f, "IDENTIFIER"),
+            TokenKind::Int(n) => write!(f, "INT {}", n),
+            TokenKind::Uint(n) => write!(f, "UINT {}", n),
+            TokenKind::Double(n) => write!(f, "DOUBLE {}", n),
+            TokenKind::And => write!(f, "'&&'"),
+            TokenKind::Or => write!(f, "'||'"),
+            TokenKind::True => write!(f, "'true'"),
+            TokenKind::False => write!(f, "'false'"),
+            TokenKind::Null => write!(f, "'null'"),
+            TokenKind::In => write!(f, "'in'"),
+            TokenKind::As => write!(f, "'as'"),
+            TokenKind::Break => write!(f, "'break'"),
+            TokenKind::Const => write!(f, "'const'"),
+            TokenKind::Else => write!(f, "'else'"),
+            TokenKind::For => write!(f, "'for'"),
+            TokenKind::Function => write!(f, "'function'"),
+            TokenKind::If => write!(f, "'if'"),
+            TokenKind::Import => write!(f, "'import'"),
+            TokenKind::Let => write!(f, "'let'"),
+            TokenKind::Loop => write!(f, "'loop'"),
+            TokenKind::Package => write!(f, "'package'"),
+            TokenKind::Namespace => write!(f, "'namespace'"),
+            TokenKind::Var => write!(f, "'var'"),
+            TokenKind::Void => write!(f, "'void'"),
+            TokenKind::While => write!(f, "'while'"),
+        }
+    }
+}
+
 fn keywords() -> &'static HashMap<&'static str, TokenKind> {
     static KEYWORDS: OnceLock<HashMap<&'static str, TokenKind>> = OnceLock::new();
     KEYWORDS.get_or_init(|| {

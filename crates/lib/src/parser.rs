@@ -5,6 +5,9 @@ use std::fmt;
 use crate::lexer::{Token, TokenKind};
 use crate::Lexer;
 
+/// A parser for the language.
+/// This parser is a Pratt parser, which is a top-down operator precedence parser.
+/// Produces TokenTree (AST) from the input by using the lexer.
 pub struct Parser<'src> {
     input: &'src str,
     lexer: Lexer<'src>,
@@ -18,6 +21,7 @@ impl<'src> Parser<'src> {
         }
     }
 
+    /// Parses the whole input and returns the AST.
     pub fn parse(&mut self) -> Result<TokenTree<'src>, Error> {
         self.parse_expr(0)
     }
@@ -80,27 +84,6 @@ impl<'src> Parser<'src> {
                 kind: TokenKind::False,
                 ..
             } => TokenTree::Atom(Atom::Bool(false)),
-            Token {
-                kind: TokenKind::Dot,
-                ..
-            } => {
-                todo!()
-                // let peek = match  self.lexer.peek() {
-                //     None => return Err(miette::miette! {
-                //         help = "Unexpected end of input",
-                //         "Unexpected end of input"
-                //     }),
-                //     Some(Err(e)) => return Err(miette::miette! {
-                //         help = format!("Unexpected error: {:?}", e),
-                //         "Unexpected error"
-                //     }),
-                //     Some(Ok(token)) => token,
-                // };
-                //
-                // if !matches!(peek.kind, TokenKind::Int(_) | TokenK)
-                //
-                // todo!()
-            }
 
             // groups
             Token {
@@ -447,6 +430,7 @@ impl fmt::Display for Atom<'_> {
     }
 }
 
+/// An operator in the AST.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Op {
     Minus,
@@ -509,6 +493,7 @@ impl fmt::Display for Op {
     }
 }
 
+/// A node in the AST.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenTree<'src> {
     Atom(Atom<'src>),

@@ -3,6 +3,12 @@ name = "cellang"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+authors = ["Nikola Jokic <jokicnikola07@gmail.com>"]
+description = "Interpreter for the CEL expression language"
+repository = "https://github.com/bountyhub-org/cellang"
+readme = "README.md"
+keywords = ["cel", "expression", "language", "interpreter", "rust"]
+categories = ["development-tools", "programming-language"]
 
 [dependencies]
 serde = { version = "^1", features = ["derive"] }
