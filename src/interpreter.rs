@@ -169,8 +169,19 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
             }
         }
         Op::Or => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
+            assert!(tokens.len() == 2);
+
+            let (lhs, rhs) = match (
+                eval_ast(env, &tokens[0])?.to_value(env),
+                eval_ast(env, &tokens[1])?.to_value(env),
+            ) {
+                (Err(lhs), Err(rhs)) => {
+                    miette::bail!("Both lhs and rhs failed: rhs={:?}, lhs={:?}", rhs, lhs);
+                }
+                (Err(_), Ok(rhs)) => (Value::Bool(false), rhs),
+                (Ok(lhs), Err(_)) => (lhs, Value::Bool(false)),
+                (Ok(lhs), Ok(rhs)) => (lhs, rhs),
+            };
             match (lhs, rhs) {
                 // short-circuit evaluation
                 (Value::Bool(true), _) => Value::Bool(true),
@@ -898,5 +909,22 @@ mod tests {
             assert!(result.is_ok(), "input: {input}, result: {result:?}");
             assert_eq!(result.unwrap(), expected, "input: {}", input);
         }
+    }
+
+    #[test]
+    fn test_basic_variables() {
+        // https://github.com/google/cel-spec/blob/master/tests/simple/testdata/basic.textproto
+        let env = Environment::default();
+        eval(&env, "x").expect_err("x is not defined");
+
+        let result = eval(&env, "x || true");
+        assert!(result.is_ok(), "Program 'x || true' failed: {:?}", result);
+        let result = result.unwrap();
+        assert_eq!(
+            result,
+            Value::Bool(true),
+            "Program 'x || true' failed: {:?}",
+            result
+        );
     }
 }
