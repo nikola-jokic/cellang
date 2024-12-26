@@ -660,7 +660,7 @@ mod tests {
             }),
             ("{\"hello\": \"world\"}", {
                 let mut map = HashMap::new();
-                map.insert(Key::from("hello"), "world".into());
+                map.insert(Key::from("hello"), Value::from("world"));
                 Value::Map(map.into())
             }),
             ("{true: false}", {
@@ -735,7 +735,7 @@ mod tests {
     #[test]
     fn test_variable() {
         let mut env = Environment::default();
-        env.set_variable(Key::from("x"), 42i64.into())
+        env.set_variable(Key::from("x"), Value::from(42i64))
             .expect("to set variable");
 
         assert_eq!(eval(&env, "x").expect("x"), Value::Int(42));
@@ -861,7 +861,7 @@ mod tests {
             ("[-1]", Value::List(List::from(vec![Value::Int(-1)]))),
             (r#"{"k":"v"}"#, {
                 let mut map = HashMap::new();
-                map.insert(Key::from("k".to_string()), "v".to_string().into());
+                map.insert("k".into(), "v".into());
                 Value::Map(map.into())
             }),
             ("true", true.into()),

@@ -64,7 +64,7 @@ pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                     if !matches!(*op, Op::Field) {
                         miette::bail!("Invalid type for has: {:?}", tokens[0]);
                     }
-                    let key = Key::from(ident.to_string());
+                    let key = Key::from(*ident);
                     Ok(Value::Bool(map.contains_key(&key)?))
                 }
                 TokenTree::Cons(_op, tokens) => {
@@ -788,11 +788,11 @@ mod tests {
             Key::from("m"),
             Value::Map(
                 Map::new()
-                    .insert(Key::from("a".to_string()), Value::Int(1))
+                    .insert(Key::from("a"), Value::Int(1))
                     .unwrap()
-                    .insert(Key::from("b".to_string()), Value::Int(2))
+                    .insert(Key::from("b"), Value::Int(2))
                     .unwrap()
-                    .insert(Key::from("c".to_string()), Value::Int(3))
+                    .insert(Key::from("c"), Value::Int(3))
                     .unwrap()
                     .to_owned(),
             )
@@ -823,7 +823,7 @@ mod tests {
     fn test_exists_list() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            Key::from("list".to_string()),
+            Key::from("list"),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -861,14 +861,14 @@ mod tests {
     fn test_exists_map() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            Key::from("m".to_string()),
+            Key::from("m"),
             Value::Map(
                 Map::new()
-                    .insert(Key::from("a".to_string()), Value::Int(1))
+                    .insert(Key::from("a"), Value::Int(1))
                     .unwrap()
-                    .insert(Key::from("b".to_string()), Value::Int(2))
+                    .insert(Key::from("b"), Value::Int(2))
                     .unwrap()
-                    .insert(Key::from("c".to_string()), Value::Int(3))
+                    .insert(Key::from("c"), Value::Int(3))
                     .unwrap()
                     .to_owned(),
             )
@@ -899,7 +899,7 @@ mod tests {
     fn test_exists_one_list() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            Key::from("list".to_string()),
+            Key::from("list"),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -937,14 +937,14 @@ mod tests {
     fn test_exists_one_map() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            Key::from("m".to_string()),
+            Key::from("m"),
             Value::Map(
                 Map::new()
-                    .insert(Key::from("a".to_string()), Value::Int(1))
+                    .insert(Key::from("a"), Value::Int(1))
                     .unwrap()
-                    .insert(Key::from("b".to_string()), Value::Int(2))
+                    .insert(Key::from("b"), Value::Int(2))
                     .unwrap()
-                    .insert(Key::from("c".to_string()), Value::Int(3))
+                    .insert(Key::from("c"), Value::Int(3))
                     .unwrap()
                     .to_owned(),
             )
@@ -975,7 +975,7 @@ mod tests {
     fn test_map_list_3_args() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            Key::from("list".to_string()),
+            Key::from("list"),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -1014,14 +1014,14 @@ mod tests {
     fn test_map_map_3_args() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            Key::from("m".to_string()),
+            Key::from("m"),
             Value::Map(
                 Map::new()
-                    .insert(Key::from("a".to_string()), Value::Int(1))
+                    .insert(Key::from("a"), Value::Int(1))
                     .unwrap()
-                    .insert(Key::from("b".to_string()), Value::Int(2))
+                    .insert(Key::from("b"), Value::Int(2))
                     .unwrap()
-                    .insert(Key::from("c".to_string()), Value::Int(3))
+                    .insert(Key::from("c"), Value::Int(3))
                     .unwrap()
                     .to_owned(),
             )
@@ -1038,11 +1038,11 @@ mod tests {
             result.unwrap(),
             Value::Map(
                 Map::new()
-                    .insert(Key::from("a".to_string()), Value::Int(2))
+                    .insert(Key::from("a"), Value::Int(2))
                     .unwrap()
-                    .insert(Key::from("b".to_string()), Value::Int(3))
+                    .insert(Key::from("b"), Value::Int(3))
                     .unwrap()
-                    .insert(Key::from("c".to_string()), Value::Int(4))
+                    .insert(Key::from("c"), Value::Int(4))
                     .unwrap()
                     .to_owned()
             )
@@ -1053,7 +1053,7 @@ mod tests {
     fn test_map_list_4_args() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            Key::from("list".to_string()),
+            Key::from("list"),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -1094,14 +1094,14 @@ mod tests {
     fn test_map_map_4_args() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            Key::from("m".to_string()),
+            Key::from("m"),
             Value::Map(
                 Map::new()
-                    .insert(Key::from("a".to_string()), Value::Int(1))
+                    .insert(Key::from("a"), Value::Int(1))
                     .unwrap()
-                    .insert(Key::from("b".to_string()), Value::Int(2))
+                    .insert(Key::from("b"), Value::Int(2))
                     .unwrap()
-                    .insert(Key::from("c".to_string()), Value::Int(3))
+                    .insert(Key::from("c"), Value::Int(3))
                     .unwrap()
                     .to_owned(),
             )
@@ -1122,9 +1122,9 @@ mod tests {
             result.unwrap(),
             Value::Map(
                 Map::new()
-                    .insert(Key::from("b".to_string()), Value::Int(3))
+                    .insert(Key::from("b"), Value::Int(3))
                     .unwrap()
-                    .insert(Key::from("c".to_string()), Value::Int(4))
+                    .insert(Key::from("c"), Value::Int(4))
                     .unwrap()
                     .to_owned()
             )
@@ -1135,7 +1135,7 @@ mod tests {
     fn test_filter_list() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            Key::from("list".to_string()),
+            Key::from("list"),
             Value::List(
                 List::new()
                     .push(Value::Int(1))
@@ -1172,14 +1172,14 @@ mod tests {
     fn test_filter_map() {
         let mut env = crate::Environment::default();
         env.set_variable(
-            Key::from("m".to_string()),
+            Key::from("m"),
             Value::Map(
                 Map::new()
-                    .insert(Key::from("a".to_string()), Value::Int(1))
+                    .insert(Key::from("a"), Value::Int(1))
                     .unwrap()
-                    .insert(Key::from("b".to_string()), Value::Int(2))
+                    .insert(Key::from("b"), Value::Int(2))
                     .unwrap()
-                    .insert(Key::from("c".to_string()), Value::Int(3))
+                    .insert(Key::from("c"), Value::Int(3))
                     .unwrap()
                     .to_owned(),
             )
@@ -1196,9 +1196,9 @@ mod tests {
             result.unwrap(),
             Value::Map(
                 Map::new()
-                    .insert(Key::from("b".to_string()), Value::Int(2))
+                    .insert(Key::from("b"), Value::Int(2))
                     .unwrap()
-                    .insert(Key::from("c".to_string()), Value::Int(3))
+                    .insert(Key::from("c"), Value::Int(3))
                     .unwrap()
                     .to_owned()
             )
