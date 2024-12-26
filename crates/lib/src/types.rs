@@ -434,7 +434,7 @@ impl Value {
         }
     }
 
-    pub fn equals(&self, other: &Value) -> Result<Value, Error> {
+    pub fn equal(&self, other: &Value) -> Result<Value, Error> {
         let v = match (self.downcast(), other.downcast()) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs == rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs == rhs),
@@ -451,8 +451,8 @@ impl Value {
         Ok(v)
     }
 
-    pub fn not_equals(&self, other: &Value) -> Result<Value, Error> {
-        match self.equals(other) {
+    pub fn not_equal(&self, other: &Value) -> Result<Value, Error> {
+        match self.equal(other) {
             Ok(Value::Bool(b)) => Ok(Value::Bool(!b)),
             Ok(_) => miette::bail!("Invalid types for not_equals: {:?} and {:?}", self, other),
             Err(e) => Err(e),
@@ -468,6 +468,71 @@ impl Value {
             (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs > rhs),
             (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs > rhs),
             (left, right) => miette::bail!("Cannot compare {:?} and {:?}", left, right),
+        };
+
+        Ok(v)
+    }
+
+    pub fn greater_equal(&self, other: &Value) -> Result<Value, Error> {
+        let v = match (self.downcast(), other.downcast()) {
+            (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs >= rhs),
+            (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs >= rhs),
+            (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs >= rhs),
+            _ => miette::bail!("Failed to compare {self:?} >= {other:?}"),
+        };
+
+        Ok(v)
+    }
+
+    pub fn less(&self, other: &Value) -> Result<Value, Error> {
+        let v = match (self.downcast(), other.downcast()) {
+            (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs < rhs),
+            (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs < rhs),
+            (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs < rhs),
+            _ => miette::bail!("Failed to compare {self:?} < {other:?}"),
+        };
+
+        Ok(v)
+    }
+
+    pub fn less_equal(&self, other: &Value) -> Result<Value, Error> {
+        let v = match (self.downcast(), other.downcast()) {
+            (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs <= rhs),
+            (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs <= rhs),
+            (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs <= rhs),
+            _ => miette::bail!("Failed to compare {self:?} <= {other:?}"),
+        };
+
+        Ok(v)
+    }
+
+    pub fn multiply(&self, other: &Value) -> Result<Value, Error> {
+        let v = match (self.downcast(), other.downcast()) {
+            (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
+            (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
+            (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs * rhs),
+            _ => miette::bail!("Failed to multiply {self:?} * {other:?}"),
+        };
+
+        Ok(v)
+    }
+
+    pub fn devide(&self, other: &Value) -> Result<Value, Error> {
+        let v = match (self.downcast(), other.downcast()) {
+            (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
+            (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs / rhs),
+            (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs / rhs),
+            _ => miette::bail!("Failed to devide {self:?} / {other:?}"),
+        };
+
+        Ok(v)
+    }
+
+    pub fn reminder(&self, other: &Value) -> Result<Value, Error> {
+        let v = match (self.downcast(), other.downcast()) {
+            (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
+            (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
+            _ => miette::bail!("Failed to get reminder {self:?} % {other:?}"),
         };
 
         Ok(v)

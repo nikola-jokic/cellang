@@ -134,31 +134,17 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
         Op::Multiply => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
-                (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs * rhs),
-                _ => miette::bail!("Expected numbers, found {:?}", tokens),
-            }
+            lhs.multiply(&rhs)?
         }
         Op::Devide => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs / rhs),
-                (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs / rhs),
-                _ => miette::bail!("Expected numbers, found {:?}", tokens),
-            }
+            lhs.devide(&rhs)?
         }
         Op::Mod => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
-                _ => miette::bail!("Expected numbers, found {:?}", tokens),
-            }
+            lhs.reminder(&rhs)?
         }
         Op::And => {
             let lhs = eval_ast(env, &tokens[0])
@@ -195,13 +181,13 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
         Op::NotEqual => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.not_equals(&rhs)?
+            lhs.not_equal(&rhs)?
         }
         Op::EqualEqual => {
             assert!(tokens.len() == 2);
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.equals(&rhs)?
+            lhs.equal(&rhs)?
         }
         Op::Greater => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
@@ -211,32 +197,17 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
         Op::GreaterEqual => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs >= rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs >= rhs),
-                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs >= rhs),
-                _ => unimplemented!(),
-            }
+            lhs.greater_equal(&rhs)?
         }
         Op::Less => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs < rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs < rhs),
-                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs < rhs),
-                _ => unimplemented!(),
-            }
+            lhs.less(&rhs)?
         }
         Op::LessEqual => {
             let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
             let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            match (lhs, rhs) {
-                (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs <= rhs),
-                (Value::Uint(lhs), Value::Uint(rhs)) => Value::Bool(lhs <= rhs),
-                (Value::Double(lhs), Value::Double(rhs)) => Value::Bool(lhs <= rhs),
-                _ => unimplemented!(),
-            }
+            lhs.less_equal(&rhs)?
         }
         Op::List => {
             if tokens.is_empty() {
