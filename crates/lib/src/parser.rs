@@ -418,6 +418,8 @@ impl<'src> Parser<'src> {
     }
 }
 
+/// An atomic value in the AST.
+/// This is the smallest unit of the AST.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Atom<'src> {
     Bool(bool),

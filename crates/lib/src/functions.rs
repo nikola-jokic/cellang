@@ -66,7 +66,7 @@ pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                     Ok(Value::Bool(map.contains_key(&key)?))
                 }
                 TokenTree::Cons(_op, tokens) => {
-                    let env = env.new_child().with_variables(map);
+                    let env = env.child().with_variables(map);
                     has(&env, tokens)
                 }
                 tree => miette::bail!("Invalid type for has: {:?}", tree),
@@ -82,8 +82,8 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 
     // expect first parameter to be a list
-    let list = match eval_ast(env, &tokens[0])?.to_value(env)? {
-        Value::List(l) => l,
+    let host = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        v if matches!(v, Value::List(_) | Value::Map(_)) => v,
         _ => miette::bail!("Invalid type for all: {:?}", tokens[0]),
     };
 
@@ -96,23 +96,44 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut env = env.new_child();
+    let mut env = env.child();
     let key = Key::String(ident.to_string());
     let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
     let mut all = true;
-    for item in list.iter() {
-        variables.insert(key.clone(), item.clone())?;
-        env.variables = variables.clone();
-        match eval_ast(&env, lambda)?.to_value(&env)? {
-            Value::Bool(b) => {
-                if !b {
-                    all = false;
-                    break;
+
+    match host {
+        Value::List(list) => {
+            for item in list.iter() {
+                variables.insert(key.clone(), item.clone())?;
+                env.variables = variables.clone();
+                match eval_ast(&env, lambda)?.to_value(&env)? {
+                    Value::Bool(b) => {
+                        if !b {
+                            all = false;
+                            break;
+                        }
+                    }
+                    _ => miette::bail!("Invalid type for all: {:?}", lambda),
                 }
             }
-            _ => miette::bail!("Invalid type for all: {:?}", lambda),
         }
+        Value::Map(map) => {
+            for (_key, value) in map.iter() {
+                variables.insert(key.clone(), value.clone())?;
+                env.variables = variables.clone();
+                match eval_ast(&env, lambda)?.to_value(&env)? {
+                    Value::Bool(b) => {
+                        if !b {
+                            all = false;
+                            break;
+                        }
+                    }
+                    _ => miette::bail!("Invalid type for all: {:?}", lambda),
+                }
+            }
+        }
+        _ => unreachable!(),
     }
 
     Ok(Value::Bool(all))
@@ -124,37 +145,57 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 
     // expect first parameter to be a list
-    let list = match eval_ast(env, &tokens[0])?.to_value(env)? {
-        Value::List(l) => l,
+    let host = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        v if matches!(v, Value::List(_) | Value::Map(_)) => v,
         _ => miette::bail!("Invalid type for exists: {:?}", tokens[0]),
     };
 
     // expect second parameter to be an identifier
-    let ident = match &tokens[1] {
-        TokenTree::Atom(Atom::Ident(ident)) => ident,
+    let key = match &tokens[1] {
+        TokenTree::Atom(Atom::Ident(ident)) => Key::String(ident.to_string()),
         _ => miette::bail!("Invalid type for exists: {:?}", tokens[1]),
     };
 
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut env = env.new_child();
-    let key = Key::String(ident.to_string());
+    let mut env = env.child();
     let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
     let mut exists = false;
-    for item in list.iter() {
-        variables.insert(key.clone(), item.clone())?;
-        env.variables = variables.clone();
-        match eval_ast(&env, lambda)?.to_value(&env)? {
-            Value::Bool(b) => {
-                if b {
-                    exists = true;
-                    break;
+    match host {
+        Value::List(list) => {
+            for item in list.iter() {
+                variables.insert(key.clone(), item.clone())?;
+                env.variables = variables.clone();
+                match eval_ast(&env, lambda)?.to_value(&env)? {
+                    Value::Bool(b) => {
+                        if b {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    _ => miette::bail!("Invalid type for exists: {:?}", lambda),
                 }
             }
-            _ => miette::bail!("Invalid type for exists: {:?}", lambda),
         }
+        Value::Map(map) => {
+            for (_key, value) in map.iter() {
+                variables.insert(key.clone(), value.clone())?;
+                env.variables = variables.clone();
+                match eval_ast(&env, lambda)?.to_value(&env)? {
+                    Value::Bool(b) => {
+                        if b {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    _ => miette::bail!("Invalid type for exists: {:?}", lambda),
+                }
+            }
+        }
+
+        _ => unreachable!(),
     }
 
     Ok(Value::Bool(exists))
@@ -180,7 +221,7 @@ pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Erro
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut env = env.new_child();
+    let mut env = env.child();
     let key = Key::String(ident.to_string());
     let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
@@ -235,7 +276,7 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             if list.is_empty() {
                 return Ok(Value::List(list));
             }
-            let mut env = env.new_child();
+            let mut env = env.child();
             let mut new_list =
                 List::with_type_and_capacity(list.element_type().unwrap(), list.len());
 
@@ -250,7 +291,7 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             if map.is_empty() {
                 return Ok(Value::Map(map));
             }
-            let mut env = env.new_child();
+            let mut env = env.child();
             let mut new_map = Map::with_capacity(map.len());
             for (key, value) in map.iter() {
                 env.variables = Map::with_type_and_capacity(KeyType::String, 1);
@@ -282,7 +323,7 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut env = env.new_child();
+    let mut env = env.child();
     let key = Key::String(ident.to_string());
     let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
@@ -452,5 +493,157 @@ mod tests {
             v.is_err(),
             "expected err got ok: program='{program}, result={v:?}"
         );
+    }
+
+    #[test]
+    fn test_all_list() {
+        let mut env = crate::Environment::default();
+        env.set_variable(
+            "list",
+            Value::List(
+                List::new()
+                    .push(Value::Int(1))
+                    .unwrap()
+                    .push(Value::Int(2))
+                    .unwrap()
+                    .push(Value::Int(3))
+                    .unwrap()
+                    .to_owned(),
+            )
+            .to_owned(),
+        )
+        .unwrap();
+
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let lambda = Parser::new("x > 0").parse().unwrap();
+
+        let result = all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
+        assert_eq!(result.unwrap(), Value::Bool(true));
+
+        let lambda = Parser::new("x > 1").parse().unwrap();
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let result = all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
+        assert_eq!(result.unwrap(), Value::Bool(false));
+
+        let lambda = Parser::new("y > 1").parse().unwrap();
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let result = all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        assert!(result.is_err(), "expected err got ok: result={:?}", result);
+    }
+
+    #[test]
+    fn test_all_map() {
+        let mut env = crate::Environment::default();
+        env.set_variable(
+            "m",
+            Value::Map(
+                Map::new()
+                    .insert(Key::String("a".to_string()), Value::Int(1))
+                    .unwrap()
+                    .insert(Key::String("b".to_string()), Value::Int(2))
+                    .unwrap()
+                    .insert(Key::String("c".to_string()), Value::Int(3))
+                    .unwrap()
+                    .to_owned(),
+            )
+            .to_owned(),
+        )
+        .unwrap();
+
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let lambda = Parser::new("x > 0").parse().unwrap();
+
+        let result = all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
+        assert_eq!(result.unwrap(), Value::Bool(true));
+
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let lambda = Parser::new("x > 1").parse().unwrap();
+        let result = all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
+        assert_eq!(result.unwrap(), Value::Bool(false));
+
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let lambda = Parser::new("y > 1").parse().unwrap();
+        let result = all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        assert!(result.is_err(), "expected err got ok: result={:?}", result);
+    }
+
+    #[test]
+    fn test_exists_list() {
+        let mut env = crate::Environment::default();
+        env.set_variable(
+            "list",
+            Value::List(
+                List::new()
+                    .push(Value::Int(1))
+                    .unwrap()
+                    .push(Value::Int(2))
+                    .unwrap()
+                    .push(Value::Int(3))
+                    .unwrap()
+                    .to_owned(),
+            )
+            .to_owned(),
+        )
+        .unwrap();
+
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let lambda = Parser::new("x > 2").parse().unwrap();
+
+        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
+        assert_eq!(result.unwrap(), Value::Bool(true));
+
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let lambda = Parser::new("x > 3").parse().unwrap();
+        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
+        assert_eq!(result.unwrap(), Value::Bool(false));
+
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let lambda = Parser::new("y > 1").parse().unwrap();
+        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        assert!(result.is_err(), "expected err got ok: result={:?}", result);
+    }
+
+    #[test]
+    fn test_exists_map() {
+        let mut env = crate::Environment::default();
+        env.set_variable(
+            "m",
+            Value::Map(
+                Map::new()
+                    .insert(Key::String("a".to_string()), Value::Int(1))
+                    .unwrap()
+                    .insert(Key::String("b".to_string()), Value::Int(2))
+                    .unwrap()
+                    .insert(Key::String("c".to_string()), Value::Int(3))
+                    .unwrap()
+                    .to_owned(),
+            )
+            .to_owned(),
+        )
+        .unwrap();
+
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let lambda = Parser::new("x > 2").parse().unwrap();
+
+        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
+        assert_eq!(result.unwrap(), Value::Bool(true));
+
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let lambda = Parser::new("x > 3").parse().unwrap();
+        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
+        assert_eq!(result.unwrap(), Value::Bool(false));
+
+        let ident = TokenTree::Atom(Atom::Ident("x"));
+        let lambda = Parser::new("y > 1").parse().unwrap();
+        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        assert!(result.is_err(), "expected err got ok: result={:?}", result);
     }
 }

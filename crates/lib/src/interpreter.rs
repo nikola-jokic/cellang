@@ -17,7 +17,7 @@ pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
         Ok(Object::Value(val)) => Ok(val),
         Ok(Object::Ident(ident)) => {
             let key = Key::String(ident);
-            if let Some(val) = env.get_variable(&key)? {
+            if let Some(val) = env.lookup_variable(&key)? {
                 Ok(val.clone())
             } else {
                 miette::bail!("Variable not found: {}", key);
@@ -33,7 +33,7 @@ pub fn eval_ast(env: &Environment, root: &TokenTree) -> Result<Object, Error> {
         TokenTree::Cons(op, tokens) => Ok(Object::Value(eval_cons(env, op, tokens)?)),
         TokenTree::Call { func, args } => {
             let f = match eval_ast(env, func)? {
-                Object::Ident(name) => match env.get_function(&name) {
+                Object::Ident(name) => match env.lookup_function(&name) {
                     Some(f) => f,
                     None => miette::bail!("Function not found: {}", name),
                 },
@@ -70,7 +70,7 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
                 _ => miette::bail!("Expected reference to a map, found {:?}", tokens[0]),
             };
 
-            let mut env = env.new_child();
+            let mut env = env.child();
             env.variables = map;
 
             eval_ast(&env, &tokens[1])?.to_value(&env)?
@@ -306,7 +306,7 @@ impl Object {
 
             Object::Ident(ident) => {
                 let ident = Key::String(ident.clone());
-                if let Some(val) = env.get_variable(&ident)? {
+                if let Some(val) = env.lookup_variable(&ident)? {
                     Ok(val.clone())
                 } else {
                     miette::bail!("Variable not found: {}", ident);

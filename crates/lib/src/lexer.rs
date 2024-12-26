@@ -2,6 +2,7 @@ use core::fmt;
 use miette::{Diagnostic, Error, LabeledSpan};
 use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
 
+/// Eof is returned when the lexer encounters an unexpected end of file.
 #[derive(Diagnostic, Debug)]
 pub struct Eof;
 
@@ -13,6 +14,7 @@ impl fmt::Display for Eof {
 
 impl std::error::Error for Eof {}
 
+/// Token represents a single token in the source code.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token<'src> {
     pub origin: &'src str,

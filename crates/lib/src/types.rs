@@ -10,6 +10,7 @@ use crate::{impl_value_conversions, Environment};
 
 pub type Function = Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error>>;
 
+/// Map is a wrapper around HashMap with additional type checking.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Map {
     key_type: Option<KeyType>,
