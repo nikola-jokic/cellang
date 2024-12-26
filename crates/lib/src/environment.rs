@@ -40,6 +40,18 @@ impl<'a> Environment<'a> {
                     "filter".to_string(),
                     Box::new(functions::filter) as Function,
                 );
+                m.insert(
+                    "contains".to_string(),
+                    Box::new(functions::contains) as Function,
+                );
+                m.insert(
+                    "startsWith".to_string(), // for some reason, this is cammel case in spec
+                    Box::new(functions::starts_with) as Function,
+                );
+                m.insert(
+                    "matches".to_string(),
+                    Box::new(functions::matches) as Function,
+                );
                 m
             },
             parent: None,

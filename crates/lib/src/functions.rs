@@ -5,6 +5,7 @@ use crate::{
     Environment, Key, KeyKind, Value,
 };
 use miette::Error;
+use regex::Regex;
 
 /// Returns the size of a value.
 /// This is an implementation of https://github.com/google/cel-spec/blob/master/doc/langdef.md#functions
@@ -385,6 +386,65 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 }
 
+pub fn contains(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 2 {
+        miette::bail!("expected 2 arguments, found {}", tokens.len());
+    }
+
+    let s = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::String(s) => s,
+        _ => miette::bail!("Invalid type for contains: {:?}", tokens[0]),
+    };
+
+    let value = match eval_ast(env, &tokens[1])?.to_value(env)? {
+        Value::String(s) => s,
+        _ => miette::bail!("Invalid type for contains: {:?}", tokens[1]),
+    };
+
+    Ok(Value::Bool(s.contains(&value)))
+}
+
+pub fn starts_with(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 2 {
+        miette::bail!("expected 2 arguments, found {}", tokens.len());
+    }
+
+    let s = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::String(s) => s,
+        _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[0]),
+    };
+
+    let value = match eval_ast(env, &tokens[1])?.to_value(env)? {
+        Value::String(s) => s,
+        _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[1]),
+    };
+
+    Ok(Value::Bool(s.starts_with(&value)))
+}
+
+pub fn matches(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 2 {
+        miette::bail!("expected 2 arguments, found {}", tokens.len());
+    }
+
+    let s = match eval_ast(env, &tokens[0])?.to_value(env)? {
+        Value::String(s) => s,
+        _ => miette::bail!("Invalid type for matches: {:?}", tokens[0]),
+    };
+
+    let value = match eval_ast(env, &tokens[1])?.to_value(env)? {
+        Value::String(s) => s,
+        _ => miette::bail!("Invalid type for matches: {:?}", tokens[1]),
+    };
+
+    let re = Regex::new(&value);
+
+    match re {
+        Ok(re) => Ok(Value::Bool(re.is_match(&s))),
+        Err(e) => miette::bail!("Invalid regex: {}", e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,6 +462,9 @@ mod tests {
         is_function(Box::new(exists_one));
         is_function(Box::new(map));
         is_function(Box::new(filter));
+        is_function(Box::new(contains));
+        is_function(Box::new(starts_with));
+        is_function(Box::new(matches));
     }
 
     #[test]
