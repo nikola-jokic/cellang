@@ -27,7 +27,7 @@ pub fn type_fn(env: &Environment, vals: &[TokenTree]) -> Result<Value, Error> {
         miette::bail!("Expected 1 argument, found {}", vals.len());
     }
 
-    let v = match eval_ast(env, &vals[0])?.to_value(env)? {
+    let v = match eval_ast(env, &vals[0])?.to_value(env)?.downcast() {
         Value::Int(_) => Value::String("int".to_string()),
         Value::Uint(_) => Value::String("uint".to_string()),
         Value::Double(_) => Value::String("double".to_string()),
@@ -37,7 +37,7 @@ pub fn type_fn(env: &Environment, vals: &[TokenTree]) -> Result<Value, Error> {
         Value::List(_) => Value::String("list".to_string()),
         Value::Bytes(_) => Value::String("bytes".to_string()),
         Value::Null => Value::String("null".to_string()),
-        _ => miette::bail!("Invalid type for type: {:?}", vals[0]),
+        Value::Any(_) => unreachable!(),
     };
 
     Ok(v)
@@ -265,5 +265,57 @@ mod tests {
             );
             assert_eq!(v.unwrap(), tt.1);
         }
+    }
+
+    #[test]
+    fn test_has() {
+        let mut env = crate::Environment::default();
+        env.set_variable(
+            "a",
+            Value::Map(
+                Map::new()
+                    .insert(
+                        Key::Int(0),
+                        Value::Map(
+                            Map::new()
+                                .insert(Key::String("b".to_string()), Value::Int(1))
+                                .unwrap()
+                                .to_owned(),
+                        ),
+                    )
+                    .unwrap()
+                    .to_owned(),
+            )
+            .to_owned(),
+        )
+        .unwrap();
+
+        let program = "a[0].b";
+        let tree = Parser::new(program).parse().unwrap();
+        let v = has(&env, &[tree]);
+        assert!(
+            v.is_ok(),
+            "expected ok got err: program='{program}, result={v:?}"
+        );
+        let v = v.unwrap();
+        assert_eq!(v, Value::Bool(true));
+
+        let program = "a[0].c";
+        let tree = Parser::new(program).parse().unwrap();
+        let v = has(&env, &[tree]);
+        assert!(
+            v.is_ok(),
+            "expected ok got err: program='{program}, result={v:?}"
+        );
+        let v = v.unwrap();
+        assert_eq!(v, Value::Bool(false));
+
+        let program = "a[1]";
+        let tree = Parser::new(program).parse().unwrap();
+        let v = has(&env, &[tree]);
+        assert!(
+            v.is_err(),
+            "expected err got ok: program='{program}, result={v:?}"
+        );
     }
 }
