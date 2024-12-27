@@ -1,4 +1,4 @@
-use cellang::{eval, Environment, Lexer, Map, Parser};
+use cellang::{eval, EnvironmentBuilder, Lexer, Map, Parser};
 use clap::{Parser as ClapParser, Subcommand};
 use miette::{Error, IntoDiagnostic, WrapErr};
 use std::{fs, path::PathBuf};
@@ -72,7 +72,7 @@ fn main() -> Result<(), Error> {
             .into_diagnostic()
             .wrap_err("Failed to deserialize environment")?;
 
-            let env = Environment::new().with_variables(variables);
+            let env = EnvironmentBuilder::new().set_variables(variables);
 
             match eval(&env, &text) {
                 Ok(value) => println!("{value:?}"),

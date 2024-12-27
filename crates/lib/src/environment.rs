@@ -4,9 +4,11 @@ use crate::{Function, Map};
 use miette::Error;
 use std::collections::HashMap;
 
-pub trait Registry {
-    fn lookup_variable(&self, name: &Key) -> Result<Option<&Value>, Error>;
-    fn lookup_function(&self, name: &str) -> Option<&Function>;
+/// Environment builder can be used to gradually build up the environment.
+pub struct EnvironmentBuilder<'a> {
+    variables: Map,
+    functions: HashMap<String, Function>,
+    parent: Option<&'a Environment<'a>>,
 }
 
 /// The environment is a collection of variables and functions.
@@ -15,20 +17,14 @@ pub trait Registry {
 /// and functions. If the variable or function is not found, it will look in the parent
 /// environment.
 pub struct Environment<'a> {
-    variables: Map,
-    functions: HashMap<String, Function>,
-    parent: Option<&'a SealedEnvironment<'a>>,
-}
-
-pub struct SealedEnvironment<'a> {
     variables: &'a Map,
     functions: &'a HashMap<String, Function>,
-    parent: Option<&'a SealedEnvironment<'a>>,
+    parent: Option<&'a Environment<'a>>,
 }
 
-impl<'a> SealedEnvironment<'a> {
+impl<'a> Environment<'a> {
     pub fn child(&self) -> Self {
-        SealedEnvironment {
+        Environment {
             variables: self.variables,
             functions: self.functions,
             parent: self.parent,
@@ -40,8 +36,8 @@ impl<'a> SealedEnvironment<'a> {
     }
 }
 
-impl Registry for SealedEnvironment<'_> {
-    fn lookup_variable(&self, name: &Key) -> Result<Option<&Value>, Error> {
+impl<'a> Environment<'a> {
+    pub fn lookup_variable(&self, name: &Key) -> Result<Option<&Value>, Error> {
         if let Some(val) = self.variables.get(name)? {
             Ok(Some(val))
         } else if let Some(parent) = self.parent {
@@ -51,22 +47,22 @@ impl Registry for SealedEnvironment<'_> {
         }
     }
 
-    fn lookup_function(&self, name: &str) -> Option<&Function> {
+    pub fn lookup_function(&self, name: &str) -> Option<&Function> {
         self.functions
             .get(name)
             .or_else(|| self.parent.and_then(|parent| parent.lookup_function(name)))
     }
 }
 
-impl Default for Environment<'_> {
+impl Default for EnvironmentBuilder<'_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'a> Environment<'a> {
-    pub fn to_sealed(&'a self) -> SealedEnvironment<'a> {
-        SealedEnvironment {
+impl<'a> EnvironmentBuilder<'a> {
+    pub fn to_sealed(&'a self) -> Environment<'a> {
+        Environment {
             variables: &self.variables,
             functions: &self.functions,
             parent: self.parent,

@@ -1,4 +1,4 @@
-use cellang::{eval, eval_ast, Environment, List, Map, SealedEnvironment, TokenTree, Value};
+use cellang::{eval, eval_ast, Environment, EnvironmentBuilder, List, Map, TokenTree, Value};
 use miette::Error;
 
 /// Let's create a function to split a string on a given character.
@@ -10,7 +10,7 @@ use miette::Error;
 /// // Or by using variables
 /// x.split(',')
 /// ```
-fn split(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
+fn split(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // We expect two arguments: the string to split and the character to split on
     //
     // The parser would transform x.split(',') into split(x, ',')
@@ -47,7 +47,7 @@ fn split(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> 
 
 fn main() {
     // Create a new environment with functions but without variables
-    let mut env = Environment::new();
+    let mut env = EnvironmentBuilder::new();
 
     // Register the function
     env.set_function("split", Box::new(split));
