@@ -60,9 +60,13 @@ impl<'a> Environment<'a> {
 }
 
 impl Environment<'_> {
-    pub fn lookup_variable(&self, name: &Key) -> Option<&Value> {
+    pub fn lookup_variable<K>(&self, name: K) -> Option<&Value>
+    where
+        K: Into<Key>,
+    {
+        let name = name.into();
         self.variables
-            .and_then(|variables| variables.get(name).unwrap_or(None))
+            .and_then(|variables| variables.get(&name).unwrap_or(None))
             .or_else(|| self.parent.and_then(|parent| parent.lookup_variable(name)))
     }
 

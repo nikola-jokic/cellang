@@ -14,11 +14,10 @@ pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
     match eval_ast(env, &tree) {
         Ok(Object::Value(val)) => Ok(val),
         Ok(Object::Ident(ident)) => {
-            let key = Key::from(ident);
-            if let Some(val) = env.lookup_variable(&key) {
+            if let Some(val) = env.lookup_variable(ident) {
                 Ok(val.clone())
             } else {
-                miette::bail!("Variable not found: {}", key);
+                miette::bail!("Variable not found: {}", ident);
             }
         }
         Err(e) => Err(e),
@@ -27,7 +26,7 @@ pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
 
 /// Evaluate the given AST in the given environment.
 /// The AST is a token tree representation of the program or a subprogram.
-pub fn eval_ast(env: &Environment, root: &TokenTree) -> Result<Object, Error> {
+pub fn eval_ast<'a>(env: &'a Environment, root: &'a TokenTree) -> Result<Object<'a>, Error> {
     match root {
         TokenTree::Atom(atom) => eval_atom(atom),
         TokenTree::Cons(op, tokens) => Ok(Object::Value(eval_cons(env, op, tokens)?)),
@@ -51,7 +50,7 @@ pub fn eval_ast(env: &Environment, root: &TokenTree) -> Result<Object, Error> {
 /// be resolved by the caller based on the context in which it is used.
 /// For example, identifier for a `Op::Call` should be resolved to a function.
 /// For the rest of the operations, it should be resolved to a variable.
-pub fn eval_atom(atom: &Atom) -> Result<Object, Error> {
+pub fn eval_atom<'a>(atom: &'a Atom) -> Result<Object<'a>, Error> {
     let val = match atom {
         Atom::Int(n) => Object::Value(Value::Int(*n)),
         Atom::Uint(n) => Object::Value(Value::Uint(*n)),
@@ -60,7 +59,7 @@ pub fn eval_atom(atom: &Atom) -> Result<Object, Error> {
         Atom::Bool(b) => Object::Value(Value::Bool(*b)),
         Atom::Null => Object::Value(Value::Null),
         Atom::Bytes(b) => Object::Value(Value::Bytes(b.clone().to_vec())),
-        Atom::Ident(ident) => Object::Ident(ident.to_string()),
+        Atom::Ident(ident) => Object::Ident(ident),
     };
     Ok(val)
 }
@@ -74,14 +73,26 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
         Op::Field => {
             assert!(tokens.len() == 2);
 
-            let map = match eval_ast(env, &tokens[0])?.to_value(env)? {
-                Value::Map(map) => map,
+            match eval_ast(env, &tokens[0])? {
+                Object::Value(Value::Map(map)) => {
+                    let mut env = env.child();
+                    env.set_variables(&map);
+                    eval_ast(&env, &tokens[1])?.to_value(&env)?
+                }
+                Object::Ident(ident) => {
+                    let v = env
+                        .lookup_variable(ident)
+                        .ok_or(miette::miette!("Variable not found: {}", ident))?;
+                    let map = match v {
+                        Value::Map(map) => map,
+                        _ => miette::bail!("Expected reference to a map, found {:?}", tokens[0]),
+                    };
+                    let mut env = env.child();
+                    env.set_variables(map);
+                    eval_ast(&env, &tokens[1])?.to_value(&env)?
+                }
                 _ => miette::bail!("Expected reference to a map, found {:?}", tokens[0]),
-            };
-
-            let mut env = env.child();
-            env.set_variables(&map);
-            eval_ast(&env, &tokens[1])?.to_value(&env)?
+            }
         }
         Op::Index => {
             assert!(tokens.len() == 2);
@@ -302,23 +313,22 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
 /// then the lookup should be performed in function list.
 /// Otherwise, it should be looked up in the variable list.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Object {
+pub enum Object<'a> {
     Value(Value),
-    Ident(String),
+    Ident(&'a str),
 }
 
-impl Object {
+impl Object<'_> {
     /// Get the value of the object. If the object is an identifier,
     /// look up the value in the environment.
     /// It always resolves to a variable lookup since function is not a value.
     ///
     /// If the function resolution is needed, it should be done in the caller.
-    pub fn to_value(&self, env: &Environment) -> Result<Value, Error> {
+    pub fn to_value(self, env: &Environment) -> Result<Value, Error> {
         match self {
-            Object::Value(value) => Ok(value.clone()),
+            Object::Value(value) => Ok(value),
             Object::Ident(ident) => {
-                let ident = Key::from(ident.as_str());
-                if let Some(val) = env.lookup_variable(&ident) {
+                if let Some(val) = env.lookup_variable(ident) {
                     Ok(val.clone())
                 } else {
                     miette::bail!("Variable not found: {}", ident);
