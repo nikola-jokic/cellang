@@ -1,4 +1,4 @@
-use cellang::{eval, eval_ast, Environment, EnvironmentBuilder, List, Map, TokenTree, Value};
+use cellang::{Environment, EnvironmentBuilder, List, Map, TokenTree, Value};
 use miette::Error;
 
 /// Let's create a function to split a string on a given character.
@@ -21,7 +21,7 @@ fn split(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // Evaluate the first argument
     // The value of the argument should be of type Value::String
     // However, it may also be a reference to a variable that is of type string
-    let string = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let string = match cellang::eval_ast(env, &tokens[0])?.to_value(env)? {
         Value::String(string) => string,
         _ => miette::bail!("Expected a string as the first argument"),
     };
@@ -29,7 +29,7 @@ fn split(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // Evaluate the second argument
     // The value of the argument should be of type Value::String since there
     // are no character types in CEL
-    let character = match eval_ast(env, &tokens[1])?.to_value(env)? {
+    let character = match cellang::eval_ast(env, &tokens[1])?.to_value(env)? {
         Value::String(character) if character.len() == 1 => character.chars().next().unwrap(),
         _ => miette::bail!("Expected a string as the second argument"),
     };
@@ -56,7 +56,7 @@ fn main() {
     let env = env.build();
 
     // Evaluate a simple expression
-    let value = eval(&env, "'a,b,c'.split(',')").unwrap();
+    let value = cellang::eval(&env, "'a,b,c'.split(',')").unwrap();
     assert_eq!(value, Value::List(List::from(vec!["a", "b", "c",])));
 
     // Evaluate a simple expression with variables
@@ -64,6 +64,6 @@ fn main() {
     variables.insert("x".into(), "a,b,c".into()).unwrap();
     let mut env = env.child();
     env.set_variables(&variables);
-    let value = eval(&env, "x.split(',')").unwrap();
+    let value = cellang::eval(&env, "x.split(',')").unwrap();
     assert_eq!(value, Value::List(List::from(vec!["a", "b", "c",])));
 }

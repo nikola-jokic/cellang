@@ -26,14 +26,32 @@ pub struct Environment<'a> {
 }
 
 impl<'a> Environment<'a> {
-    pub fn child(&self) -> Self {
-        Environment {
+    /// Creates a new child environment with empty variables and functions.
+    pub fn child_builder(&self) -> EnvironmentBuilder {
+        EnvironmentBuilder {
             variables: None,
             functions: None,
             parent: self.parent,
         }
     }
 
+    pub fn child(&self) -> Environment {
+        Environment {
+            variables: None,
+            functions: None,
+            parent: Some(self),
+        }
+    }
+
+    /// Sets the variables in the environment. This is useful especially
+    /// when evaluating sub-expressions. For example, a.b would evaluate
+    /// a first, then would create new environment with a map set to it,
+    /// and then evaluate b in that environment.
+    ///
+    /// This can be also acomplished by creating a new child environment
+    /// with the EnvironmentBuilder, but since the map is already allocated,
+    /// and stored inside the interpreter, it is more efficient to set it
+    /// than to clone it.
     pub fn set_variables(&mut self, variables: &'a Map) {
         self.variables = Some(variables);
     }
@@ -60,13 +78,6 @@ impl Default for EnvironmentBuilder<'_> {
 }
 
 impl<'a> EnvironmentBuilder<'a> {
-    pub fn build(&'a self) -> Environment<'a> {
-        Environment {
-            variables: self.variables.as_ref(),
-            functions: self.functions.as_ref(),
-            parent: self.parent,
-        }
-    }
     /// The new returns a root environment.
     pub fn root(variables: Option<Map>, functions: Option<HashMap<String, Function>>) -> Self {
         Self {
@@ -150,5 +161,13 @@ impl<'a> EnvironmentBuilder<'a> {
         self.functions
             .get_or_insert(HashMap::new())
             .insert(name.to_string(), function);
+    }
+
+    pub fn build(&'a self) -> Environment<'a> {
+        Environment {
+            variables: self.variables.as_ref(),
+            functions: self.functions.as_ref(),
+            parent: self.parent,
+        }
     }
 }

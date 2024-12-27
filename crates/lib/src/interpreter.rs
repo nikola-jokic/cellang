@@ -81,7 +81,6 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
 
             let mut env = env.child();
             env.set_variables(&map);
-
             eval_ast(&env, &tokens[1])?.to_value(&env)?
         }
         Op::Index => {
