@@ -9,7 +9,7 @@ pub use self::value::*;
 use miette::Error;
 
 use crate::parser::TokenTree;
-use crate::Environment;
+use crate::SealedEnvironment;
 
 /// Function is a wrapper for a dynamic function that can be registered in the environment.
-pub type Function = Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error>>;
+pub type Function = Box<dyn Fn(&SealedEnvironment, &[TokenTree]) -> Result<Value, Error>>;

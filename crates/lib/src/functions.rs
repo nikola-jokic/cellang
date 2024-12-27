@@ -2,14 +2,14 @@ use crate::{
     eval_ast,
     parser::{Atom, Op, TokenTree},
     types::{List, Map},
-    Environment, Key, KeyKind, Value,
+    Key, KeyKind, SealedEnvironment, Value,
 };
 use miette::Error;
 use regex::Regex;
 use time::{format_description::well_known::Iso8601, Duration, OffsetDateTime};
 
 /// Returns the size of a value.
-pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn size(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("Expected 1 argument, found {}", tokens.len());
     }
@@ -25,7 +25,7 @@ pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
-pub fn type_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn type_fn(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("Expected 1 argument, found {}", tokens.len());
     }
@@ -47,7 +47,7 @@ pub fn type_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> 
     Ok(v)
 }
 
-pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn has(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
@@ -68,7 +68,8 @@ pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                     Ok(Value::Bool(map.contains_key(&key)?))
                 }
                 TokenTree::Cons(_op, tokens) => {
-                    let env = env.child().with_variables(map);
+                    let mut env = env.child();
+                    env.set_variables(&map);
                     has(&env, tokens)
                 }
                 tree => miette::bail!("Invalid type for has: {:?}", tree),
@@ -78,7 +79,7 @@ pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 }
 
-pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn all(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 3 arguments, found {}", tokens.len());
     }
@@ -98,7 +99,6 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut env = env.child();
     let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
 
     let mut all = true;
@@ -107,7 +107,8 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         Value::List(list) => {
             for item in list.iter() {
                 variables.insert(key.clone(), item.clone())?;
-                env.variables = variables.clone();
+                let mut env = env.child();
+                env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.to_value(&env)? {
                     Value::Bool(b) => {
                         if !b {
@@ -122,7 +123,8 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         Value::Map(map) => {
             for (_key, value) in map.iter() {
                 variables.insert(key.clone(), value.clone())?;
-                env.variables = variables.clone();
+                let mut env = env.child();
+                env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.to_value(&env)? {
                     Value::Bool(b) => {
                         if !b {
@@ -140,7 +142,7 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(Value::Bool(all))
 }
 
-pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn exists(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 3 arguments, found {}", tokens.len());
     }
@@ -160,7 +162,6 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut env = env.child();
     let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
 
     let mut exists = false;
@@ -168,7 +169,8 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         Value::List(list) => {
             for item in list.iter() {
                 variables.insert(key.clone(), item.clone())?;
-                env.variables = variables.clone();
+                let mut env = env.child();
+                env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.to_value(&env)? {
                     Value::Bool(b) => {
                         if b {
@@ -183,7 +185,8 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         Value::Map(map) => {
             for (_key, value) in map.iter() {
                 variables.insert(key.clone(), value.clone())?;
-                env.variables = variables.clone();
+                let mut env = env.child();
+                env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.to_value(&env)? {
                     Value::Bool(b) => {
                         if b {
@@ -202,7 +205,7 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(Value::Bool(exists))
 }
 
-pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn exists_one(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 3 arguments, found {}", tokens.len());
     }
@@ -222,7 +225,6 @@ pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Erro
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut env = env.child();
     let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
 
     let mut found = false;
@@ -230,7 +232,8 @@ pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Erro
         Value::List(list) => {
             for item in list.iter() {
                 variables.insert(key.clone(), item.clone())?;
-                env.variables = variables.clone();
+                let mut env = env.child();
+                env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.to_value(&env)? {
                     Value::Bool(b) => {
                         if b {
@@ -248,7 +251,8 @@ pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Erro
         Value::Map(map) => {
             for (_key, value) in map.iter() {
                 variables.insert(key.clone(), value.clone())?;
-                env.variables = variables.clone();
+                let mut env = env.child();
+                env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.to_value(&env)? {
                     Value::Bool(b) => {
                         if b {
@@ -269,7 +273,7 @@ pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Erro
     Ok(Value::Bool(found))
 }
 
-pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn map(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 && tokens.len() != 4 {
         miette::bail!("expected 3 or 4 arguments, found {}", tokens.len());
     }
@@ -299,13 +303,14 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             if list.is_empty() {
                 return Ok(Value::List(list));
             }
-            let mut env = env.child();
             let mut new_list =
                 List::with_type_and_capacity(list.element_type().unwrap(), list.len());
 
+            let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
             for item in list.iter() {
-                env.variables = Map::with_type_and_capacity(KeyKind::String, 1);
-                env.variables.insert(key.clone(), item.clone())?;
+                variables.insert(key.clone(), item.clone())?;
+                let mut env = env.child();
+                env.set_variables(&variables);
                 new_list.push(eval_ast(&env, lambda)?.to_value(&env)?)?;
             }
             Ok(Value::List(new_list))
@@ -314,11 +319,13 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             if map.is_empty() {
                 return Ok(Value::Map(map));
             }
-            let mut env = env.child();
             let mut new_map = Map::with_capacity(map.len());
+            let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
             for (k, value) in map.iter() {
-                env.variables = Map::with_type_and_capacity(KeyKind::String, 1);
-                env.variables.insert(key.clone(), value.clone())?;
+                variables.insert(key.clone(), value.clone())?;
+
+                let mut env = env.child();
+                env.set_variables(&variables);
                 new_map.insert(k.clone(), eval_ast(&env, lambda)?.to_value(&env)?)?;
             }
             Ok(Value::Map(new_map))
@@ -327,7 +334,7 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 }
 
-pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn filter(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
@@ -345,7 +352,6 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut env = env.child();
     let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
 
     match host {
@@ -354,7 +360,8 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 List::with_type_and_capacity(list.element_type().unwrap(), list.len());
             for item in list.iter() {
                 variables.insert(key.clone(), item.clone())?;
-                env.variables = variables.clone();
+                let mut env = env.child();
+                env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.to_value(&env)? {
                     Value::Bool(b) => {
                         if b {
@@ -370,7 +377,8 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             let mut new_map = Map::with_capacity(map.len());
             for (k, v) in map.iter() {
                 variables.insert(key.clone(), v.clone())?;
-                env.variables = variables.clone();
+                let mut env = env.child();
+                env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.to_value(&env)? {
                     Value::Bool(b) => {
                         if b {
@@ -386,7 +394,7 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 }
 
-pub fn contains(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn contains(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 2 {
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
@@ -404,7 +412,7 @@ pub fn contains(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error>
     Ok(Value::Bool(s.contains(&*value)))
 }
 
-pub fn starts_with(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn starts_with(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 2 {
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
@@ -422,7 +430,7 @@ pub fn starts_with(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Err
     Ok(Value::Bool(s.starts_with(&*value)))
 }
 
-pub fn matches(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn matches(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 2 {
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
@@ -445,7 +453,7 @@ pub fn matches(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> 
     }
 }
 
-pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn uint(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
@@ -464,7 +472,7 @@ pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
-pub fn int(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn int(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
@@ -484,7 +492,7 @@ pub fn int(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
-pub fn string(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn string(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
@@ -505,7 +513,7 @@ pub fn string(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
-pub fn timestamp(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn timestamp(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
@@ -525,7 +533,7 @@ pub fn timestamp(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error
     Ok(v)
 }
 
-pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn dyn_fn(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
@@ -535,7 +543,7 @@ pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
-pub fn duration(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn duration(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
@@ -606,7 +614,7 @@ pub fn duration(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Function, Parser};
+    use crate::{Environment, Function, Parser};
 
     fn is_function(_: Function) {}
 
@@ -633,7 +641,8 @@ mod tests {
 
     #[test]
     fn test_size_primitive() {
-        let env = crate::Environment::default();
+        let env = Environment::default();
+        let env = env.to_sealed();
 
         for tt in [
             ("b'hello'", Value::Int(5)),
@@ -666,7 +675,8 @@ mod tests {
 
     #[test]
     fn test_type_fn_primitive() {
-        let env = crate::Environment::default();
+        let env = Environment::default();
+        let env = env.to_sealed();
 
         for tt in [
             ("1", "int".into()),
@@ -693,7 +703,7 @@ mod tests {
 
     #[test]
     fn test_has() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("a"),
             Value::Map(
@@ -716,6 +726,7 @@ mod tests {
 
         let program = "a[0].b";
         let tree = Parser::new(program).parse().unwrap();
+        let env = env.to_sealed();
         let v = has(&env, &[tree]);
         assert!(
             v.is_ok(),
@@ -745,7 +756,7 @@ mod tests {
 
     #[test]
     fn test_all_list() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("list"),
             Value::List(
@@ -765,6 +776,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 0").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -783,7 +795,7 @@ mod tests {
 
     #[test]
     fn test_all_map() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("m"),
             Value::Map(
@@ -803,6 +815,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 0").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -821,7 +834,7 @@ mod tests {
 
     #[test]
     fn test_exists_list() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("list"),
             Value::List(
@@ -841,6 +854,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 2").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = exists(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -859,7 +873,7 @@ mod tests {
 
     #[test]
     fn test_exists_map() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("m"),
             Value::Map(
@@ -879,6 +893,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 2").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -897,7 +912,7 @@ mod tests {
 
     #[test]
     fn test_exists_one_list() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("list"),
             Value::List(
@@ -917,6 +932,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 2").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = exists_one(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -935,7 +951,7 @@ mod tests {
 
     #[test]
     fn test_exists_one_map() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("m"),
             Value::Map(
@@ -955,6 +971,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 2").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = exists_one(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -973,7 +990,7 @@ mod tests {
 
     #[test]
     fn test_map_list_3_args() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("list"),
             Value::List(
@@ -993,6 +1010,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x + 1").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = map(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(
@@ -1012,7 +1030,7 @@ mod tests {
 
     #[test]
     fn test_map_map_3_args() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("m"),
             Value::Map(
@@ -1032,6 +1050,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x + 1").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = map(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(
@@ -1051,7 +1070,7 @@ mod tests {
 
     #[test]
     fn test_map_list_4_args() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("list"),
             Value::List(
@@ -1072,6 +1091,7 @@ mod tests {
         let filter = Parser::new("x > 1").parse().unwrap();
         let lambda = Parser::new("x + 1").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = map(
             &env,
             &[TokenTree::Atom(Atom::Ident("list")), ident, filter, lambda],
@@ -1092,7 +1112,7 @@ mod tests {
 
     #[test]
     fn test_map_map_4_args() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("m"),
             Value::Map(
@@ -1113,6 +1133,7 @@ mod tests {
         let filter = Parser::new("x > 1").parse().unwrap();
         let lambda = Parser::new("x + 1").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = map(
             &env,
             &[TokenTree::Atom(Atom::Ident("m")), ident, filter, lambda],
@@ -1133,7 +1154,7 @@ mod tests {
 
     #[test]
     fn test_filter_list() {
-        let mut env = crate::Environment::default();
+        let mut env = Environment::default();
         env.set_variable(
             Key::from("list"),
             Value::List(
@@ -1153,6 +1174,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 1").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = filter(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(
@@ -1190,6 +1212,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 1").parse().unwrap();
 
+        let env = env.to_sealed();
         let result = filter(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(

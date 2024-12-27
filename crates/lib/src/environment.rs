@@ -4,15 +4,58 @@ use crate::{Function, Map};
 use miette::Error;
 use std::collections::HashMap;
 
+pub trait Registry {
+    fn lookup_variable(&self, name: &Key) -> Result<Option<&Value>, Error>;
+    fn lookup_function(&self, name: &str) -> Option<&Function>;
+}
+
 /// The environment is a collection of variables and functions.
 /// The environment can have a parent environment, which is used for scoping.
 /// When looking up a variable or function, the environment will first look in its own variables
 /// and functions. If the variable or function is not found, it will look in the parent
 /// environment.
 pub struct Environment<'a> {
-    pub variables: Map,
-    pub functions: HashMap<String, Function>,
-    pub parent: Option<&'a Environment<'a>>,
+    variables: Map,
+    functions: HashMap<String, Function>,
+    parent: Option<&'a SealedEnvironment<'a>>,
+}
+
+pub struct SealedEnvironment<'a> {
+    variables: &'a Map,
+    functions: &'a HashMap<String, Function>,
+    parent: Option<&'a SealedEnvironment<'a>>,
+}
+
+impl<'a> SealedEnvironment<'a> {
+    pub fn child(&self) -> Self {
+        SealedEnvironment {
+            variables: self.variables,
+            functions: self.functions,
+            parent: self.parent,
+        }
+    }
+
+    pub fn set_variables(&mut self, variables: &'a Map) {
+        self.variables = variables;
+    }
+}
+
+impl Registry for SealedEnvironment<'_> {
+    fn lookup_variable(&self, name: &Key) -> Result<Option<&Value>, Error> {
+        if let Some(val) = self.variables.get(name)? {
+            Ok(Some(val))
+        } else if let Some(parent) = self.parent {
+            parent.lookup_variable(name)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn lookup_function(&self, name: &str) -> Option<&Function> {
+        self.functions
+            .get(name)
+            .or_else(|| self.parent.and_then(|parent| parent.lookup_function(name)))
+    }
 }
 
 impl Default for Environment<'_> {
@@ -22,6 +65,13 @@ impl Default for Environment<'_> {
 }
 
 impl<'a> Environment<'a> {
+    pub fn to_sealed(&'a self) -> SealedEnvironment<'a> {
+        SealedEnvironment {
+            variables: &self.variables,
+            functions: &self.functions,
+            parent: self.parent,
+        }
+    }
     /// The new returns a root environment.
     pub fn new() -> Self {
         Self {
@@ -84,16 +134,6 @@ impl<'a> Environment<'a> {
         }
     }
 
-    /// The child returns a new environment with the current environment as its parent.
-    /// This environment can be used during evaluating sub-expressions, creating a new scope, etc.
-    pub fn child(&'a self) -> Self {
-        Self {
-            variables: Map::new(),
-            functions: HashMap::new(),
-            parent: Some(self),
-        }
-    }
-
     /// Replaces the variables in the environment with the given variables.
     pub fn with_variables(self, variables: Map) -> Self {
         Self { variables, ..self }
@@ -102,14 +142,6 @@ impl<'a> Environment<'a> {
     /// Replaces the functions in the environment with the given functions.
     pub fn with_functions(self, functions: HashMap<String, Function>) -> Self {
         Self { functions, ..self }
-    }
-
-    /// Replaces the parent environment with the given parent environment.
-    pub fn with_parent(self, parent: &'a Environment<'a>) -> Self {
-        Self {
-            parent: Some(parent),
-            ..self
-        }
     }
 
     /// Looks up the variable with the given name in the environment, going from the current

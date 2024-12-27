@@ -1,4 +1,4 @@
-use cellang::{eval, eval_ast, Environment, List, Map, TokenTree, Value};
+use cellang::{eval, eval_ast, Environment, List, Map, SealedEnvironment, TokenTree, Value};
 use miette::Error;
 
 /// Let's create a function to split a string on a given character.
@@ -10,7 +10,7 @@ use miette::Error;
 /// // Or by using variables
 /// x.split(',')
 /// ```
-fn split(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+fn split(env: &SealedEnvironment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // We expect two arguments: the string to split and the character to split on
     //
     // The parser would transform x.split(',') into split(x, ',')
@@ -52,6 +52,9 @@ fn main() {
     // Register the function
     env.set_function("split", Box::new(split));
 
+    // Seal the environment so that it can be used for evaluation
+    let env = env.to_sealed();
+
     // Evaluate a simple expression
     let value = eval(&env, "'a,b,c'.split(',')").unwrap();
     assert_eq!(value, Value::List(List::from(vec!["a", "b", "c",])));
@@ -59,7 +62,8 @@ fn main() {
     // Evaluate a simple expression with variables
     let mut variables = Map::new();
     variables.insert("x".into(), "a,b,c".into()).unwrap();
-    let env = env.child().with_variables(variables);
+    let mut env = env.child();
+    env.set_variables(&variables);
     let value = eval(&env, "x.split(',')").unwrap();
     assert_eq!(value, Value::List(List::from(vec!["a", "b", "c",])));
 }
