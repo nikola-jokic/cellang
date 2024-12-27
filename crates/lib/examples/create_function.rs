@@ -47,13 +47,13 @@ fn split(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
 fn main() {
     // Create a new environment with functions but without variables
-    let mut env = EnvironmentBuilder::new();
+    let mut env = EnvironmentBuilder::default();
 
     // Register the function
     env.set_function("split", Box::new(split));
 
     // Seal the environment so that it can be used for evaluation
-    let env = env.to_sealed();
+    let env = env.build();
 
     // Evaluate a simple expression
     let value = eval(&env, "'a,b,c'.split(',')").unwrap();

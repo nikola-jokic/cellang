@@ -6,8 +6,11 @@ use std::collections::HashMap;
 
 /// Environment builder can be used to gradually build up the environment.
 pub struct EnvironmentBuilder<'a> {
-    variables: Map,
-    functions: HashMap<String, Function>,
+    variables: Option<Map>,
+    /// Option here is used to allow for child environments not to have functions.
+    /// The root environment is responsible for always allocating this map and providing
+    /// default functions.
+    functions: Option<HashMap<String, Function>>,
     parent: Option<&'a Environment<'a>>,
 }
 
@@ -17,63 +20,59 @@ pub struct EnvironmentBuilder<'a> {
 /// and functions. If the variable or function is not found, it will look in the parent
 /// environment.
 pub struct Environment<'a> {
-    variables: &'a Map,
-    functions: &'a HashMap<String, Function>,
+    variables: Option<&'a Map>,
+    functions: Option<&'a HashMap<String, Function>>,
     parent: Option<&'a Environment<'a>>,
 }
 
 impl<'a> Environment<'a> {
     pub fn child(&self) -> Self {
         Environment {
-            variables: self.variables,
-            functions: self.functions,
+            variables: None,
+            functions: None,
             parent: self.parent,
         }
     }
 
     pub fn set_variables(&mut self, variables: &'a Map) {
-        self.variables = variables;
+        self.variables = Some(variables);
     }
 }
 
-impl<'a> Environment<'a> {
-    pub fn lookup_variable(&self, name: &Key) -> Result<Option<&Value>, Error> {
-        if let Some(val) = self.variables.get(name)? {
-            Ok(Some(val))
-        } else if let Some(parent) = self.parent {
-            parent.lookup_variable(name)
-        } else {
-            Ok(None)
-        }
+impl Environment<'_> {
+    pub fn lookup_variable(&self, name: &Key) -> Option<&Value> {
+        self.variables
+            .and_then(|variables| variables.get(name).unwrap_or(None))
+            .or_else(|| self.parent.and_then(|parent| parent.lookup_variable(name)))
     }
 
     pub fn lookup_function(&self, name: &str) -> Option<&Function> {
         self.functions
-            .get(name)
+            .and_then(|functions| functions.get(name))
             .or_else(|| self.parent.and_then(|parent| parent.lookup_function(name)))
     }
 }
 
 impl Default for EnvironmentBuilder<'_> {
     fn default() -> Self {
-        Self::new()
+        Self::root(None, None)
     }
 }
 
 impl<'a> EnvironmentBuilder<'a> {
-    pub fn to_sealed(&'a self) -> Environment<'a> {
+    pub fn build(&'a self) -> Environment<'a> {
         Environment {
-            variables: &self.variables,
-            functions: &self.functions,
+            variables: self.variables.as_ref(),
+            functions: self.functions.as_ref(),
             parent: self.parent,
         }
     }
     /// The new returns a root environment.
-    pub fn new() -> Self {
+    pub fn root(variables: Option<Map>, functions: Option<HashMap<String, Function>>) -> Self {
         Self {
-            variables: Map::new(),
+            variables,
             functions: {
-                let mut m = HashMap::new();
+                let mut m = functions.unwrap_or_default();
                 m.insert("size".to_string(), Box::new(functions::size) as Function);
                 m.insert("type".to_string(), Box::new(functions::type_fn) as Function);
                 m.insert("has".to_string(), Box::new(functions::has) as Function);
@@ -124,46 +123,32 @@ impl<'a> EnvironmentBuilder<'a> {
                     "duration".to_string(),
                     Box::new(functions::duration) as Function,
                 );
-                m
+                Some(m)
             },
             parent: None,
         }
     }
 
     /// Replaces the variables in the environment with the given variables.
-    pub fn with_variables(self, variables: Map) -> Self {
+    pub fn set_variables(self, variables: Option<Map>) -> Self {
         Self { variables, ..self }
     }
 
     /// Replaces the functions in the environment with the given functions.
-    pub fn with_functions(self, functions: HashMap<String, Function>) -> Self {
+    pub fn set_functions(self, functions: Option<HashMap<String, Function>>) -> Self {
         Self { functions, ..self }
     }
 
-    /// Looks up the variable with the given name in the environment, going from the current
-    /// environment to the parent environment.
-    pub fn lookup_variable(&self, name: &Key) -> Result<Option<&Value>, Error> {
-        if let Some(val) = self.variables.get(name)? {
-            Ok(Some(val))
-        } else if let Some(parent) = self.parent {
-            parent.lookup_variable(name)
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn set_variable(&mut self, name: Key, value: Value) -> Result<&mut Self, Error> {
-        self.variables.insert(name, value)?;
-        Ok(self)
-    }
-
-    pub fn lookup_function(&self, name: &str) -> Option<&Function> {
-        self.functions
-            .get(name)
-            .or_else(|| self.parent.and_then(|parent| parent.lookup_function(name)))
+    pub fn set_variable(&mut self, name: Key, value: Value) -> Result<(), Error> {
+        self.variables
+            .get_or_insert(Map::new())
+            .insert(name, value)?;
+        Ok(())
     }
 
     pub fn set_function(&mut self, name: &str, function: Function) {
-        self.functions.insert(name.to_string(), function);
+        self.functions
+            .get_or_insert(HashMap::new())
+            .insert(name.to_string(), function);
     }
 }

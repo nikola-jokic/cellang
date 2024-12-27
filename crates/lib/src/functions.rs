@@ -642,7 +642,7 @@ mod tests {
     #[test]
     fn test_size_primitive() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
 
         for tt in [
             ("b'hello'", Value::Int(5)),
@@ -676,7 +676,7 @@ mod tests {
     #[test]
     fn test_type_fn_primitive() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
 
         for tt in [
             ("1", "int".into()),
@@ -726,7 +726,7 @@ mod tests {
 
         let program = "a[0].b";
         let tree = Parser::new(program).parse().unwrap();
-        let env = env.to_sealed();
+        let env = env.build();
         let v = has(&env, &[tree]);
         assert!(
             v.is_ok(),
@@ -776,7 +776,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 0").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -815,7 +815,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 0").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -854,7 +854,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 2").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = exists(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -893,7 +893,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 2").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -932,7 +932,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 2").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = exists_one(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -971,7 +971,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 2").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = exists_one(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
@@ -1010,7 +1010,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x + 1").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = map(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(
@@ -1050,7 +1050,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x + 1").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = map(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(
@@ -1091,7 +1091,7 @@ mod tests {
         let filter = Parser::new("x > 1").parse().unwrap();
         let lambda = Parser::new("x + 1").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = map(
             &env,
             &[TokenTree::Atom(Atom::Ident("list")), ident, filter, lambda],
@@ -1133,7 +1133,7 @@ mod tests {
         let filter = Parser::new("x > 1").parse().unwrap();
         let lambda = Parser::new("x + 1").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = map(
             &env,
             &[TokenTree::Atom(Atom::Ident("m")), ident, filter, lambda],
@@ -1174,7 +1174,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 1").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = filter(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(
@@ -1212,7 +1212,7 @@ mod tests {
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 1").parse().unwrap();
 
-        let env = env.to_sealed();
+        let env = env.build();
         let result = filter(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(

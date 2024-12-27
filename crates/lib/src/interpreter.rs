@@ -15,7 +15,7 @@ pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
         Ok(Object::Value(val)) => Ok(val),
         Ok(Object::Ident(ident)) => {
             let key = Key::from(ident);
-            if let Some(val) = env.lookup_variable(&key)? {
+            if let Some(val) = env.lookup_variable(&key) {
                 Ok(val.clone())
             } else {
                 miette::bail!("Variable not found: {}", key);
@@ -319,7 +319,7 @@ impl Object {
             Object::Value(value) => Ok(value.clone()),
             Object::Ident(ident) => {
                 let ident = Key::from(ident.as_str());
-                if let Some(val) = env.lookup_variable(&ident)? {
+                if let Some(val) = env.lookup_variable(&ident) {
                     Ok(val.clone())
                 } else {
                     miette::bail!("Variable not found: {}", ident);
@@ -337,7 +337,7 @@ mod tests {
     #[test]
     fn test_eval_primitives() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "42").expect("42"), Value::Int(42));
         assert_eq!(eval(&env, "true").expect("true"), Value::Bool(true));
         assert_eq!(eval(&env, "false").expect("false"), Value::Bool(false));
@@ -348,7 +348,7 @@ mod tests {
     #[test]
     fn test_eval_plus() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "1 + 2").expect("1 + 2"), Value::Int(3));
         assert_eq!(eval(&env, "1u + 2u").expect("1u + 2u"), Value::Uint(3));
         assert_eq!(
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn test_eval_minus() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "1 - 2").expect("1 - 2"), Value::Int(-1));
         assert_eq!(eval(&env, "2u - 1u").expect("2u - 1u"), Value::Uint(1));
         assert_eq!(
@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn test_eval_multiply() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "2 * 3").expect("2 * 3"), Value::Int(6));
         assert_eq!(eval(&env, "2u * 3u").expect("2u * 3u"), Value::Uint(6));
         assert_eq!(
@@ -388,7 +388,7 @@ mod tests {
     #[test]
     fn test_eval_devide() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "6 / 3").expect("6 / 3"), Value::Int(2));
         assert_eq!(eval(&env, "6u / 3u").expect("6u / 3u"), Value::Uint(2));
         assert_eq!(
@@ -400,7 +400,7 @@ mod tests {
     #[test]
     fn test_eval_and() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(
             eval(&env, "true && false").expect("true && false"),
             Value::Bool(false)
@@ -414,7 +414,7 @@ mod tests {
     #[test]
     fn test_eval_or() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(
             eval(&env, "false || true").expect("false || true"),
             Value::Bool(true)
@@ -428,7 +428,7 @@ mod tests {
     #[test]
     fn test_eval_equal_equal() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "1 == 1").expect("1 == 1"), Value::Bool(true));
         assert_eq!(eval(&env, "1 == 2").expect("1 == 2"), Value::Bool(false));
         assert_eq!(eval(&env, "1u == 1u").expect("1u == 1u"), Value::Bool(true));
@@ -465,7 +465,7 @@ mod tests {
     #[test]
     fn test_not_equal() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "1 != 1").expect("1 != 1"), Value::Bool(false));
         assert_eq!(eval(&env, "1 != 2").expect("1 != 2"), Value::Bool(true));
         assert_eq!(
@@ -502,7 +502,7 @@ mod tests {
     #[test]
     fn test_eval_greater() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "2 > 1").expect("2 > 1"), Value::Bool(true));
         assert_eq!(eval(&env, "1 > 2").expect("1 > 2"), Value::Bool(false));
         assert_eq!(eval(&env, "2u > 1u").expect("2u > 1u"), Value::Bool(true));
@@ -520,7 +520,7 @@ mod tests {
     #[test]
     fn test_eval_greater_equal() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "2 >= 1").expect("2 >= 1"), Value::Bool(true));
         assert_eq!(eval(&env, "1 >= 2").expect("1 >= 2"), Value::Bool(false));
         assert_eq!(eval(&env, "1 >= 1").expect("1 >= 1"), Value::Bool(true));
@@ -547,7 +547,7 @@ mod tests {
     #[test]
     fn test_eval_less() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "1 < 2").expect("1 < 2"), Value::Bool(true));
         assert_eq!(eval(&env, "2 < 1").expect("2 < 1"), Value::Bool(false));
         assert_eq!(eval(&env, "1u < 2u").expect("1u < 2u"), Value::Bool(true));
@@ -565,7 +565,7 @@ mod tests {
     #[test]
     fn test_eval_less_equal() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "1 <= 2").expect("1 <= 2"), Value::Bool(true));
         assert_eq!(eval(&env, "2 <= 1").expect("2 <= 1"), Value::Bool(false));
         assert_eq!(eval(&env, "1 <= 1").expect("1 <= 1"), Value::Bool(true));
@@ -592,7 +592,7 @@ mod tests {
     #[test]
     fn test_eval_mod() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "5 % 2").expect("5 % 2"), Value::Int(1));
         assert_eq!(eval(&env, "5u % 2u").expect("5u % 2u"), Value::Uint(1));
     }
@@ -600,7 +600,7 @@ mod tests {
     #[test]
     fn test_eval_not() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "!true").expect("!true"), Value::Bool(false));
         assert_eq!(eval(&env, "!false").expect("!false"), Value::Bool(true));
     }
@@ -608,7 +608,7 @@ mod tests {
     #[test]
     fn test_list() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "[]").expect("[]"), Value::List(List::new()));
         assert_eq!(
             eval(&env, "[1, 2, 3]").expect("[1, 2, 3]"),
@@ -673,7 +673,7 @@ mod tests {
         ];
 
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
 
         for (input, expected) in tt.iter() {
             let result = eval(&env, input).expect(input);
@@ -700,7 +700,7 @@ mod tests {
     #[test]
     fn test_if_ternary() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
 
         assert_eq!(
             eval(&env, "1 > 2 ? 1 : 2u").expect("1 > 2 ? 1 : 2u"),
@@ -715,7 +715,7 @@ mod tests {
     #[test]
     fn test_group() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
 
         assert_eq!(
             eval(&env, "(1 + 2) * 3").expect("(1 + 2) * 3"),
@@ -726,7 +726,7 @@ mod tests {
     #[test]
     fn test_in() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
 
         assert_eq!(
             eval(&env, "1 in [1, 2, 3]").expect("1 in [1, 2, 3]"),
@@ -744,7 +744,7 @@ mod tests {
         env.set_variable(Key::from("x"), Value::from(42i64))
             .expect("to set variable");
 
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "x").expect("x"), Value::Int(42));
         assert!(eval(&env, "y").is_err());
     }
@@ -752,7 +752,7 @@ mod tests {
     #[test]
     fn test_size() {
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
 
         assert_eq!(eval(&env, "size(\"\")").expect("size(\"\")"), Value::Int(0));
         assert_eq!(
@@ -781,7 +781,7 @@ mod tests {
         env.set_variable("x".into(), 42i64.into())
             .expect("to set variable");
 
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "x.foo()").expect("x.foo()"), Value::Int(1));
     }
 
@@ -806,7 +806,7 @@ mod tests {
         })
         .expect("to set variable");
 
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(
             eval(&env, "x[true][0][\"y\"]").expect("x[true][0][\"y\"]"),
             Value::Int(42)
@@ -827,7 +827,7 @@ mod tests {
         })
         .expect("to set variable");
 
-        let env = env.to_sealed();
+        let env = env.build();
         assert_eq!(eval(&env, "x.y.z").expect("x.y.z"), Value::Uint(42));
     }
 
@@ -852,7 +852,7 @@ mod tests {
         ];
 
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         for (input, expected) in tt {
             let result = eval(&env, input).expect(input);
             assert_eq!(result, expected, "input: {}", input);
@@ -890,7 +890,7 @@ mod tests {
             ),
         ];
         let env = &EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         for (input, expected) in tt {
             let result = eval(&env, input);
             assert!(result.is_ok(), "input: {input}, result: {result:?}");
@@ -902,7 +902,7 @@ mod tests {
     fn test_basic_variables() {
         // https://github.com/google/cel-spec/blob/master/tests/simple/testdata/basic.textproto
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         let result = eval(&env, "x");
         assert!(result.is_err(), "Program 'x' failed: {:?}", result);
 
@@ -921,7 +921,7 @@ mod tests {
     fn test_basic_functions() {
         // https://github.com/google/cel-spec/blob/master/tests/simple/testdata/basic.textproto
         let env = EnvironmentBuilder::default();
-        let env = env.to_sealed();
+        let env = env.build();
         let result = eval(&env, "1 + 1");
         assert!(result.is_ok(), "Program '1 + 1' failed: {:?}", result);
         let result = result.unwrap();
