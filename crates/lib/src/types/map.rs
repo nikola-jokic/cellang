@@ -5,7 +5,6 @@ use serde::{ser::Serializer, Deserialize, Serialize};
 use std::collections::hash_map::{self, Entry, IntoValues, Iter, IterMut, Keys, RandomState};
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::Arc;
 
 /// Map is a wrapper around HashMap with additional type checking.
 #[derive(Debug, PartialEq, Clone)]
@@ -364,7 +363,7 @@ impl From<serde_json::Value> for Map {
             serde_json::Value::Object(inner) => Map::from(
                 inner
                     .into_iter()
-                    .map(|(k, v)| (Key::String(Arc::new(k)), Value::from(v)))
+                    .map(|(k, v)| (Key::String(k), Value::from(v)))
                     .collect::<HashMap<Key, Value>>(),
             ),
             _ => Map::new(),
@@ -382,7 +381,7 @@ impl<'de> Deserialize<'de> for Map {
             Ok(Map::from(
                 inner
                     .into_iter()
-                    .map(|(k, v)| (Key::String(Arc::new(k)), Value::from(v)))
+                    .map(|(k, v)| (Key::String(k), Value::from(v)))
                     .collect::<HashMap<Key, Value>>(),
             ))
         } else {
@@ -419,41 +418,18 @@ impl TryFrom<ValueKind> for KeyKind {
     }
 }
 
-fn arc_string_deserializer<'de, D>(deserializer: D) -> Result<Arc<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: String = String::deserialize(deserializer)?;
-    Ok(Arc::new(s))
-}
-
-fn arc_string_serializer<S>(s: &Arc<String>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(s)
-}
-
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Key {
     Int(i64),
     Uint(u64),
-    #[serde(deserialize_with = "arc_string_deserializer")]
-    #[serde(serialize_with = "arc_string_serializer")]
-    String(Arc<String>),
+    String(String),
     Bool(bool),
 }
 
 impl From<&str> for Key {
     fn from(value: &str) -> Self {
-        Key::String(Arc::new(value.to_string()))
-    }
-}
-
-impl From<String> for Key {
-    fn from(value: String) -> Self {
-        Key::String(Arc::new(value))
+        Key::String(value.to_string())
     }
 }
 
@@ -506,7 +482,7 @@ macro_rules! impl_owned_key_conversions {
 impl_owned_key_conversions! {
     i64 => Key::Int,
     u64 => Key::Uint,
-    Arc<String> => Key::String,
+    String => Key::String,
     bool => Key::Bool,
 }
 

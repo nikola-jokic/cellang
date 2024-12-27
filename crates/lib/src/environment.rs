@@ -35,6 +35,8 @@ impl<'a> Environment<'a> {
         }
     }
 
+    /// Creates a new child environment with empty variables and functions.
+    /// If you need to set variables gradually, use child_builder instead.
     pub fn child(&self) -> Environment {
         Environment {
             variables: None,
