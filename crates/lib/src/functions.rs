@@ -14,7 +14,7 @@ pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         miette::bail!("Expected 1 argument, found {}", tokens.len());
     }
 
-    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let v = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::Bytes(b) => Value::Int(b.len() as i64),
         Value::String(s) => Value::Int(s.len() as i64),
         Value::List(list) => Value::Int(list.len() as i64),
@@ -30,7 +30,7 @@ pub fn type_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> 
         miette::bail!("Expected 1 argument, found {}", tokens.len());
     }
 
-    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let v = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::Int(_) => "int".into(),
         Value::Uint(_) => "uint".into(),
         Value::Double(_) => "double".into(),
@@ -54,7 +54,7 @@ pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
     match &tokens[0] {
         TokenTree::Cons(op, tokens) if matches!(op, Op::Field | Op::Index) => {
-            let map = match eval_ast(env, &tokens[0])?.to_value(env)? {
+            let map = match eval_ast(env, &tokens[0])?.to_value()? {
                 Value::Map(m) => m,
                 _ => miette::bail!("Invalid type for has: {:?}", tokens[0]),
             };
@@ -85,7 +85,7 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 
     // expect first parameter to be a list
-    let host = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let host = match eval_ast(env, &tokens[0])?.to_value()? {
         v if matches!(v, Value::List(_) | Value::Map(_)) => v,
         _ => miette::bail!("Invalid type for all: {:?}", tokens[0]),
     };
@@ -109,7 +109,7 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value(&env)? {
+                match eval_ast(&env, lambda)?.to_value()? {
                     Value::Bool(b) => {
                         if !b {
                             all = false;
@@ -125,7 +125,7 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 variables.insert(key.clone(), value.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value(&env)? {
+                match eval_ast(&env, lambda)?.to_value()? {
                     Value::Bool(b) => {
                         if !b {
                             all = false;
@@ -148,7 +148,7 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 
     // expect first parameter to be a list
-    let host = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let host = match eval_ast(env, &tokens[0])?.to_value()? {
         v if matches!(v, Value::List(_) | Value::Map(_)) => v,
         _ => miette::bail!("Invalid type for exists: {:?}", tokens[0]),
     };
@@ -171,7 +171,7 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value(&env)? {
+                match eval_ast(&env, lambda)?.to_value()? {
                     Value::Bool(b) => {
                         if b {
                             exists = true;
@@ -187,7 +187,7 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 variables.insert(key.clone(), value.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value(&env)? {
+                match eval_ast(&env, lambda)?.to_value()? {
                     Value::Bool(b) => {
                         if b {
                             exists = true;
@@ -211,7 +211,7 @@ pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Erro
     }
 
     // expect first parameter to be a list
-    let host = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let host = match eval_ast(env, &tokens[0])?.to_value()? {
         v if matches!(v, Value::List(_) | Value::Map(_)) => v,
         _ => miette::bail!("Invalid type for exists_one: {:?}", tokens[0]),
     };
@@ -234,7 +234,7 @@ pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Erro
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value(&env)? {
+                match eval_ast(&env, lambda)?.to_value()? {
                     Value::Bool(b) => {
                         if b {
                             if found {
@@ -253,7 +253,7 @@ pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Erro
                 variables.insert(key.clone(), value.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value(&env)? {
+                match eval_ast(&env, lambda)?.to_value()? {
                     Value::Bool(b) => {
                         if b {
                             if found {
@@ -279,7 +279,7 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 
     let this = if tokens.len() == 3 {
-        match eval_ast(env, &tokens[0])?.to_value(env)? {
+        match eval_ast(env, &tokens[0])?.to_value()? {
             v if matches!(v, Value::List(_) | Value::Map(_)) => v,
             _ => miette::bail!("Invalid type for map: {:?}", tokens[0]),
         }
@@ -311,7 +311,7 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                new_list.push(eval_ast(&env, lambda)?.to_value(&env)?)?;
+                new_list.push(eval_ast(&env, lambda)?.to_value()?)?;
             }
             Ok(Value::List(new_list))
         }
@@ -326,7 +326,7 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
                 let mut env = env.child();
                 env.set_variables(&variables);
-                new_map.insert(k.clone(), eval_ast(&env, lambda)?.to_value(&env)?)?;
+                new_map.insert(k.clone(), eval_ast(&env, lambda)?.to_value()?)?;
             }
             Ok(Value::Map(new_map))
         }
@@ -338,7 +338,7 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
-    let host = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let host = match eval_ast(env, &tokens[0])?.to_value()? {
         v if matches!(v, Value::List(_) | Value::Map(_)) => v,
         _ => miette::bail!("Invalid type for filter: {:?}", tokens[0]),
     };
@@ -362,7 +362,7 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value(&env)? {
+                match eval_ast(&env, lambda)?.to_value()? {
                     Value::Bool(b) => {
                         if b {
                             new_list.push(item.clone())?;
@@ -379,7 +379,7 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 variables.insert(key.clone(), v.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value(&env)? {
+                match eval_ast(&env, lambda)?.to_value()? {
                     Value::Bool(b) => {
                         if b {
                             new_map.insert(k.clone(), v.clone())?;
@@ -399,12 +399,12 @@ pub fn contains(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error>
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
 
-    let s = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let s = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for contains: {:?}", tokens[0]),
     };
 
-    let value = match eval_ast(env, &tokens[1])?.to_value(env)? {
+    let value = match eval_ast(env, &tokens[1])?.to_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for contains: {:?}", tokens[1]),
     };
@@ -417,12 +417,12 @@ pub fn starts_with(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Err
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
 
-    let s = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let s = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[0]),
     };
 
-    let value = match eval_ast(env, &tokens[1])?.to_value(env)? {
+    let value = match eval_ast(env, &tokens[1])?.to_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[1]),
     };
@@ -435,12 +435,12 @@ pub fn matches(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> 
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
 
-    let s = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let s = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for matches: {:?}", tokens[0]),
     };
 
-    let value = match eval_ast(env, &tokens[1])?.to_value(env)? {
+    let value = match eval_ast(env, &tokens[1])?.to_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for matches: {:?}", tokens[1]),
     };
@@ -458,7 +458,7 @@ pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
 
-    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let v = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::Int(i) => Value::Uint(i as u64),
         Value::Uint(u) => Value::Uint(u),
         Value::Double(d) => Value::Uint(d as u64),
@@ -477,7 +477,7 @@ pub fn int(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
 
-    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let v = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::Int(i) => Value::Int(i),
         Value::Uint(u) => Value::Int(u as i64),
         Value::Double(d) => Value::Int(d as i64),
@@ -497,7 +497,7 @@ pub fn string(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
 
-    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let v = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::Int(i) => i.to_string().into(),
         Value::Uint(u) => u.to_string().into(),
         Value::Double(d) => d.to_string().into(),
@@ -518,7 +518,7 @@ pub fn timestamp(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
 
-    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let v = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::String(s) => {
             let t = match OffsetDateTime::parse(&s, &Iso8601::PARSING) {
                 Ok(t) => t,
@@ -538,7 +538,7 @@ pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
 
-    let v = eval_ast(env, &tokens[0])?.to_value(env)?;
+    let v = eval_ast(env, &tokens[0])?.to_value()?;
 
     Ok(v)
 }
@@ -548,7 +548,7 @@ pub fn duration(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error>
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
 
-    let v = match eval_ast(env, &tokens[0])?.to_value(env)? {
+    let v = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::String(s) => {
             let mut result = Duration::ZERO;
             let mut acc = 0i64;

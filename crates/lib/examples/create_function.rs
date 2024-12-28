@@ -21,7 +21,7 @@ fn split(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // Evaluate the first argument
     // The value of the argument should be of type Value::String
     // However, it may also be a reference to a variable that is of type string
-    let string = match cellang::eval_ast(env, &tokens[0])?.to_value(env)? {
+    let string = match cellang::eval_ast(env, &tokens[0])?.to_value()? {
         Value::String(string) => string,
         _ => miette::bail!("Expected a string as the first argument"),
     };
@@ -29,7 +29,7 @@ fn split(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // Evaluate the second argument
     // The value of the argument should be of type Value::String since there
     // are no character types in CEL
-    let character = match cellang::eval_ast(env, &tokens[1])?.to_value(env)? {
+    let character = match cellang::eval_ast(env, &tokens[1])?.to_value()? {
         Value::String(character) if character.len() == 1 => character.chars().next().unwrap(),
         _ => miette::bail!("Expected a string as the second argument"),
     };

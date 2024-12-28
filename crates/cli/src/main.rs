@@ -72,8 +72,9 @@ fn main() -> Result<(), Error> {
             .into_diagnostic()
             .wrap_err("Failed to deserialize environment")?;
 
-            let env = EnvironmentBuilder::root().set_variables(variables);
-
+            let env = EnvironmentBuilder::default();
+            let mut env = env.build();
+            env.set_variables(&variables);
             match eval(&env, &text) {
                 Ok(value) => println!("{value:?}"),
                 Err(err) => return Err(err),

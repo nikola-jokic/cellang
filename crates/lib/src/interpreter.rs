@@ -2,7 +2,7 @@ use crate::{
     environment::Environment,
     parser::{Atom, Op, TokenTree},
     types::{Key, KeyKind, Map, Value},
-    List, Parser,
+    Function, List, Parser,
 };
 use miette::Error;
 use std::collections::HashMap;
@@ -11,35 +11,19 @@ use std::collections::HashMap;
 /// The program is a string representation of the program.
 pub fn eval(env: &Environment, program: &str) -> Result<Value, Error> {
     let tree = Parser::new(program).parse()?;
-    match eval_ast(env, &tree) {
-        Ok(Object::Value(val)) => Ok(val),
-        Ok(Object::Ident(ident)) => {
-            if let Some(val) = env.lookup_variable(ident) {
-                Ok(val.clone())
-            } else {
-                miette::bail!("Variable not found: {}", ident);
-            }
-        }
-        Err(e) => Err(e),
-    }
+    eval_ast(env, &tree)?.to_value()
 }
 
 /// Evaluate the given AST in the given environment.
 /// The AST is a token tree representation of the program or a subprogram.
-pub fn eval_ast<'a>(env: &'a Environment, root: &'a TokenTree) -> Result<Object<'a>, Error> {
+pub fn eval_ast<'a>(env: &'a Environment, root: &'a TokenTree) -> Result<Resolver<'a>, Error> {
     match root {
-        TokenTree::Atom(atom) => eval_atom(atom),
-        TokenTree::Cons(op, tokens) => Ok(Object::Value(eval_cons(env, op, tokens)?)),
+        TokenTree::Atom(atom) => eval_atom(env, atom),
+        TokenTree::Cons(op, tokens) => eval_cons(env, op, tokens),
         TokenTree::Call { func, args } => {
-            let f = match eval_ast(env, func)? {
-                Object::Ident(name) => match env.lookup_function(&name) {
-                    Some(f) => f,
-                    None => miette::bail!("Function not found: {}", name),
-                },
-                _ => miette::bail!("Expected function name, found {:?}", func),
-            };
-
-            Ok(Object::Value(f(env, args.as_ref())?))
+            let lhs = eval_ast(env, func)?;
+            let f = lhs.resolve_fn()?;
+            Ok(Resolver::new(env, Object::Value(f(env, args.as_ref())?)))
         }
     }
 }
@@ -50,7 +34,7 @@ pub fn eval_ast<'a>(env: &'a Environment, root: &'a TokenTree) -> Result<Object<
 /// be resolved by the caller based on the context in which it is used.
 /// For example, identifier for a `Op::Call` should be resolved to a function.
 /// For the rest of the operations, it should be resolved to a variable.
-pub fn eval_atom<'a>(atom: &'a Atom) -> Result<Object<'a>, Error> {
+pub fn eval_atom<'a>(env: &'a Environment, atom: &'a Atom) -> Result<Resolver<'a>, Error> {
     let val = match atom {
         Atom::Int(n) => Object::Value(Value::Int(*n)),
         Atom::Uint(n) => Object::Value(Value::Uint(*n)),
@@ -61,46 +45,40 @@ pub fn eval_atom<'a>(atom: &'a Atom) -> Result<Object<'a>, Error> {
         Atom::Bytes(b) => Object::Value(Value::Bytes(b.clone().to_vec())),
         Atom::Ident(ident) => Object::Ident(ident),
     };
-    Ok(val)
+    Ok(Resolver::new(env, val))
 }
 
 /// Evaluate the given cons in the given environment.
 /// The cons is a list of tokens with an operator.
 /// The operator is used to determine the operation to be performed.
-pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Value, Error> {
-    let val = match op {
+pub fn eval_cons<'a>(
+    env: &'a Environment,
+    op: &'a Op,
+    tokens: &'a [TokenTree],
+) -> Result<Resolver<'a>, Error> {
+    let value: Value = match op {
         Op::Call => panic!("Call should be handled in eval_ast"),
         Op::Field => {
             assert!(tokens.len() == 2);
 
-            match eval_ast(env, &tokens[0])? {
-                Object::Value(Value::Map(map)) => {
-                    let mut env = env.child();
-                    env.set_variables(&map);
-                    eval_ast(&env, &tokens[1])?.to_value(&env)?
-                }
-                Object::Ident(ident) => {
-                    let v = env
-                        .lookup_variable(ident)
-                        .ok_or(miette::miette!("Variable not found: {}", ident))?;
-                    let map = match v {
-                        Value::Map(map) => map,
-                        _ => miette::bail!("Expected reference to a map, found {:?}", tokens[0]),
-                    };
-                    let mut env = env.child();
-                    env.set_variables(map);
-                    eval_ast(&env, &tokens[1])?.to_value(&env)?
-                }
-                _ => miette::bail!("Expected reference to a map, found {:?}", tokens[0]),
-            }
+            let lhs = eval_ast(env, &tokens[0])?;
+            let m = match lhs.resolve_value()? {
+                Value::Map(map) => map,
+                _ => miette::bail!("Expected map, found {:?}", tokens[0]),
+            };
+
+            let mut child = env.child();
+            child.set_variables(m);
+            let result = eval_ast(&child, &tokens[1])?;
+            return Ok(Resolver::new(env, Object::Value(result.to_value()?)));
         }
         Op::Index => {
             assert!(tokens.len() == 2);
 
-            match eval_ast(env, &tokens[0])?.to_value(env)? {
+            match eval_ast(env, &tokens[0])?.resolve_value()? {
                 Value::List(list) => {
-                    let i = match eval_ast(env, &tokens[1])?.to_value(env)? {
-                        Value::Int(n) => n,
+                    let i = match eval_ast(env, &tokens[1])?.resolve_value()? {
+                        Value::Int(n) => *n,
                         _ => miette::bail!("Expected int index, found {:?}", tokens[1]),
                     };
 
@@ -110,10 +88,8 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
 
                     list.get(i as usize).unwrap().clone()
                 }
-
                 Value::Map(map) => {
-                    let key = Key::try_from(eval_ast(env, &tokens[1])?.to_value(env)?)?;
-
+                    let key = Key::try_from(eval_ast(env, &tokens[1])?.to_value()?)?;
                     if let Some(val) = map.get(&key)? {
                         val.clone()
                     } else {
@@ -124,123 +100,145 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
             }
         }
         Op::Not => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            match lhs {
+            let lhs = eval_ast(env, &tokens[0])?;
+            match lhs.resolve_value()? {
                 Value::Bool(b) => Value::Bool(!b),
                 _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
             }
         }
         Op::Plus => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.plus(&rhs)?
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.resolve_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            lhs.plus(rhs)?
         }
-        Op::Minus => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            match tokens.len() {
-                1 => match lhs {
-                    Value::Int(n) => Value::Int(-n),
-                    Value::Double(n) => Value::Double(-n),
-                    _ => miette::bail!("Expected number, found {:?}", tokens[0]),
-                },
-                2 => {
-                    let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-                    lhs.minus(&rhs)?
-                }
-                _ => miette::bail!("Expected 1 or 2 arguments, found {}", tokens.len()),
+        Op::Minus => match tokens.len() {
+            1 => match eval_ast(env, &tokens[0])?.resolve_value()? {
+                Value::Int(n) => Value::Int(-n),
+                Value::Double(n) => Value::Double(-n),
+                _ => miette::bail!("Expected number, found {:?}", tokens[0]),
+            },
+            2 => {
+                let lhs = eval_ast(env, &tokens[0])?;
+                let lhs = lhs.resolve_value()?;
+                let rhs = eval_ast(env, &tokens[1])?;
+                let rhs = rhs.resolve_value()?;
+                lhs.minus(rhs)?
             }
-        }
+            _ => miette::bail!("Expected 1 or 2 arguments, found {}", tokens.len()),
+        },
         Op::Multiply => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.multiply(&rhs)?
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.resolve_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            lhs.multiply(rhs)?
         }
         Op::Devide => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.devide(&rhs)?
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.resolve_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            lhs.devide(rhs)?
         }
         Op::Mod => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.reminder(&rhs)?
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.resolve_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            lhs.reminder(rhs)?
         }
         Op::And => {
             let lhs = eval_ast(env, &tokens[0])
-                .unwrap_or(Object::Value(Value::Bool(false)))
-                .to_value(env)
-                .unwrap_or(Value::Bool(false));
+                .unwrap_or(Resolver::new(env, Object::Value(Value::Bool(false))));
+            let lhs = lhs.resolve_value()?;
 
-            if lhs == Value::Bool(false) {
-                return Ok(Value::Bool(false));
+            if matches!(lhs, Value::Bool(false)) {
+                return Ok(Resolver::new(env, Object::Value(Value::Bool(false))));
             }
 
-            eval_ast(env, &tokens[1])
-                .unwrap_or(Object::Value(Value::Bool(false)))
-                .to_value(env)
-                .unwrap_or(Value::Bool(false))
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            match rhs {
+                Value::Bool(b) => Value::Bool(*b),
+                _ => miette::bail!("Expected bool, found {:?}", tokens[1]),
+            }
         }
         Op::Or => {
             assert!(tokens.len() == 2);
 
             let lhs = eval_ast(env, &tokens[0])
-                .unwrap_or(Object::Value(Value::Bool(false)))
-                .to_value(env)
-                .unwrap_or(Value::Bool(false));
+                .unwrap_or(Resolver::new(env, Object::Value(Value::Bool(false))));
+            let lhs = lhs.resolve_value().unwrap_or(&Value::Bool(false));
 
-            if lhs == Value::Bool(true) {
-                return Ok(Value::Bool(true));
+            if matches!(lhs, Value::Bool(true)) {
+                return Ok(Resolver::new(env, Object::Value(Value::Bool(true))));
             }
 
-            eval_ast(env, &tokens[1])
-                .unwrap_or(Object::Value(Value::Bool(false)))
-                .to_value(env)
-                .unwrap_or(Value::Bool(false))
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            match rhs {
+                Value::Bool(b) => Value::Bool(*b),
+                _ => miette::bail!("Expected bool, found {:?}", tokens[1]),
+            }
         }
         Op::NotEqual => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.not_equal(&rhs)?
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.resolve_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            lhs.not_equal(rhs)?
         }
         Op::EqualEqual => {
             assert!(tokens.len() == 2);
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.equal(&rhs)?
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.resolve_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            lhs.equal(rhs)?
         }
         Op::Greater => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.greater(&rhs)?
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.resolve_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            lhs.greater(rhs)?
         }
         Op::GreaterEqual => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.greater_equal(&rhs)?
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.resolve_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            lhs.greater_equal(rhs)?
         }
         Op::Less => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
-            lhs.less(&rhs)?
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.resolve_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
+            lhs.less(rhs)?
         }
         Op::LessEqual => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            let rhs = eval_ast(env, &tokens[1])?.to_value(env)?;
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.resolve_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.resolve_value()?;
             lhs.less_equal(&rhs)?
         }
         Op::List => {
             if tokens.is_empty() {
-                return Ok(Value::List(List::new()));
+                return Ok(Resolver::new(env, Object::Value(Value::List(List::new()))));
             }
 
             let mut list = Vec::with_capacity(tokens.len());
             let mut iter = tokens.iter();
-            let first = eval_ast(env, iter.next().unwrap())?.to_value(env)?;
+            let first = eval_ast(env, iter.next().unwrap())?.to_value()?;
             let kind = first.kind();
             list.push(first);
 
             for token in iter {
-                let value = eval_ast(env, token)?.to_value(env)?;
+                let value = eval_ast(env, token)?.to_value()?;
                 if value.kind() != kind {
                     miette::bail!("List elements must have the same type");
                 }
@@ -251,22 +249,21 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
         }
         Op::Map => {
             if tokens.is_empty() {
-                return Ok(Value::Map(Map::new()));
+                return Ok(Resolver::new(env, Object::Value(Value::Map(Map::new()))));
             }
 
             let mut iter = tokens.iter();
-            let first_key =
-                eval_ast(env, iter.next().expect("Key must be present"))?.to_value(env)?;
+            let first_key = eval_ast(env, iter.next().expect("Key must be present"))?.to_value()?;
             let first_value =
-                eval_ast(env, iter.next().expect("Value must be present"))?.to_value(env)?;
+                eval_ast(env, iter.next().expect("Value must be present"))?.to_value()?;
             let key_kind = KeyKind::try_from(first_key.kind())?;
 
             let mut map = HashMap::new();
             map.insert(Key::try_from(first_key)?, first_value);
 
             while let (Some(key), Some(value)) = (iter.next(), iter.next()) {
-                let key = eval_ast(env, key)?.to_value(env)?;
-                let value = eval_ast(env, value)?.to_value(env)?;
+                let key = eval_ast(env, key)?.to_value()?;
+                let value = eval_ast(env, value)?.to_value()?;
                 let kk = KeyKind::try_from(key.kind())?;
                 if kk != key_kind {
                     miette::bail!("Map elements must have the same type");
@@ -277,21 +274,21 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
             Value::Map(map.into())
         }
         Op::IfTernary => {
-            let lhs = match eval_ast(env, &tokens[0])?.to_value(env)? {
-                Value::Bool(b) => b,
+            let lhs = match eval_ast(env, &tokens[0])?.resolve_value()? {
+                Value::Bool(b) => *b,
                 _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
             };
 
             if lhs {
-                eval_ast(env, &tokens[1])?.to_value(env)?
+                return eval_ast(env, &tokens[1]);
             } else {
-                eval_ast(env, &tokens[2])?.to_value(env)?
+                return eval_ast(env, &tokens[2]);
             }
         }
-        Op::Group => eval_ast(env, &tokens[0])?.to_value(env)?,
+        Op::Group => return eval_ast(env, &tokens[0]),
         Op::In => {
-            let lhs = eval_ast(env, &tokens[0])?.to_value(env)?;
-            match eval_ast(env, &tokens[1])?.to_value(env)? {
+            let lhs = eval_ast(env, &tokens[0])?.to_value()?;
+            match eval_ast(env, &tokens[1])?.resolve_value()? {
                 Value::List(list) => Value::Bool(list.contains(&lhs)?),
                 Value::Map(map) => Value::Bool(map.contains_key(&Key::try_from(lhs)?)?),
                 _ => miette::bail!("Expected list, found {:?}", tokens[1]),
@@ -301,7 +298,57 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
         Op::While => miette::bail!("While loop is not supported"),
         Op::Var => miette::bail!("Var is not supported"),
     };
-    Ok(val)
+    Ok(Resolver::new(env, Object::Value(value)))
+}
+
+pub struct Resolver<'a> {
+    env: &'a Environment<'a>,
+    object: Object<'a>,
+}
+
+impl Resolver<'_> {
+    pub fn new<'a>(env: &'a Environment, object: Object<'a>) -> Resolver<'a> {
+        Resolver { env, object }
+    }
+
+    pub fn to_value(self) -> Result<Value, Error> {
+        match self.object {
+            Object::Value(val) => Ok(val),
+            Object::Ident(ident) => {
+                if let Some(val) = self.env.lookup_variable(ident) {
+                    Ok(val.clone())
+                } else {
+                    miette::bail!("Variable not found: {}", ident);
+                }
+            }
+        }
+    }
+
+    pub fn resolve_value(&self) -> Result<&Value, Error> {
+        match &self.object {
+            Object::Value(val) => Ok(val),
+            Object::Ident(ident) => {
+                if let Some(val) = self.env.lookup_variable(*ident) {
+                    Ok(val)
+                } else {
+                    miette::bail!("Variable not found: {}", ident);
+                }
+            }
+        }
+    }
+
+    pub fn resolve_fn(&self) -> Result<&Function, Error> {
+        match &self.object {
+            Object::Ident(ident) => {
+                if let Some(f) = self.env.lookup_function(*ident) {
+                    Ok(f)
+                } else {
+                    miette::bail!("Function not found: {}", ident);
+                }
+            }
+            _ => miette::bail!("Expected function name, found {:?}", self.object),
+        }
+    }
 }
 
 /// Object represents a value or an identifier.
@@ -316,26 +363,6 @@ pub fn eval_cons(env: &Environment, op: &Op, tokens: &[TokenTree]) -> Result<Val
 pub enum Object<'a> {
     Value(Value),
     Ident(&'a str),
-}
-
-impl Object<'_> {
-    /// Get the value of the object. If the object is an identifier,
-    /// look up the value in the environment.
-    /// It always resolves to a variable lookup since function is not a value.
-    ///
-    /// If the function resolution is needed, it should be done in the caller.
-    pub fn to_value(self, env: &Environment) -> Result<Value, Error> {
-        match self {
-            Object::Value(value) => Ok(value),
-            Object::Ident(ident) => {
-                if let Some(val) = env.lookup_variable(ident) {
-                    Ok(val.clone())
-                } else {
-                    miette::bail!("Variable not found: {}", ident);
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]
