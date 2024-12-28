@@ -312,7 +312,7 @@ pub struct Resolver<'a> {
 }
 
 impl Resolver<'_> {
-    pub fn new<'a>(env: &'a Environment, object: Object<'a>) -> Resolver<'a> {
+    fn new<'a>(env: &'a Environment, object: Object<'a>) -> Resolver<'a> {
         Resolver { env, object }
     }
 
@@ -365,7 +365,7 @@ impl Resolver<'_> {
 /// then the lookup should be performed in function list.
 /// Otherwise, it should be looked up in the variable list.
 #[derive(Debug, PartialEq, Clone)]
-pub enum Object<'a> {
+enum Object<'a> {
     Value(Value),
     Ident(&'a str),
 }

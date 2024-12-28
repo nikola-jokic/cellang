@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::fmt;
 use time::{Duration, OffsetDateTime};
 
+/// ValueKind is an enum that represents the different types of values that can be stored in a
+/// Value.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
 pub enum ValueKind {
     Int,
@@ -20,6 +22,8 @@ pub enum ValueKind {
     Null,
 }
 
+/// Value is a primitive value for each ValueKind. Resolution for a value could be a constant,
+/// for example, an Int(1), or a resolved value from a variable.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Value {
     Int(i64),

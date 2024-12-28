@@ -66,19 +66,18 @@ impl Map {
         }
     }
 
-    /// Wrapper for https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.capacity
+    /// Wrapper for [capacity](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.capacity)
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
     }
 
-    /// Wrapper for https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.clear
+    /// Wrapper for [clear](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.clear)
     /// It doesn't clear the key type.
     pub fn clear(&mut self) {
         self.inner.clear();
     }
 
-    /// Wrapper for
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.contains_key
+    /// Wrapper for [contains_key](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.contains_key)
     /// It checks if the key type is the same as the key kind.
     /// If the key type is not set (map must be empty), it returns false.
     pub fn contains_key(&self, key: &Key) -> Result<bool, Error> {
@@ -93,14 +92,12 @@ impl Map {
         }
     }
 
-    /// Wrapper for drain
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.drain
+    /// Wrapper for [drain](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.drain)
     pub fn drain(&mut self) -> hash_map::Drain<'_, Key, Value> {
         self.inner.drain()
     }
 
-    /// Wrapper for entry
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.entry
+    /// Wrapper for [entry](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.entry)
     /// It checks if the key type is the same as the key kind.
     /// If the key type is not set (map must be empty), it sets the key type.
     pub fn entry(&mut self, key: Key) -> Result<Entry<Key, Value>, Error> {
@@ -115,7 +112,7 @@ impl Map {
         Ok(self.inner.entry(key))
     }
 
-    /// Wrapper for https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.reserve
+    /// Wrapper for [get](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.reserve)
     pub fn get(&self, key: &Key) -> Result<Option<&Value>, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
@@ -128,8 +125,7 @@ impl Map {
         }
     }
 
-    /// Wrapper for get_key_value
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.get_key_value
+    /// Wrapper for [get_key_value](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.get_key_value)
     pub fn get_key_value(&self, key: &Key) -> Result<Option<(&Key, &Value)>, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
@@ -142,8 +138,7 @@ impl Map {
         }
     }
 
-    /// Wrapper for get_mut
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.get_mut
+    /// Wrapper for [get_mut](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.get_mut)
     pub fn get_mut(&mut self, key: &Key) -> Result<Option<&mut Value>, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
@@ -156,14 +151,12 @@ impl Map {
         }
     }
 
-    /// Wrapper for hasher
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.hasher
+    /// Wrapper for [hasher](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.hasher)
     pub fn hasher(&self) -> &RandomState {
         self.inner.hasher()
     }
 
-    /// Wrapper for insert
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.insert
+    /// Wrapper for [insert](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.insert)
     pub fn insert(&mut self, key: Key, value: Value) -> Result<&mut Self, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
@@ -177,50 +170,42 @@ impl Map {
         Ok(self)
     }
 
-    /// Wrapper for into_keys
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.into_keys
+    /// Wrapper for [into_keys](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.into_keys)
     pub fn into_keys(self) -> impl Iterator<Item = Key> {
         self.inner.into_keys()
     }
 
-    /// Wrapper for into_values
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.into_values
+    /// Wrapper for [into_values](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.into_values)
     pub fn into_values(self) -> IntoValues<Key, Value> {
         self.inner.into_values()
     }
 
-    /// Wrapper for is_empty
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.is_empty
+    /// Wrapper for [is_empty](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.is_empty)
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
-    /// Wrapper for iter
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.iter
+    /// Wrapper for [iter](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.iter)
     pub fn iter(&self) -> Iter<'_, Key, Value> {
         self.inner.iter()
     }
 
-    /// Wrapper for iter_mut
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.iter_mut
+    /// Wrapper for [iter_mut](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.iter_mut)
     pub fn iter_mut(&mut self) -> IterMut<'_, Key, Value> {
         self.inner.iter_mut()
     }
 
-    /// Wrapper for keys
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.keys
+    /// Wrapper for [keys](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.keys)
     pub fn keys(&self) -> Keys<'_, Key, Value> {
         self.inner.keys()
     }
 
-    /// Wrapper for len
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.len
+    /// Wrapper for [len](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.len)
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
-    /// Wrapper for remove
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.remove
+    /// Wrapper for [remove](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.remove)
     pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
@@ -233,14 +218,12 @@ impl Map {
         Ok(self.inner.remove(key))
     }
 
-    /// Wrapper for reserve
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.reserve
+    /// Wrapper for [reserve](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.reserve)
     pub fn reserve(&mut self, additional: usize) {
         self.inner.reserve(additional)
     }
 
-    /// Wrapper for retain
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.retain
+    /// Wrapper for [retain](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.retain)
     pub fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&Key, &mut Value) -> bool,
@@ -248,20 +231,17 @@ impl Map {
         self.inner.retain(f)
     }
 
-    /// Wrapper for shrink_to
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.shrink_to
+    /// Wrapper for [shrink_to](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.shrink_to)
     pub fn shrink_to(&mut self, min_capacity: usize) {
         self.inner.shrink_to(min_capacity)
     }
 
-    /// Wrapper for shrink_to_fit
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.shrink_to_fit
+    /// Wrapper for [shrink_to_fit](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.shrink_to_fit)
     pub fn shrink_to_fit(&mut self) {
         self.inner.shrink_to_fit()
     }
 
-    /// Wrapper for try_insert
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert
+    /// Wrapper for [try_insert](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert)
     pub fn try_insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
@@ -274,8 +254,7 @@ impl Map {
         Ok(self.inner.insert(key, value))
     }
 
-    /// Wrapper for try_reserve
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_reserve
+    /// Wrapper for [try_reserve](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_reserve)
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), Error> {
         match self.inner.try_reserve(additional) {
             Ok(_) => Ok(()),
@@ -283,20 +262,17 @@ impl Map {
         }
     }
 
-    /// Wrapper for values
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values
+    /// Wrapper for [values](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values)
     pub fn values(&self) -> impl Iterator<Item = &Value> {
         self.inner.values()
     }
 
-    /// Wrapper for values_mut
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values_mut
+    /// Wrapper for [values_mut](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values_mut)
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Value> {
         self.inner.values_mut()
     }
 
-    /// Wrapper for with_capacity
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_capacity
+    /// Wrapper for [with_capacity](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_capacity)
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             key_type: None,
@@ -304,6 +280,7 @@ impl Map {
         }
     }
 
+    /// Adds key type and instantiates an inner hashmap with the capacity provided as the argument.
     pub fn with_type_and_capacity(key_type: KeyKind, capacity: usize) -> Self {
         Self {
             key_type: Some(key_type),
@@ -311,8 +288,7 @@ impl Map {
         }
     }
 
-    /// Wrapper for with_capacity_and_hasher
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_capacity_and_hasher
+    /// Wrapper for [with_capacity_and_hasher](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_capacity_and_hasher)
     pub fn with_capacity_and_hasher(capacity: usize, hash_builder: RandomState) -> Self {
         Self {
             key_type: None,
@@ -320,6 +296,7 @@ impl Map {
         }
     }
 
+    /// Creates new inner hashmap and sets the map type for type checking.
     pub fn with_type_capacity_and_hasher(
         key_type: KeyKind,
         capacity: usize,
@@ -331,8 +308,7 @@ impl Map {
         }
     }
 
-    /// Wrapper for with_hasher
-    /// https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_hasher
+    /// Wrapper for [with_hasher](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_hasher)
     pub fn with_hasher(hash_builder: RandomState) -> Self {
         Self {
             key_type: None,
@@ -340,6 +316,7 @@ impl Map {
         }
     }
 
+    /// Creates new inner hashmap and sets the map type for type checking.
     pub fn with_type_and_hasher(key_type: KeyKind, hash_builder: RandomState) -> Self {
         Self {
             key_type: Some(key_type),
@@ -390,6 +367,7 @@ impl<'de> Deserialize<'de> for Map {
     }
 }
 
+/// KeyKind represents the type of the key.
 #[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
 pub enum KeyKind {
     Int,
@@ -418,6 +396,7 @@ impl TryFrom<ValueKind> for KeyKind {
     }
 }
 
+/// Key represents the key of the map. It has a variant for each key type and holds the value.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Key {
