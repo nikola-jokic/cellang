@@ -22,7 +22,7 @@ pub fn eval_ast<'a>(env: &'a Environment, root: &'a TokenTree) -> Result<Resolve
         TokenTree::Cons(op, tokens) => eval_cons(env, op, tokens),
         TokenTree::Call { func, args } => {
             let lhs = eval_ast(env, func)?;
-            let f = lhs.resolve_fn()?;
+            let f = lhs.try_function()?;
             Ok(Resolver::new(env, Object::Value(f(env, args.as_ref())?)))
         }
     }
@@ -62,7 +62,7 @@ pub fn eval_cons<'a>(
             assert!(tokens.len() == 2);
 
             let lhs = eval_ast(env, &tokens[0])?;
-            let m = match lhs.resolve_value()? {
+            let m = match lhs.try_value()? {
                 Value::Map(map) => map,
                 _ => miette::bail!("Expected map, found {:?}", tokens[0]),
             };
@@ -75,9 +75,9 @@ pub fn eval_cons<'a>(
         Op::Index => {
             assert!(tokens.len() == 2);
 
-            match eval_ast(env, &tokens[0])?.resolve_value()? {
+            match eval_ast(env, &tokens[0])?.try_value()? {
                 Value::List(list) => {
-                    let i = match eval_ast(env, &tokens[1])?.resolve_value()? {
+                    let i = match eval_ast(env, &tokens[1])?.try_value()? {
                         Value::Int(n) => *n,
                         _ => miette::bail!("Expected int index, found {:?}", tokens[1]),
                     };
@@ -101,65 +101,65 @@ pub fn eval_cons<'a>(
         }
         Op::Not => {
             let lhs = eval_ast(env, &tokens[0])?;
-            match lhs.resolve_value()? {
+            match lhs.try_value()? {
                 Value::Bool(b) => Value::Bool(!b),
                 _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
             }
         }
         Op::Plus => {
             let lhs = eval_ast(env, &tokens[0])?;
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             lhs.plus(rhs)?
         }
         Op::Minus => match tokens.len() {
-            1 => match eval_ast(env, &tokens[0])?.resolve_value()? {
+            1 => match eval_ast(env, &tokens[0])?.try_value()? {
                 Value::Int(n) => Value::Int(-n),
                 Value::Double(n) => Value::Double(-n),
                 _ => miette::bail!("Expected number, found {:?}", tokens[0]),
             },
             2 => {
                 let lhs = eval_ast(env, &tokens[0])?;
-                let lhs = lhs.resolve_value()?;
+                let lhs = lhs.try_value()?;
                 let rhs = eval_ast(env, &tokens[1])?;
-                let rhs = rhs.resolve_value()?;
+                let rhs = rhs.try_value()?;
                 lhs.minus(rhs)?
             }
             _ => miette::bail!("Expected 1 or 2 arguments, found {}", tokens.len()),
         },
         Op::Multiply => {
             let lhs = eval_ast(env, &tokens[0])?;
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             lhs.multiply(rhs)?
         }
         Op::Devide => {
             let lhs = eval_ast(env, &tokens[0])?;
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             lhs.devide(rhs)?
         }
         Op::Mod => {
             let lhs = eval_ast(env, &tokens[0])?;
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             lhs.reminder(rhs)?
         }
         Op::And => {
             let lhs = eval_ast(env, &tokens[0])
                 .unwrap_or(Resolver::new(env, Object::Value(Value::Bool(false))));
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
 
             if matches!(lhs, Value::Bool(false)) {
                 return Ok(Resolver::new(env, Object::Value(Value::Bool(false))));
             }
 
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             match rhs {
                 Value::Bool(b) => Value::Bool(*b),
                 _ => miette::bail!("Expected bool, found {:?}", tokens[1]),
@@ -170,14 +170,14 @@ pub fn eval_cons<'a>(
 
             let lhs = eval_ast(env, &tokens[0])
                 .unwrap_or(Resolver::new(env, Object::Value(Value::Bool(false))));
-            let lhs = lhs.resolve_value().unwrap_or(&Value::Bool(false));
+            let lhs = lhs.try_value().unwrap_or(&Value::Bool(false));
 
             if matches!(lhs, Value::Bool(true)) {
                 return Ok(Resolver::new(env, Object::Value(Value::Bool(true))));
             }
 
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             match rhs {
                 Value::Bool(b) => Value::Bool(*b),
                 _ => miette::bail!("Expected bool, found {:?}", tokens[1]),
@@ -185,46 +185,46 @@ pub fn eval_cons<'a>(
         }
         Op::NotEqual => {
             let lhs = eval_ast(env, &tokens[0])?;
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             lhs.not_equal(rhs)?
         }
         Op::EqualEqual => {
             assert!(tokens.len() == 2);
             let lhs = eval_ast(env, &tokens[0])?;
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             lhs.equal(rhs)?
         }
         Op::Greater => {
             let lhs = eval_ast(env, &tokens[0])?;
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             lhs.greater(rhs)?
         }
         Op::GreaterEqual => {
             let lhs = eval_ast(env, &tokens[0])?;
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             lhs.greater_equal(rhs)?
         }
         Op::Less => {
             let lhs = eval_ast(env, &tokens[0])?;
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
+            let rhs = rhs.try_value()?;
             lhs.less(rhs)?
         }
         Op::LessEqual => {
             let lhs = eval_ast(env, &tokens[0])?;
-            let lhs = lhs.resolve_value()?;
+            let lhs = lhs.try_value()?;
             let rhs = eval_ast(env, &tokens[1])?;
-            let rhs = rhs.resolve_value()?;
-            lhs.less_equal(&rhs)?
+            let rhs = rhs.try_value()?;
+            lhs.less_equal(rhs)?
         }
         Op::List => {
             if tokens.is_empty() {
@@ -274,7 +274,7 @@ pub fn eval_cons<'a>(
             Value::Map(map.into())
         }
         Op::IfTernary => {
-            let lhs = match eval_ast(env, &tokens[0])?.resolve_value()? {
+            let lhs = match eval_ast(env, &tokens[0])?.try_value()? {
                 Value::Bool(b) => *b,
                 _ => miette::bail!("Expected bool, found {:?}", tokens[0]),
             };
@@ -288,7 +288,7 @@ pub fn eval_cons<'a>(
         Op::Group => return eval_ast(env, &tokens[0]),
         Op::In => {
             let lhs = eval_ast(env, &tokens[0])?.to_value()?;
-            match eval_ast(env, &tokens[1])?.resolve_value()? {
+            match eval_ast(env, &tokens[1])?.try_value()? {
                 Value::List(list) => Value::Bool(list.contains(&lhs)?),
                 Value::Map(map) => Value::Bool(map.contains_key(&Key::try_from(lhs)?)?),
                 _ => miette::bail!("Expected list, found {:?}", tokens[1]),
@@ -301,6 +301,11 @@ pub fn eval_cons<'a>(
     Ok(Resolver::new(env, Object::Value(value)))
 }
 
+/// Resolver is a helper struct that helps to resolve the object to a value.
+/// The object can be a value or an identifier.
+/// If the object is an identifier, it should be resolved in the given environment.
+///
+/// The resolver should be used based on the context in which it is used.
 pub struct Resolver<'a> {
     env: &'a Environment<'a>,
     object: Object<'a>,
@@ -324,7 +329,7 @@ impl Resolver<'_> {
         }
     }
 
-    pub fn resolve_value(&self) -> Result<&Value, Error> {
+    pub fn try_value(&self) -> Result<&Value, Error> {
         match &self.object {
             Object::Value(val) => Ok(val),
             Object::Ident(ident) => {
@@ -337,10 +342,10 @@ impl Resolver<'_> {
         }
     }
 
-    pub fn resolve_fn(&self) -> Result<&Function, Error> {
+    pub fn try_function(&self) -> Result<&Function, Error> {
         match &self.object {
             Object::Ident(ident) => {
-                if let Some(f) = self.env.lookup_function(*ident) {
+                if let Some(f) = self.env.lookup_function(ident) {
                     Ok(f)
                 } else {
                     miette::bail!("Function not found: {}", ident);
@@ -660,7 +665,7 @@ mod tests {
         );
         assert_eq!(
             eval(&env, "[\"hello\", \"world\"]").expect("[\"hello\", \"world\"]"),
-            Value::List(vec!["hello".into(), Value::String("world".to_string().into())].into())
+            Value::List(vec!["hello".into(), Value::String("world".to_string())].into())
         );
         assert_eq!(
             eval(&env, "[true, false]").expect("[true, false]"),
