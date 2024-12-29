@@ -43,10 +43,6 @@ impl List {
         self.inner.iter()
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = Value> {
-        self.inner.into_iter()
-    }
-
     pub fn with_type(elem_type: ValueKind) -> Self {
         Self {
             elem_type: Some(elem_type),
@@ -256,7 +252,10 @@ impl List {
         }
     }
 
-    pub fn try_reserve_exact(&mut self, additional: usize) -> Result<(), Error> {
+    pub fn try_reserve_exact(
+        &mut self,
+        additional: usize,
+    ) -> Result<(), Error> {
         match self.inner.try_reserve_exact(additional) {
             Ok(_) => Ok(()),
             Err(e) => miette::bail!(e),
@@ -270,7 +269,10 @@ impl List {
         }
     }
 
-    pub fn with_type_and_capacity(elem_type: ValueKind, capacity: usize) -> Self {
+    pub fn with_type_and_capacity(
+        elem_type: ValueKind,
+        capacity: usize,
+    ) -> Self {
         Self {
             elem_type: Some(elem_type),
             inner: Vec::with_capacity(capacity),
@@ -289,6 +291,15 @@ impl List {
             }
         }
         Ok(())
+    }
+}
+
+impl IntoIterator for List {
+    type Item = Value;
+    type IntoIter = vec::IntoIter<Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
     }
 }
 

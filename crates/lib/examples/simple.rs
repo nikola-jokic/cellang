@@ -19,6 +19,7 @@ fn main() {
     // Evaluate a simple expression with macros
     let env = EnvironmentBuilder::default();
     let env = env.build();
-    let value = cellang::eval(&env, "'Hello, World!'.startsWith('Hello')").unwrap();
+    let value =
+        cellang::eval(&env, "'Hello, World!'.startsWith('Hello')").unwrap();
     assert_eq!(value, true.into());
 }

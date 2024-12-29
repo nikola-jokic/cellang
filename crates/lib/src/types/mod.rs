@@ -12,4 +12,5 @@ use crate::parser::TokenTree;
 use crate::Environment;
 
 /// Function is a wrapper for a dynamic function that can be registered in the environment.
-pub type Function = Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error>>;
+pub type Function =
+    Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error>>;

@@ -87,7 +87,7 @@ fn list_users() -> Result<Vec<User>, Error> {
         User {
             name: "David".into(),
             roles: vec!["user".into()],
-        }
+        },
     ])
 }
 

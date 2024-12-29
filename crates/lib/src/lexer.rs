@@ -156,7 +156,8 @@ impl fmt::Display for TokenKind {
 }
 
 fn keywords() -> &'static HashMap<&'static str, TokenKind> {
-    static KEYWORDS: OnceLock<HashMap<&'static str, TokenKind>> = OnceLock::new();
+    static KEYWORDS: OnceLock<HashMap<&'static str, TokenKind>> =
+        OnceLock::new();
     KEYWORDS.get_or_init(|| {
         let mut map = HashMap::new();
         map.insert("true", TokenKind::True);
@@ -236,8 +237,12 @@ impl fmt::Display for Token<'_> {
             TokenKind::Plus => write!(f, "PLUS {origin} nil"),
             TokenKind::Minus => write!(f, "MINUS {origin} nil"),
             TokenKind::Semicolon => write!(f, "SEMICOLON {origin} nil"),
-            TokenKind::String => write!(f, "STRING {origin} {}", Token::unescape(origin)),
-            TokenKind::RawString => write!(f, "RAW_STRING {origin} {}", Token::unescape(origin)),
+            TokenKind::String => {
+                write!(f, "STRING {origin} {}", Token::unescape(origin))
+            }
+            TokenKind::RawString => {
+                write!(f, "RAW_STRING {origin} {}", Token::unescape(origin))
+            }
             TokenKind::Ident => write!(f, "IDENTIFIER {origin} nil"),
             TokenKind::Int(n) => write!(f, "INT {origin} {n}"),
             TokenKind::Uint(n) => write!(f, "UINT {origin} {n}"),
@@ -411,9 +416,14 @@ impl<'src> Iterator for Lexer<'src> {
                 '+' => return just(TokenKind::Plus),
                 ';' => return just(TokenKind::Semicolon),
                 '<' => Started::OrEqual(TokenKind::Less, TokenKind::LessEqual),
-                '>' => Started::OrEqual(TokenKind::Greater, TokenKind::GreaterEqual),
+                '>' => Started::OrEqual(
+                    TokenKind::Greater,
+                    TokenKind::GreaterEqual,
+                ),
                 '!' => Started::OrEqual(TokenKind::Not, TokenKind::NotEqual),
-                '=' => Started::OrEqual(TokenKind::Equal, TokenKind::EqualEqual),
+                '=' => {
+                    Started::OrEqual(TokenKind::Equal, TokenKind::EqualEqual)
+                }
                 '"' => Started::String,
                 '\'' => Started::String,
                 '?' => return just(TokenKind::QuestionMark),
@@ -508,7 +518,10 @@ impl<'src> Iterator for Lexer<'src> {
             break match started {
                 Started::Slash => {
                     if self.rest.starts_with('/') {
-                        let comment_end = self.rest.find(['\n', '\r']).unwrap_or(self.rest.len());
+                        let comment_end = self
+                            .rest
+                            .find(['\n', '\r'])
+                            .unwrap_or(self.rest.len());
                         self.byte += comment_end;
                         self.rest = &self.rest[comment_end..];
                         continue;
@@ -625,16 +638,32 @@ impl<'src> Iterator for Lexer<'src> {
                             (State::Nil, '.') => State::Dot,
                             (State::Nil, c) if c.is_ascii_digit() => State::Int,
                             (State::Int, '.') => State::Dot,
-                            (State::Int, 'u') | (State::Int, 'U') => State::Uint,
+                            (State::Int, 'u') | (State::Int, 'U') => {
+                                State::Uint
+                            }
                             (State::Int, 'e') | (State::Int, 'E') => State::Exp,
                             (State::Int, c) if c.is_ascii_digit() => State::Int,
-                            (State::Dot, c) if c.is_ascii_digit() => State::Fraction,
-                            (State::Fraction, 'e') | (State::Fraction, 'E') => State::Exp,
-                            (State::Fraction, c) if c.is_ascii_digit() => State::Fraction,
-                            (State::Exp, '+') | (State::Exp, '-') => State::ExpSign,
-                            (State::Exp, c) if c.is_ascii_digit() => State::ExpDigit,
-                            (State::ExpSign, c) if c.is_ascii_digit() => State::ExpDigit,
-                            (State::ExpDigit, c) if c.is_ascii_digit() => State::ExpDigit,
+                            (State::Dot, c) if c.is_ascii_digit() => {
+                                State::Fraction
+                            }
+                            (State::Fraction, 'e') | (State::Fraction, 'E') => {
+                                State::Exp
+                            }
+                            (State::Fraction, c) if c.is_ascii_digit() => {
+                                State::Fraction
+                            }
+                            (State::Exp, '+') | (State::Exp, '-') => {
+                                State::ExpSign
+                            }
+                            (State::Exp, c) if c.is_ascii_digit() => {
+                                State::ExpDigit
+                            }
+                            (State::ExpSign, c) if c.is_ascii_digit() => {
+                                State::ExpDigit
+                            }
+                            (State::ExpDigit, c) if c.is_ascii_digit() => {
+                                State::ExpDigit
+                            }
                             _ => break,
                         };
                         index += c.len_utf8();
@@ -658,7 +687,9 @@ impl<'src> Iterator for Lexer<'src> {
                             let extra_bytes = read - c.len_utf8();
                             self.read_extra(extra_bytes);
                             Some(Ok(Token {
-                                kind: TokenKind::Int(c_onwards[..read].parse().unwrap()),
+                                kind: TokenKind::Int(
+                                    c_onwards[..read].parse().unwrap(),
+                                ),
                                 line: self.line,
                                 offset: c_at,
                                 origin: &c_onwards[..read],
@@ -670,7 +701,9 @@ impl<'src> Iterator for Lexer<'src> {
                             let extra_bytes = index - 2 - c.len_utf8();
                             self.read_extra(extra_bytes);
                             Some(Ok(Token {
-                                kind: TokenKind::Int(c_onwards[..read].parse().unwrap()),
+                                kind: TokenKind::Int(
+                                    c_onwards[..read].parse().unwrap(),
+                                ),
                                 line: self.line,
                                 offset: c_at,
                                 origin: &c_onwards[..read],
@@ -680,7 +713,9 @@ impl<'src> Iterator for Lexer<'src> {
                             let extra_bytes = index - c.len_utf8();
                             self.read_extra(extra_bytes);
                             Some(Ok(Token {
-                                kind: TokenKind::Int(c_onwards[..index].parse().unwrap()),
+                                kind: TokenKind::Int(
+                                    c_onwards[..index].parse().unwrap(),
+                                ),
                                 line: self.line,
                                 offset: c_at,
                                 origin: &c_onwards[..index],
@@ -690,7 +725,9 @@ impl<'src> Iterator for Lexer<'src> {
                             let extra_bytes = index - c.len_utf8();
                             self.read_extra(extra_bytes);
                             Some(Ok(Token {
-                                kind: TokenKind::Uint(c_onwards[..index - 1].parse().unwrap()),
+                                kind: TokenKind::Uint(
+                                    c_onwards[..index - 1].parse().unwrap(),
+                                ),
                                 line: self.line,
                                 offset: c_at,
                                 origin: &c_onwards[..index],
@@ -700,7 +737,9 @@ impl<'src> Iterator for Lexer<'src> {
                             let extra_bytes = index - c.len_utf8();
                             self.read_extra(extra_bytes);
                             Some(Ok(Token {
-                                kind: TokenKind::Double(c_onwards[..index].parse().unwrap()),
+                                kind: TokenKind::Double(
+                                    c_onwards[..index].parse().unwrap(),
+                                ),
                                 line: self.line,
                                 offset: c_at,
                                 origin: &c_onwards[..index],
@@ -740,7 +779,9 @@ impl<'src> Iterator for Lexer<'src> {
                     if c_onwards[..end + 2].ends_with(['u', 'U']) {
                         let literal = &c_onwards[..end + 2 - 1]; // ignore u
                         Some(Ok(Token {
-                            kind: TokenKind::Uint(u64::from_str_radix(&literal[2..], 16).unwrap()),
+                            kind: TokenKind::Uint(
+                                u64::from_str_radix(&literal[2..], 16).unwrap(),
+                            ),
                             line: self.line,
                             offset: c_at,
                             origin: literal,
@@ -748,7 +789,9 @@ impl<'src> Iterator for Lexer<'src> {
                     } else {
                         let literal = &c_onwards[..end + 2];
                         Some(Ok(Token {
-                            kind: TokenKind::Int(i64::from_str_radix(&literal[2..], 16).unwrap()),
+                            kind: TokenKind::Int(
+                                i64::from_str_radix(&literal[2..], 16).unwrap(),
+                            ),
                             line: self.line,
                             offset: c_at,
                             origin: literal,
@@ -870,20 +913,40 @@ fn scan_str(s: &str) -> Result<(usize, &str), Error> {
 
         match c {
             'x' => {
-                read_chars_tested(&mut chars, 2, is_hex, "Expected 2 hex numbers on \\x")?;
+                read_chars_tested(
+                    &mut chars,
+                    2,
+                    is_hex,
+                    "Expected 2 hex numbers on \\x",
+                )?;
                 end += 2;
             }
             'u' => {
-                read_chars_tested(&mut chars, 4, is_hex, "Expected 4 hex numbers after \\u")?;
+                read_chars_tested(
+                    &mut chars,
+                    4,
+                    is_hex,
+                    "Expected 4 hex numbers after \\u",
+                )?;
                 end += 4;
             }
             'U' => {
-                read_chars_tested(&mut chars, 8, is_hex, "Expected 8 hex numbers after \\U")?;
+                read_chars_tested(
+                    &mut chars,
+                    8,
+                    is_hex,
+                    "Expected 8 hex numbers after \\U",
+                )?;
                 end += 8;
             }
             '0'..='7' => {
                 // one octal number is already read
-                read_chars_tested(&mut chars, 2, is_octal, "Expected 3 octal numbers after \\")?;
+                read_chars_tested(
+                    &mut chars,
+                    2,
+                    is_octal,
+                    "Expected 3 octal numbers after \\",
+                )?;
                 end += 2;
             }
             _ => {
@@ -994,8 +1057,13 @@ pub(crate) fn unescape(s: &str) -> Cow<'_, str> {
         match c {
             'x' => {
                 let c = u8::from_str_radix(
-                    &read_chars_tested(&mut chars, 2, is_hex, "Expected 2 hex numbers after \\x")
-                        .expect("should be handled in lexing stage"),
+                    &read_chars_tested(
+                        &mut chars,
+                        2,
+                        is_hex,
+                        "Expected 2 hex numbers after \\x",
+                    )
+                    .expect("should be handled in lexing stage"),
                     16,
                 )
                 .unwrap();
@@ -1063,7 +1131,8 @@ mod tests {
     #[test]
     fn test_good_identifier() {
         let good = vec![
-            "foo", "_foo", "FOO", "_FOO", "foo_bar", "foo_BAR_", "foo123", "foo_123",
+            "foo", "_foo", "FOO", "_FOO", "foo_bar", "foo_BAR_", "foo123",
+            "foo_123",
         ];
         for t in good {
             let mut lexer = Lexer::new(t);

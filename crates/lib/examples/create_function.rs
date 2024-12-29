@@ -30,7 +30,9 @@ fn split(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // The value of the argument should be of type Value::String since there
     // are no character types in CEL
     let character = match cellang::eval_ast(env, &tokens[1])?.to_value()? {
-        Value::String(character) if character.len() == 1 => character.chars().next().unwrap(),
+        Value::String(character) if character.len() == 1 => {
+            character.chars().next().unwrap()
+        }
         _ => miette::bail!("Expected a string as the second argument"),
     };
 

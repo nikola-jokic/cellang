@@ -7,7 +7,9 @@ use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 
 /// ValueKind is an enum that represents the different types of values that can be stored in a
 /// Value.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub enum ValueKind {
     Int,
     Uint,
@@ -89,9 +91,13 @@ impl From<Value> for serde_json::Value {
             Value::Bool(b) => serde_json::Value::Bool(b),
             Value::Map(map) => serde_json::to_value(map).unwrap(),
             Value::List(list) => serde_json::to_value(list).unwrap(),
-            Value::Bytes(b) => serde_json::Value::Array(b.into_iter().map(|b| b.into()).collect()),
+            Value::Bytes(b) => serde_json::Value::Array(
+                b.into_iter().map(|b| b.into()).collect(),
+            ),
             Value::Null => serde_json::Value::Null,
-            Value::Timestamp(t) => serde_json::Value::String(t.format(&Rfc3339).unwrap()),
+            Value::Timestamp(t) => {
+                serde_json::Value::String(t.format(&Rfc3339).unwrap())
+            }
             Value::Duration(d) => serde_json::Value::String(d.to_string()),
         }
     }
@@ -196,7 +202,9 @@ impl Value {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
             (Value::Uint(a), Value::Uint(b)) => Ok(Value::Uint(a + b)),
             (Value::Double(a), Value::Double(b)) => Ok(Value::Double(a + b)),
-            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
+            (Value::String(a), Value::String(b)) => {
+                Ok(Value::String(format!("{}{}", a, b)))
+            }
             (Value::Bytes(a), Value::Bytes(b)) => {
                 Ok(Value::Bytes([a.as_slice(), b.as_slice()].concat()))
             }
@@ -205,11 +213,21 @@ impl Value {
                 list.append(&mut b.clone())?;
                 Ok(Value::List(list))
             }
-            (Value::Timestamp(t), Value::Duration(d)) => Ok(Value::Timestamp(*t + *d)),
-            (Value::Duration(d), Value::Timestamp(t)) => Ok(Value::Timestamp(*t + *d)),
-            (Value::Duration(d1), Value::Duration(d2)) => Ok(Value::Duration(*d1 + *d2)),
+            (Value::Timestamp(t), Value::Duration(d)) => {
+                Ok(Value::Timestamp(*t + *d))
+            }
+            (Value::Duration(d), Value::Timestamp(t)) => {
+                Ok(Value::Timestamp(*t + *d))
+            }
+            (Value::Duration(d1), Value::Duration(d2)) => {
+                Ok(Value::Duration(*d1 + *d2))
+            }
 
-            _ => miette::bail!("Invalid types for plus: {:?} and {:?}", self, other),
+            _ => miette::bail!(
+                "Invalid types for plus: {:?} and {:?}",
+                self,
+                other
+            ),
         }
     }
 
@@ -218,10 +236,20 @@ impl Value {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
             (Value::Uint(a), Value::Uint(b)) => Ok(Value::Uint(a - b)),
             (Value::Double(a), Value::Double(b)) => Ok(Value::Double(a - b)),
-            (Value::Timestamp(t), Value::Duration(d)) => Ok(Value::Timestamp(*t - *d)),
-            (Value::Duration(d), Value::Timestamp(t)) => Ok(Value::Timestamp(*t - *d)),
-            (Value::Duration(d1), Value::Duration(d2)) => Ok(Value::Duration(*d1 - *d2)),
-            _ => miette::bail!("Invalid types for minus: {:?} and {:?}", self, other),
+            (Value::Timestamp(t), Value::Duration(d)) => {
+                Ok(Value::Timestamp(*t - *d))
+            }
+            (Value::Duration(d), Value::Timestamp(t)) => {
+                Ok(Value::Timestamp(*t - *d))
+            }
+            (Value::Duration(d1), Value::Duration(d2)) => {
+                Ok(Value::Duration(*d1 - *d2))
+            }
+            _ => miette::bail!(
+                "Invalid types for minus: {:?} and {:?}",
+                self,
+                other
+            ),
         }
     }
 
@@ -237,7 +265,11 @@ impl Value {
     pub fn not_equal(&self, other: &Value) -> Result<Value, Error> {
         match self.equal(other) {
             Ok(Value::Bool(b)) => Ok(Value::Bool(!b)),
-            Ok(_) => miette::bail!("Invalid types for not_equals: {:?} and {:?}", self, other),
+            Ok(_) => miette::bail!(
+                "Invalid types for not_equals: {:?} and {:?}",
+                self,
+                other
+            ),
             Err(e) => Err(e),
         }
     }
@@ -250,9 +282,13 @@ impl Value {
             (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs > rhs),
             (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs > rhs),
             (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs > rhs),
-            (Value::Timestamp(t1), Value::Timestamp(t2)) => Value::Bool(t1 > t2),
+            (Value::Timestamp(t1), Value::Timestamp(t2)) => {
+                Value::Bool(t1 > t2)
+            }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 > d2),
-            (left, right) => miette::bail!("Cannot compare {:?} and {:?}", left, right),
+            (left, right) => {
+                miette::bail!("Cannot compare {:?} and {:?}", left, right)
+            }
         };
 
         Ok(v)
@@ -266,7 +302,9 @@ impl Value {
             (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs >= rhs),
             (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs >= rhs),
             (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs >= rhs),
-            (Value::Timestamp(t1), Value::Timestamp(t2)) => Value::Bool(t1 >= t2),
+            (Value::Timestamp(t1), Value::Timestamp(t2)) => {
+                Value::Bool(t1 >= t2)
+            }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 >= d2),
             _ => miette::bail!("Failed to compare {self:?} >= {other:?}"),
         };
@@ -282,7 +320,9 @@ impl Value {
             (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs < rhs),
             (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs < rhs),
             (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs < rhs),
-            (Value::Timestamp(t1), Value::Timestamp(t2)) => Value::Bool(t1 < t2),
+            (Value::Timestamp(t1), Value::Timestamp(t2)) => {
+                Value::Bool(t1 < t2)
+            }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 < d2),
             _ => miette::bail!("Failed to compare {self:?} < {other:?}"),
         };
@@ -298,7 +338,9 @@ impl Value {
             (Value::String(lhs), Value::String(rhs)) => Value::Bool(lhs <= rhs),
             (Value::Bool(lhs), Value::Bool(rhs)) => Value::Bool(lhs <= rhs),
             (Value::Bytes(lhs), Value::Bytes(rhs)) => Value::Bool(lhs <= rhs),
-            (Value::Timestamp(t1), Value::Timestamp(t2)) => Value::Bool(t1 <= t2),
+            (Value::Timestamp(t1), Value::Timestamp(t2)) => {
+                Value::Bool(t1 <= t2)
+            }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 <= d2),
             _ => miette::bail!("Failed to compare {self:?} <= {other:?}"),
         };
@@ -310,7 +352,9 @@ impl Value {
         let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
-            (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs * rhs),
+            (Value::Double(lhs), Value::Double(rhs)) => {
+                Value::Double(lhs * rhs)
+            }
             _ => miette::bail!("Failed to multiply {self:?} * {other:?}"),
         };
 
@@ -321,7 +365,9 @@ impl Value {
         let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs / rhs),
-            (Value::Double(lhs), Value::Double(rhs)) => Value::Double(lhs / rhs),
+            (Value::Double(lhs), Value::Double(rhs)) => {
+                Value::Double(lhs / rhs)
+            }
             _ => miette::bail!("Failed to devide {self:?} / {other:?}"),
         };
 

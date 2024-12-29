@@ -91,8 +91,10 @@ impl<'src> Parser<'src> {
                 ..
             } => {
                 let lhs = self.parse_expr(0)?;
-                self.lexer
-                    .expect(TokenKind::RightParen, "Expected closing parenthesis")?;
+                self.lexer.expect(
+                    TokenKind::RightParen,
+                    "Expected closing parenthesis",
+                )?;
                 TokenTree::Cons(Op::Group, vec![lhs])
             }
 
@@ -256,9 +258,13 @@ impl<'src> Parser<'src> {
                             .wrap_err("in function call arguments")?,
                     },
                     Op::Index => {
-                        let index = self.parse_expr(0).wrap_err("in index expression")?;
-                        self.lexer
-                            .expect(TokenKind::RightBracket, "Expected closing bracket")?;
+                        let index = self
+                            .parse_expr(0)
+                            .wrap_err("in index expression")?;
+                        self.lexer.expect(
+                            TokenKind::RightBracket,
+                            "Expected closing bracket",
+                        )?;
                         TokenTree::Cons(op, vec![lhs, index])
                     }
                     _ => TokenTree::Cons(op, vec![lhs]),
@@ -274,21 +280,25 @@ impl<'src> Parser<'src> {
                 lhs = match op {
                     Op::IfTernary => {
                         let mhs = self.parse_expr(0)?;
-                        self.lexer
-                            .expect(TokenKind::Colon, "Expected colon after the condition")?;
+                        self.lexer.expect(
+                            TokenKind::Colon,
+                            "Expected colon after the condition",
+                        )?;
                         let rhs = self.parse_expr(r_bp)?;
                         TokenTree::Cons(op, vec![lhs, mhs, rhs])
                     }
                     _ => {
                         // If this is a method call, turn it into a function call with lhs as the
                         // first argument.
-                        match self
-                            .parse_expr(r_bp)
-                            .wrap_err_with(|| format!("on the right-hand side of {lhs} {op}"))?
-                        {
+                        match self.parse_expr(r_bp).wrap_err_with(|| {
+                            format!("on the right-hand side of {lhs} {op}")
+                        })? {
                             TokenTree::Call { func, args } => TokenTree::Call {
                                 func,
-                                args: vec![lhs].into_iter().chain(args).collect(),
+                                args: vec![lhs]
+                                    .into_iter()
+                                    .chain(args)
+                                    .collect(),
                             },
                             rhs => TokenTree::Cons(op, vec![lhs, rhs]),
                         }
@@ -318,8 +328,10 @@ impl<'src> Parser<'src> {
         }
         loop {
             let key = self.parse_expr(0).wrap_err("in map key")?;
-            self.lexer
-                .expect(TokenKind::Colon, "Expected colon between map key and value")?;
+            self.lexer.expect(
+                TokenKind::Colon,
+                "Expected colon between map key and value",
+            )?;
             let value = self.parse_expr(0).wrap_err("in map value")?;
             items.push(key);
             items.push(value);
@@ -327,7 +339,12 @@ impl<'src> Parser<'src> {
             let token = self
                 .lexer
                 .expect_where(
-                    |token| matches!(token.kind, TokenKind::Comma | TokenKind::RightBrace),
+                    |token| {
+                        matches!(
+                            token.kind,
+                            TokenKind::Comma | TokenKind::RightBrace
+                        )
+                    },
                     "continuing map",
                 )
                 .wrap_err("in map")?;
@@ -357,7 +374,12 @@ impl<'src> Parser<'src> {
             let token = self
                 .lexer
                 .expect_where(
-                    |token| matches!(token.kind, TokenKind::Comma | TokenKind::RightBracket),
+                    |token| {
+                        matches!(
+                            token.kind,
+                            TokenKind::Comma | TokenKind::RightBracket
+                        )
+                    },
                     "continuing list",
                 )
                 .wrap_err("in list")?;
@@ -387,7 +409,12 @@ impl<'src> Parser<'src> {
                 let token = self
                     .lexer
                     .expect_where(
-                        |token| matches!(token.kind, TokenKind::Comma | TokenKind::RightParen),
+                        |token| {
+                            matches!(
+                                token.kind,
+                                TokenKind::Comma | TokenKind::RightParen
+                            )
+                        },
                         "continuing argument list",
                     )
                     .wrap_err("in argument list of function call")?;
@@ -590,7 +617,10 @@ mod tests {
                     TokenTree::Atom(Atom::Int(1)),
                     TokenTree::Cons(
                         Op::Multiply,
-                        vec![TokenTree::Atom(Atom::Int(2)), TokenTree::Atom(Atom::Int(3)),]
+                        vec![
+                            TokenTree::Atom(Atom::Int(2)),
+                            TokenTree::Atom(Atom::Int(3)),
+                        ]
                     )
                 ]
             )
@@ -635,7 +665,9 @@ mod tests {
                                 Op::Index,
                                 vec![
                                     TokenTree::Atom(Atom::Ident("check")),
-                                    TokenTree::Atom(Atom::String(Cow::Borrowed("bar"))),
+                                    TokenTree::Atom(Atom::String(
+                                        Cow::Borrowed("bar")
+                                    )),
                                 ]
                             ),
                             TokenTree::Atom(Atom::Ident("baz")),
@@ -822,11 +854,17 @@ mod tests {
                         vec![
                             TokenTree::Cons(
                                 Op::Less,
-                                vec![TokenTree::Atom(Atom::Int(1)), TokenTree::Atom(Atom::Int(2)),]
+                                vec![
+                                    TokenTree::Atom(Atom::Int(1)),
+                                    TokenTree::Atom(Atom::Int(2)),
+                                ]
                             ),
                             TokenTree::Cons(
                                 Op::GreaterEqual,
-                                vec![TokenTree::Atom(Atom::Int(3)), TokenTree::Atom(Atom::Int(4)),]
+                                vec![
+                                    TokenTree::Atom(Atom::Int(3)),
+                                    TokenTree::Atom(Atom::Int(4)),
+                                ]
                             ),
                         ]
                     ),
@@ -835,11 +873,17 @@ mod tests {
                         vec![
                             TokenTree::Cons(
                                 Op::EqualEqual,
-                                vec![TokenTree::Atom(Atom::Int(5)), TokenTree::Atom(Atom::Int(6)),]
+                                vec![
+                                    TokenTree::Atom(Atom::Int(5)),
+                                    TokenTree::Atom(Atom::Int(6)),
+                                ]
                             ),
                             TokenTree::Cons(
                                 Op::In,
-                                vec![TokenTree::Atom(Atom::Int(5)), TokenTree::Atom(Atom::Int(6)),]
+                                vec![
+                                    TokenTree::Atom(Atom::Int(5)),
+                                    TokenTree::Atom(Atom::Int(6)),
+                                ]
                             ),
                         ]
                     ),

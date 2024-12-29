@@ -67,13 +67,17 @@ impl Environment<'_> {
         let name = name.into();
         self.variables
             .and_then(|variables| variables.get(&name).unwrap_or(None))
-            .or_else(|| self.parent.and_then(|parent| parent.lookup_variable(name)))
+            .or_else(|| {
+                self.parent.and_then(|parent| parent.lookup_variable(name))
+            })
     }
 
     pub fn lookup_function(&self, name: &str) -> Option<&Function> {
         self.functions
             .and_then(|functions| functions.get(name))
-            .or_else(|| self.parent.and_then(|parent| parent.lookup_function(name)))
+            .or_else(|| {
+                self.parent.and_then(|parent| parent.lookup_function(name))
+            })
     }
 }
 
@@ -85,15 +89,30 @@ impl Default for EnvironmentBuilder<'_> {
 
 impl<'a> EnvironmentBuilder<'a> {
     /// The new returns a root environment.
-    pub fn root(variables: Option<Map>, functions: Option<HashMap<String, Function>>) -> Self {
+    pub fn root(
+        variables: Option<Map>,
+        functions: Option<HashMap<String, Function>>,
+    ) -> Self {
         Self {
             variables,
             functions: {
                 let mut m = functions.unwrap_or_default();
-                m.insert("size".to_string(), Box::new(functions::size) as Function);
-                m.insert("type".to_string(), Box::new(functions::type_fn) as Function);
-                m.insert("has".to_string(), Box::new(functions::has) as Function);
-                m.insert("all".to_string(), Box::new(functions::all) as Function);
+                m.insert(
+                    "size".to_string(),
+                    Box::new(functions::size) as Function,
+                );
+                m.insert(
+                    "type".to_string(),
+                    Box::new(functions::type_fn) as Function,
+                );
+                m.insert(
+                    "has".to_string(),
+                    Box::new(functions::has) as Function,
+                );
+                m.insert(
+                    "all".to_string(),
+                    Box::new(functions::all) as Function,
+                );
                 m.insert(
                     "exists".to_string(),
                     Box::new(functions::exists) as Function,
@@ -102,7 +121,10 @@ impl<'a> EnvironmentBuilder<'a> {
                     "exists_one".to_string(),
                     Box::new(functions::exists_one) as Function,
                 );
-                m.insert("map".to_string(), Box::new(functions::map) as Function);
+                m.insert(
+                    "map".to_string(),
+                    Box::new(functions::map) as Function,
+                );
                 m.insert(
                     "filter".to_string(),
                     Box::new(functions::filter) as Function,
@@ -135,7 +157,10 @@ impl<'a> EnvironmentBuilder<'a> {
                     "timestamp".to_string(),
                     Box::new(functions::timestamp) as Function,
                 );
-                m.insert("dyn".to_string(), Box::new(functions::dyn_fn) as Function);
+                m.insert(
+                    "dyn".to_string(),
+                    Box::new(functions::dyn_fn) as Function,
+                );
                 m.insert(
                     "duration".to_string(),
                     Box::new(functions::duration) as Function,
@@ -152,7 +177,10 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     /// Replaces the functions in the environment with the given functions.
-    pub fn set_functions(self, functions: Option<HashMap<String, Function>>) -> Self {
+    pub fn set_functions(
+        self,
+        functions: Option<HashMap<String, Function>>,
+    ) -> Self {
         Self { functions, ..self }
     }
 

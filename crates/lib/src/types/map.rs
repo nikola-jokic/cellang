@@ -2,7 +2,9 @@ use super::{Value, ValueKind};
 use miette::Error;
 use serde::Deserializer;
 use serde::{ser::Serializer, Deserialize, Serialize};
-use std::collections::hash_map::{self, Entry, IntoValues, Iter, IterMut, Keys, RandomState};
+use std::collections::hash_map::{
+    self, Entry, IntoIter, IntoValues, Iter, IterMut, Keys, RandomState,
+};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -136,7 +138,10 @@ impl Map {
     }
 
     /// Wrapper for [get_key_value](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.get_key_value)
-    pub fn get_key_value(&self, key: &Key) -> Result<Option<(&Key, &Value)>, Error> {
+    pub fn get_key_value(
+        &self,
+        key: &Key,
+    ) -> Result<Option<(&Key, &Value)>, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
                 miette::bail!("Invalid key type: {:?}", key.kind());
@@ -167,7 +172,11 @@ impl Map {
     }
 
     /// Wrapper for [insert](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.insert)
-    pub fn insert(&mut self, key: Key, value: Value) -> Result<&mut Self, Error> {
+    pub fn insert(
+        &mut self,
+        key: Key,
+        value: Value,
+    ) -> Result<&mut Self, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
                 miette::bail!("Invalid key type: {:?}", key.kind());
@@ -252,7 +261,11 @@ impl Map {
     }
 
     /// Wrapper for [try_insert](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert)
-    pub fn try_insert(&mut self, key: Key, value: Value) -> Result<Option<Value>, Error> {
+    pub fn try_insert(
+        &mut self,
+        key: Key,
+        value: Value,
+    ) -> Result<Option<Value>, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.kind() {
                 miette::bail!("Invalid key type: {:?}", key.kind());
@@ -299,7 +312,10 @@ impl Map {
     }
 
     /// Wrapper for [with_capacity_and_hasher](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_capacity_and_hasher)
-    pub fn with_capacity_and_hasher(capacity: usize, hash_builder: RandomState) -> Self {
+    pub fn with_capacity_and_hasher(
+        capacity: usize,
+        hash_builder: RandomState,
+    ) -> Self {
         Self {
             key_type: None,
             inner: HashMap::with_capacity_and_hasher(capacity, hash_builder),
@@ -327,11 +343,23 @@ impl Map {
     }
 
     /// Creates new inner hashmap and sets the map type for type checking.
-    pub fn with_type_and_hasher(key_type: KeyKind, hash_builder: RandomState) -> Self {
+    pub fn with_type_and_hasher(
+        key_type: KeyKind,
+        hash_builder: RandomState,
+    ) -> Self {
         Self {
             key_type: Some(key_type),
             inner: HashMap::with_hasher(hash_builder),
         }
+    }
+}
+
+impl IntoIterator for Map {
+    type Item = (Key, Value);
+    type IntoIter = IntoIter<Key, Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.into_iter()
     }
 }
 

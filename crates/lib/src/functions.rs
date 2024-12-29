@@ -25,7 +25,10 @@ pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
-pub fn type_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn type_fn(
+    env: &Environment,
+    tokens: &[TokenTree],
+) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("Expected 1 argument, found {}", tokens.len());
     }
@@ -205,7 +208,10 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(Value::Bool(exists))
 }
 
-pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn exists_one(
+    env: &Environment,
+    tokens: &[TokenTree],
+) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 3 arguments, found {}", tokens.len());
     }
@@ -244,7 +250,10 @@ pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Erro
                             found = true;
                         }
                     }
-                    _ => miette::bail!("Invalid type for exists_one: {:?}", lambda),
+                    _ => miette::bail!(
+                        "Invalid type for exists_one: {:?}",
+                        lambda
+                    ),
                 }
             }
         }
@@ -263,7 +272,10 @@ pub fn exists_one(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Erro
                             found = true;
                         }
                     }
-                    _ => miette::bail!("Invalid type for exists_one: {:?}", lambda),
+                    _ => miette::bail!(
+                        "Invalid type for exists_one: {:?}",
+                        lambda
+                    ),
                 }
             }
         }
@@ -303,8 +315,10 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             if list.is_empty() {
                 return Ok(Value::List(list));
             }
-            let mut new_list =
-                List::with_type_and_capacity(list.element_type().unwrap(), list.len());
+            let mut new_list = List::with_type_and_capacity(
+                list.element_type().unwrap(),
+                list.len(),
+            );
 
             let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
             for item in list.iter() {
@@ -326,7 +340,8 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
                 let mut env = env.child();
                 env.set_variables(&variables);
-                new_map.insert(k.clone(), eval_ast(&env, lambda)?.to_value()?)?;
+                new_map
+                    .insert(k.clone(), eval_ast(&env, lambda)?.to_value()?)?;
             }
             Ok(Value::Map(new_map))
         }
@@ -356,8 +371,10 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
     match host {
         Value::List(list) => {
-            let mut new_list =
-                List::with_type_and_capacity(list.element_type().unwrap(), list.len());
+            let mut new_list = List::with_type_and_capacity(
+                list.element_type().unwrap(),
+                list.len(),
+            );
             for item in list.iter() {
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
@@ -394,7 +411,10 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 }
 
-pub fn contains(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn contains(
+    env: &Environment,
+    tokens: &[TokenTree],
+) -> Result<Value, Error> {
     if tokens.len() != 2 {
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
@@ -412,7 +432,10 @@ pub fn contains(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error>
     Ok(Value::Bool(s.contains(&*value)))
 }
 
-pub fn starts_with(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn starts_with(
+    env: &Environment,
+    tokens: &[TokenTree],
+) -> Result<Value, Error> {
     if tokens.len() != 2 {
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
@@ -430,7 +453,10 @@ pub fn starts_with(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Err
     Ok(Value::Bool(s.starts_with(&*value)))
 }
 
-pub fn matches(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn matches(
+    env: &Environment,
+    tokens: &[TokenTree],
+) -> Result<Value, Error> {
     if tokens.len() != 2 {
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
@@ -513,7 +539,10 @@ pub fn string(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
-pub fn timestamp(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn timestamp(
+    env: &Environment,
+    tokens: &[TokenTree],
+) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
@@ -543,7 +572,10 @@ pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
-pub fn duration(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+pub fn duration(
+    env: &Environment,
+    tokens: &[TokenTree],
+) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
@@ -588,10 +620,16 @@ pub fn duration(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error>
                             chars.next();
                             acc = 0;
                         } else {
-                            miette::bail!("Invalid type for duration: {:?}", tokens[0]);
+                            miette::bail!(
+                                "Invalid type for duration: {:?}",
+                                tokens[0]
+                            );
                         }
                     }
-                    _ => miette::bail!("Invalid type for duration: {:?}", tokens[0]),
+                    _ => miette::bail!(
+                        "Invalid type for duration: {:?}",
+                        tokens[0]
+                    ),
                 }
             }
 
@@ -777,19 +815,22 @@ mod tests {
         let lambda = Parser::new("x > 0").parse().unwrap();
 
         let env = env.build();
-        let result = all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result =
+            all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let lambda = Parser::new("x > 1").parse().unwrap();
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let result = all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result =
+            all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let lambda = Parser::new("y > 1").parse().unwrap();
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let result = all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result =
+            all(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_err(), "expected err got ok: result={:?}", result);
     }
 
@@ -816,19 +857,22 @@ mod tests {
         let lambda = Parser::new("x > 0").parse().unwrap();
 
         let env = env.build();
-        let result = all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result =
+            all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 1").parse().unwrap();
-        let result = all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result =
+            all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("y > 1").parse().unwrap();
-        let result = all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result =
+            all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_err(), "expected err got ok: result={:?}", result);
     }
 
@@ -855,19 +899,28 @@ mod tests {
         let lambda = Parser::new("x > 2").parse().unwrap();
 
         let env = env.build();
-        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result = exists(
+            &env,
+            &[TokenTree::Atom(Atom::Ident("list")), ident, lambda],
+        );
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 3").parse().unwrap();
-        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result = exists(
+            &env,
+            &[TokenTree::Atom(Atom::Ident("list")), ident, lambda],
+        );
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("y > 1").parse().unwrap();
-        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result = exists(
+            &env,
+            &[TokenTree::Atom(Atom::Ident("list")), ident, lambda],
+        );
         assert!(result.is_err(), "expected err got ok: result={:?}", result);
     }
 
@@ -894,19 +947,22 @@ mod tests {
         let lambda = Parser::new("x > 2").parse().unwrap();
 
         let env = env.build();
-        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result =
+            exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 3").parse().unwrap();
-        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result =
+            exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("y > 1").parse().unwrap();
-        let result = exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result =
+            exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_err(), "expected err got ok: result={:?}", result);
     }
 
@@ -933,19 +989,28 @@ mod tests {
         let lambda = Parser::new("x > 2").parse().unwrap();
 
         let env = env.build();
-        let result = exists_one(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result = exists_one(
+            &env,
+            &[TokenTree::Atom(Atom::Ident("list")), ident, lambda],
+        );
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 3").parse().unwrap();
-        let result = exists_one(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result = exists_one(
+            &env,
+            &[TokenTree::Atom(Atom::Ident("list")), ident, lambda],
+        );
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("y > 1").parse().unwrap();
-        let result = exists_one(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result = exists_one(
+            &env,
+            &[TokenTree::Atom(Atom::Ident("list")), ident, lambda],
+        );
         assert!(result.is_err(), "expected err got ok: result={:?}", result);
     }
 
@@ -972,19 +1037,28 @@ mod tests {
         let lambda = Parser::new("x > 2").parse().unwrap();
 
         let env = env.build();
-        let result = exists_one(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result = exists_one(
+            &env,
+            &[TokenTree::Atom(Atom::Ident("m")), ident, lambda],
+        );
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("x > 3").parse().unwrap();
-        let result = exists_one(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result = exists_one(
+            &env,
+            &[TokenTree::Atom(Atom::Ident("m")), ident, lambda],
+        );
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
         let lambda = Parser::new("y > 1").parse().unwrap();
-        let result = exists_one(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result = exists_one(
+            &env,
+            &[TokenTree::Atom(Atom::Ident("m")), ident, lambda],
+        );
         assert!(result.is_err(), "expected err got ok: result={:?}", result);
     }
 
@@ -1011,7 +1085,8 @@ mod tests {
         let lambda = Parser::new("x + 1").parse().unwrap();
 
         let env = env.build();
-        let result = map(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result =
+            map(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(
             result.unwrap(),
@@ -1051,7 +1126,8 @@ mod tests {
         let lambda = Parser::new("x + 1").parse().unwrap();
 
         let env = env.build();
-        let result = map(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result =
+            map(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(
             result.unwrap(),
@@ -1175,7 +1251,10 @@ mod tests {
         let lambda = Parser::new("x > 1").parse().unwrap();
 
         let env = env.build();
-        let result = filter(&env, &[TokenTree::Atom(Atom::Ident("list")), ident, lambda]);
+        let result = filter(
+            &env,
+            &[TokenTree::Atom(Atom::Ident("list")), ident, lambda],
+        );
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(
             result.unwrap(),
@@ -1213,7 +1292,8 @@ mod tests {
         let lambda = Parser::new("x > 1").parse().unwrap();
 
         let env = env.build();
-        let result = filter(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
+        let result =
+            filter(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(
             result.unwrap(),
