@@ -2,7 +2,7 @@
 
 This is a rust implementation of the [CEL](https://cel.dev/) language.
 
-This project is built for [BountyHub](https://bountyhub.org) project, but is open-source and can be used by anyone.
+This project is built for [BountyHub](https://bountyhub.org) platform, but is open-source and can be used by anyone.
 
 If you find any issues, please report them.
 

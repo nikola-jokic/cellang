@@ -2,6 +2,13 @@
 name = "cellang-cli"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+authors = ["Nikola Jokic <jokicnikola07@gmail.com>"]
+description = "Interpreter CLI for the CEL expression language"
+repository = "https://github.com/nikola-jokic/cellang"
+readme = "README.md"
+keywords = ["cli", "cel", "expression", "language", "interpreter", "rust"]
+categories = ["cli", "programming-language"]
 
 [dependencies]
 clap = { version = "^4", features = ["derive"] }
