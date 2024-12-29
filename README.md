@@ -12,3 +12,9 @@ This repository is a rust workspace, with the following crates:
 
 - `cellang`: The main library crate located at [lib](./crates/lib)
 - `cellang-cli`: A CLI tool to evaluate CEL expressions located at [cli](./crates/cli)
+
+## License
+
+This project is licensed under the [MIT license](./LICENSE).
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the MIT license, shall be licensed as above, without any additional terms or conditions.
