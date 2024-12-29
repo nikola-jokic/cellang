@@ -18,3 +18,7 @@ This repository is a rust workspace, with the following crates:
 This project is licensed under the [MIT license](./LICENSE).
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the MIT license, shall be licensed as above, without any additional terms or conditions.
+
+## Special thanks
+
+Special thanks to [Jon Gjengset](https://github.com/jonhoo) for his amazing [video](https://youtu.be/mNOLaw-_Buc) which helped me get started with this project.
