@@ -316,19 +316,17 @@ impl Resolver<'_> {
         Resolver { env, object }
     }
 
+    /// Converts a resolver to a value. If the object is an identifier,
+    /// it tries to resolve it in the given environment as a variable.
+    ///
+    /// Functions are resolved with try_function method.
     pub fn to_value(self) -> Result<Value, Error> {
-        match self.object {
-            Object::Value(val) => Ok(val),
-            Object::Ident(ident) => {
-                if let Some(val) = self.env.lookup_variable(ident) {
-                    Ok(val.clone())
-                } else {
-                    miette::bail!("Variable not found: {}", ident);
-                }
-            }
-        }
+        Ok(self.try_value()?.clone())
     }
 
+    /// Tries to resolves to the value. If the object type is
+    /// an identifier, it tries to resolve it in the given environment.
+    /// Otherwise, returns a pointer to a constant value.
     pub fn try_value(&self) -> Result<&Value, Error> {
         match &self.object {
             Object::Value(val) => Ok(val),
@@ -342,6 +340,9 @@ impl Resolver<'_> {
         }
     }
 
+    /// Tries to resolve to a function. If the object type is an identifier,
+    /// it tries to resolve it in the given environment. Otherwise, returns
+    /// an Error
     pub fn try_function(&self) -> Result<&Function, Error> {
         match &self.object {
             Object::Ident(ident) => {
@@ -819,8 +820,7 @@ mod tests {
             "foo",
             Box::new(|_env, args: &[TokenTree]| Ok(Value::Int(args.len() as i64))),
         );
-        env.set_variable("x", 42i64)
-            .expect("to set variable");
+        env.set_variable("x", 42i64).expect("to set variable");
 
         let env = env.build();
         assert_eq!(eval(&env, "x.foo()").expect("x.foo()"), Value::Int(1));

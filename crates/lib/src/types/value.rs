@@ -1,9 +1,9 @@
 use super::{Key, List, Map};
 use miette::Error;
-use serde::{ser::Serializer, Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use time::{Duration, OffsetDateTime};
+use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 
 /// ValueKind is an enum that represents the different types of values that can be stored in a
 /// Value.
@@ -79,6 +79,24 @@ impl From<serde_json::Value> for Value {
     }
 }
 
+impl From<Value> for serde_json::Value {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Int(n) => serde_json::Value::Number(n.into()),
+            Value::Uint(n) => serde_json::Value::Number(n.into()),
+            Value::Double(n) => serde_json::to_value(n).unwrap(),
+            Value::String(s) => serde_json::Value::String(s),
+            Value::Bool(b) => serde_json::Value::Bool(b),
+            Value::Map(map) => serde_json::to_value(map).unwrap(),
+            Value::List(list) => serde_json::to_value(list).unwrap(),
+            Value::Bytes(b) => serde_json::Value::Array(b.into_iter().map(|b| b.into()).collect()),
+            Value::Null => serde_json::Value::Null,
+            Value::Timestamp(t) => serde_json::Value::String(t.format(&Rfc3339).unwrap()),
+            Value::Duration(d) => serde_json::Value::String(d.to_string()),
+        }
+    }
+}
+
 macro_rules! impl_owned_value_conversions {
     ($($target_type: ty => $value_variant:path),* $(,)?) => {
         $(
@@ -112,7 +130,6 @@ impl_owned_value_conversions! {
     OffsetDateTime => Value::Timestamp,
     Duration => Value::Duration,
 }
-
 
 impl From<&str> for Value {
     fn from(value: &str) -> Self {
@@ -321,4 +338,3 @@ impl Value {
         Ok(v)
     }
 }
-
