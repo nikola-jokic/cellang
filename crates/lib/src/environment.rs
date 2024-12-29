@@ -156,10 +156,14 @@ impl<'a> EnvironmentBuilder<'a> {
         Self { functions, ..self }
     }
 
-    pub fn set_variable(&mut self, name: Key, value: Value) -> Result<(), Error> {
+    pub fn set_variable<K, V>(&mut self, name: K, value: V) -> Result<(), Error>
+    where
+        K: Into<Key>,
+        V: Into<Value>,
+    {
         self.variables
             .get_or_insert(Map::new())
-            .insert(name, value)?;
+            .insert(name.into(), value.into())?;
         Ok(())
     }
 

@@ -1,13 +1,13 @@
 use super::{Key, List, Map};
 use miette::Error;
-use serde::{ser::Serializer, Serialize};
+use serde::{ser::Serializer, Serialize, Deserialize};
 use std::collections::HashMap;
 use std::fmt;
 use time::{Duration, OffsetDateTime};
 
 /// ValueKind is an enum that represents the different types of values that can be stored in a
 /// Value.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ValueKind {
     Int,
     Uint,
@@ -24,7 +24,8 @@ pub enum ValueKind {
 
 /// Value is a primitive value for each ValueKind. Resolution for a value could be a constant,
 /// for example, an Int(1), or a resolved value from a variable.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum Value {
     Int(i64),
     Uint(u64),
@@ -111,6 +112,7 @@ impl_owned_value_conversions! {
     OffsetDateTime => Value::Timestamp,
     Duration => Value::Duration,
 }
+
 
 impl From<&str> for Value {
     fn from(value: &str) -> Self {
@@ -320,23 +322,3 @@ impl Value {
     }
 }
 
-impl Serialize for Value {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            Value::Int(n) => serializer.serialize_i64(*n),
-            Value::Uint(n) => serializer.serialize_u64(*n),
-            Value::Double(n) => serializer.serialize_f64(*n),
-            Value::String(s) => serializer.serialize_str(s),
-            Value::Bool(b) => serializer.serialize_bool(*b),
-            Value::Map(map) => map.serialize(serializer),
-            Value::List(list) => list.serialize(serializer),
-            Value::Bytes(b) => serializer.serialize_bytes(b),
-            Value::Null => serializer.serialize_none(),
-            Value::Timestamp(t) => time::serde::iso8601::serialize(t, serializer),
-            Value::Duration(d) => serializer.serialize_str(&d.to_string()),
-        }
-    }
-}

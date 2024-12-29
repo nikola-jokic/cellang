@@ -11,7 +11,7 @@ fn main() {
 
     // Evaluate a simple expression with variables
     let mut env = env.child_builder();
-    env.set_variable("x".into(), 2i64.into()).unwrap();
+    env.set_variable("x", 2i64).unwrap();
     let env = env.build();
     let value = cellang::eval(&env, "x >= 2").unwrap();
     assert_eq!(value, true.into());

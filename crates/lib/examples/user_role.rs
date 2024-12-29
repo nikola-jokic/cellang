@@ -1,32 +1,3 @@
-# Cellang
-
-Cellang is an implementation of the [CEL](https://cel.dev/) language interpreter in Rust.
-
-## Motivation
-
-Motivation behind this project is to provide a way to evaluate CEL expressions in Rust, while allowing
-easier way to provide custom functions. This project is built for [BountyHub](https://bountyhub.org) project,
-but is open-source and can be used by anyone.
-
-There is a great rust project called [CEL Interpreter](https://crates.io/crates/cel-interpreter) which I initially used.
-
-However, I found that the project is not flexible enough for my needs. I needed to be able to:
-- Inspect the AST of the program during validations
-- Add slightly more complex functions on types.
-
-Therefore, the library exposes lower-level primitives that would allow you to do that.
-
-## Getting started
-
-This library aims to be as simple as possible to use. You build up an environment, and then you evaluate the expression with it.
-
-The environment is built using environment builder. The reason is that you can mutate it. Once the
-environment is done, you can `build()` it. Build takes the reference to the builder, so it is tied
-to it.
-
-Let's show more complicated example ([user_role](./examples/user_role.rs)). Check-out the [examples](./examples/) directory for more examples, or consider contributing one!
-
-```rust
 use cellang::{Environment, EnvironmentBuilder, Map, TokenTree, Value};
 use miette::Error;
 use serde::{Deserialize, Serialize};
@@ -120,10 +91,6 @@ fn list_users() -> Result<Vec<User>, Error> {
     ])
 }
 
-/// The call would be something like `user.has_role('admin')`
-/// Since the context is turned into the first argument, the call can also be
-/// `has_role(user, 'admin')`. Therefore, the operation is `Call`, and arguments
-/// are TokenTree representing user, and a TokenTree representing Value::String
 fn has_role(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 2 {
         miette::bail!("Expected 2 arguments, got {}", tokens.len());
@@ -141,4 +108,3 @@ fn has_role(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
     Ok(user.roles.contains(&role).into())
 }
-```

@@ -50,6 +50,16 @@ where
     }
 }
 
+impl FromIterator<(Key, Value)> for Map {
+    fn from_iter<T: IntoIterator<Item = (Key, Value)>>(iter: T) -> Self {
+        let mut map = Map::new();
+        for (k, v) in iter {
+            map.insert(k, v).unwrap();
+        }
+        map
+    }
+}
+
 impl Map {
     /// The new returns a map with no key type and no elements.
     pub fn new() -> Self {

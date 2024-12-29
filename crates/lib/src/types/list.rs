@@ -1,6 +1,7 @@
 use super::{Value, ValueKind};
 use miette::Error;
 use serde::{ser::Serializer, Serialize};
+use serde::{Deserialize, Deserializer};
 use std::fmt;
 use std::vec;
 
@@ -40,6 +41,10 @@ impl List {
 
     pub fn iter(&self) -> impl Iterator<Item = &Value> {
         self.inner.iter()
+    }
+
+    pub fn into_iter(self) -> impl Iterator<Item = Value> {
+        self.inner.into_iter()
     }
 
     pub fn with_type(elem_type: ValueKind) -> Self {
@@ -299,6 +304,16 @@ impl Serialize for List {
         S: Serializer,
     {
         self.inner.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for List {
+    fn deserialize<D>(deserializer: D) -> Result<List, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let inner: Vec<serde_json::Value> = Vec::deserialize(deserializer)?;
+        Ok(List::from(inner))
     }
 }
 

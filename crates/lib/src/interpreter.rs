@@ -819,7 +819,7 @@ mod tests {
             "foo",
             Box::new(|_env, args: &[TokenTree]| Ok(Value::Int(args.len() as i64))),
         );
-        env.set_variable("x".into(), 42i64.into())
+        env.set_variable("x", 42i64)
             .expect("to set variable");
 
         let env = env.build();
@@ -829,7 +829,7 @@ mod tests {
     #[test]
     fn test_index_map_access() {
         let mut env = EnvironmentBuilder::default();
-        env.set_variable("x".into(), {
+        env.set_variable("x", {
             let mut leaf = HashMap::new();
             leaf.insert(Key::from("y"), Value::Int(42));
 
@@ -857,7 +857,7 @@ mod tests {
     #[test]
     fn test_field_map_access() {
         let mut env = EnvironmentBuilder::default();
-        env.set_variable("x".into(), {
+        env.set_variable("x", {
             let mut leaf = HashMap::new();
             leaf.insert(Key::from("z"), Value::Uint(42));
             let leaf = Value::Map(leaf.into());
