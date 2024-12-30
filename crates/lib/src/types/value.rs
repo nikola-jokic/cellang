@@ -777,4 +777,14 @@ mod test_serialize {
 
         assert_eq!(value, expected);
     }
+
+    #[test]
+    fn test_serialize_duration() {
+        let duration = time::Duration::hours(1) + time::Duration::minutes(30);
+        let value: Value = duration.into();
+
+        let got = serde_json::to_string(&value).unwrap();
+        let want = r#""1h30m""#;
+        assert_eq!(want, got);
+    }
 }
