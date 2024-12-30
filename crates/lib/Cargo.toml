@@ -8,7 +8,7 @@ description = "Interpreter for the CEL expression language"
 repository = "https://github.com/nikola-jokic/cellang"
 readme = "README.md"
 keywords = ["cel", "expression", "language", "interpreter", "rust"]
-categories = ["development-tools", "programming-language"]
+categories = ["development-tools", "compilers"]
 
 [dependencies]
 serde = { version = "^1", features = ["derive"] }
