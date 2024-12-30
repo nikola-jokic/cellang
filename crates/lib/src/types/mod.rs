@@ -1,9 +1,11 @@
 mod de;
+pub mod duration;
 pub mod list;
 pub mod map;
 mod ser;
 pub mod value;
 
+pub use self::duration::*;
 pub use self::list::*;
 pub use self::map::*;
 pub use self::value::*;
