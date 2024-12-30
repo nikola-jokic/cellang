@@ -1,12 +1,12 @@
 use crate::{
     eval_ast,
     parser::{Atom, Op, TokenTree},
-    types::{List, Map},
+    types::{Duration, List, Map},
     Environment, Key, KeyKind, Value,
 };
 use miette::Error;
 use regex::Regex;
-use time::{format_description::well_known::Iso8601, Duration, OffsetDateTime};
+use time::{format_description::well_known::Iso8601, OffsetDateTime};
 
 /// Returns the size of a value.
 pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
@@ -582,66 +582,8 @@ pub fn duration(
 
     let v = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::String(s) => {
-            let mut result = Duration::ZERO;
-            let mut acc = 0i64;
-            let mut chars = s.chars().peekable();
-            while let Some(c) = chars.next() {
-                match c {
-                    c if c.is_ascii_digit() => {
-                        let d = c.to_digit(10).unwrap() as i64;
-                        acc *= 10 + d;
-                        continue;
-                    }
-                    'd' => {
-                        result += Duration::days(acc);
-                        acc = 0;
-                    }
-                    'h' => {
-                        result += Duration::hours(acc);
-                        acc = 0;
-                    }
-                    'm' => {
-                        if chars.peek() == Some(&'s') {
-                            result += Duration::milliseconds(acc);
-                            chars.next();
-                            acc = 0;
-                        } else {
-                            result += Duration::minutes(acc);
-                            acc = 0;
-                        }
-                    }
-                    's' => {
-                        result += Duration::seconds(acc);
-                        acc = 0;
-                    }
-                    'n' => {
-                        if chars.peek() == Some(&'s') {
-                            result += Duration::nanoseconds(acc);
-                            chars.next();
-                            acc = 0;
-                        } else {
-                            miette::bail!(
-                                "Invalid type for duration: {:?}",
-                                tokens[0]
-                            );
-                        }
-                    }
-                    _ => miette::bail!(
-                        "Invalid type for duration: {:?}",
-                        tokens[0]
-                    ),
-                }
-            }
-
-            if acc != 0 {
-                miette::bail!("Invalid type for duration: {:?}", tokens[0]);
-            }
-
-            if result == Duration::ZERO {
-                miette::bail!("Invalid type for duration: {:?}", tokens[0]);
-            }
-
-            Value::Duration(result)
+            let d = s.parse::<Duration>()?;
+            Value::Duration(d.0)
         }
         _ => miette::bail!("Invalid type for duration: {:?}", tokens[0]),
     };

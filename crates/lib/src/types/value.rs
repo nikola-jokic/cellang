@@ -1,10 +1,10 @@
-use super::{Key, List, Map};
+use super::{deserialize_duration, serialize_duration, Key, List, Map};
 use base64::prelude::*;
 use miette::Error;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::{collections::HashMap, str::FromStr};
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 
 /// ValueKind is an enum that represents the different types of values that can be stored in a
 /// Value.
@@ -70,7 +70,11 @@ pub enum Value {
     Bytes(Vec<u8>),
     Null,
     Timestamp(OffsetDateTime),
-    Duration(Duration),
+    #[serde(
+        serialize_with = "serialize_duration",
+        deserialize_with = "deserialize_duration"
+    )]
+    Duration(time::Duration),
 }
 
 impl FromStr for Value {
@@ -462,13 +466,13 @@ impl From<Value> for OffsetDateTime {
     }
 }
 
-impl From<Duration> for Value {
-    fn from(value: Duration) -> Self {
+impl From<time::Duration> for Value {
+    fn from(value: time::Duration) -> Self {
         Value::Duration(value)
     }
 }
 
-impl From<Value> for Duration {
+impl From<Value> for time::Duration {
     fn from(value: Value) -> Self {
         match value {
             Value::Duration(d) => d,
