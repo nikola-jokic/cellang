@@ -45,19 +45,6 @@ pub struct User {
     pub roles: Vec<String>,
 }
 
-impl From<User> for Value {
-    fn from(user: User) -> Self {
-        Value::Map(
-            vec![
-                ("name".into(), user.name.into()),
-                ("roles".into(), user.roles.into()),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    }
-}
-
 impl From<Map> for User {
     fn from(map: Map) -> Self {
         User {

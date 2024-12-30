@@ -34,34 +34,6 @@ impl Default for Map {
     }
 }
 
-impl<K, V> From<HashMap<K, V>> for Map
-where
-    K: Into<Key>,
-    V: Into<Value>,
-{
-    fn from(inner: HashMap<K, V>) -> Self {
-        if inner.is_empty() {
-            Self::new()
-        } else {
-            let mut map = Map::new();
-            for (k, v) in inner {
-                map.insert(k.into(), v.into()).unwrap();
-            }
-            map
-        }
-    }
-}
-
-impl FromIterator<(Key, Value)> for Map {
-    fn from_iter<T: IntoIterator<Item = (Key, Value)>>(iter: T) -> Self {
-        let mut map = Map::new();
-        for (k, v) in iter {
-            map.insert(k, v).unwrap();
-        }
-        map
-    }
-}
-
 impl Map {
     /// The new returns a map with no key type and no elements.
     pub fn new() -> Self {
@@ -354,6 +326,34 @@ impl Map {
     }
 }
 
+impl<K, V> From<HashMap<K, V>> for Map
+where
+    K: Into<Key>,
+    V: Into<Value>,
+{
+    fn from(inner: HashMap<K, V>) -> Self {
+        if inner.is_empty() {
+            Self::new()
+        } else {
+            let mut map = Map::new();
+            for (k, v) in inner {
+                map.insert(k.into(), v.into()).unwrap();
+            }
+            map
+        }
+    }
+}
+
+impl FromIterator<(Key, Value)> for Map {
+    fn from_iter<T: IntoIterator<Item = (Key, Value)>>(iter: T) -> Self {
+        let mut map = Map::new();
+        for (k, v) in iter {
+            map.insert(k, v).unwrap();
+        }
+        map
+    }
+}
+
 impl IntoIterator for Map {
     type Item = (Key, Value);
     type IntoIter = IntoIter<Key, Value>;
@@ -372,36 +372,16 @@ impl Serialize for Map {
     }
 }
 
-impl From<serde_json::Value> for Map {
-    fn from(value: serde_json::Value) -> Self {
-        match value {
-            serde_json::Value::Object(inner) => Map::from(
-                inner
-                    .into_iter()
-                    .map(|(k, v)| (Key::String(k), Value::from(v)))
-                    .collect::<HashMap<Key, Value>>(),
-            ),
-            _ => Map::new(),
-        }
-    }
-}
-
 impl<'de> Deserialize<'de> for Map {
     fn deserialize<D>(deserializer: D) -> Result<Map, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
-        if let serde_json::Value::Object(inner) = value {
-            Ok(Map::from(
-                inner
-                    .into_iter()
-                    .map(|(k, v)| (Key::String(k), Value::from(v)))
-                    .collect::<HashMap<Key, Value>>(),
-            ))
-        } else {
-            Err(serde::de::Error::custom("Invalid map"))
-        }
+        let inner = HashMap::<Key, Value>::deserialize(deserializer)?;
+        Ok(Map {
+            key_type: None,
+            inner,
+        })
     }
 }
 
@@ -464,6 +444,20 @@ impl TryFrom<Value> for Key {
     }
 }
 
+impl TryFrom<&Value> for Key {
+    type Error = Error;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int(n) => Ok(Key::Int(*n)),
+            Value::Uint(n) => Ok(Key::Uint(*n)),
+            Value::String(s) => Ok(Key::String(s.clone())),
+            Value::Bool(b) => Ok(Key::Bool(*b)),
+            _ => miette::bail!("Invalid map key: {:?}", value),
+        }
+    }
+}
+
 impl Key {
     fn kind(&self) -> KeyKind {
         match self {
@@ -511,24 +505,5 @@ impl fmt::Display for Key {
             Key::String(s) => write!(f, "{s}"),
             Key::Bool(b) => write!(f, "{b}"),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_deserialize_map() {
-        let map = Map::from(serde_json::json!({
-            "a": 1,
-            "b": 2,
-            "c": 3,
-        }));
-
-        assert_eq!(map.len(), 3);
-        assert_eq!(map.get(&Key::from("a")).unwrap().unwrap(), &Value::Int(1));
-        assert_eq!(map.get(&Key::from("b")).unwrap().unwrap(), &Value::Int(2));
-        assert_eq!(map.get(&Key::from("c")).unwrap().unwrap(), &Value::Int(3));
     }
 }

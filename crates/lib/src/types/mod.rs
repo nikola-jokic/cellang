@@ -1,5 +1,6 @@
 pub mod list;
 pub mod map;
+mod ser;
 pub mod value;
 
 pub use self::list::*;

@@ -1,5 +1,5 @@
-use crate::functions;
 use crate::types::{Key, Value};
+use crate::{functions, TryIntoValue};
 use crate::{Function, Map};
 use miette::Error;
 use std::collections::HashMap;
@@ -184,23 +184,30 @@ impl<'a> EnvironmentBuilder<'a> {
         Self { functions, ..self }
     }
 
+    /// Sets a variable in the environment variables map.
     pub fn set_variable<K, V>(&mut self, name: K, value: V) -> Result<(), Error>
     where
         K: Into<Key>,
-        V: Into<Value>,
+        V: TryIntoValue,
     {
-        self.variables
-            .get_or_insert(Map::new())
-            .insert(name.into(), value.into())?;
+        self.variables.get_or_insert(Map::new()).insert(
+            name.into(),
+            value.try_into_value().map_err(|err| {
+                miette::miette!("Failed to convert value {err:?}")
+            })?,
+        )?;
         Ok(())
     }
 
+    /// Sets a function in the environment function map.
     pub fn set_function(&mut self, name: &str, function: Function) {
         self.functions
             .get_or_insert(HashMap::new())
             .insert(name.to_string(), function);
     }
 
+    /// Builds the environment. It holds a reference to the environment builder so it can
+    /// reference the environment maps without allocations.
     pub fn build(&'a self) -> Environment<'a> {
         Environment {
             variables: self.variables.as_ref(),
