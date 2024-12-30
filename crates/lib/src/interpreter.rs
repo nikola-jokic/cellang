@@ -361,6 +361,14 @@ impl Resolver<'_> {
         Ok(self.try_value()?.clone())
     }
 
+    /// Shortcut to to_value and crate::try_from_value
+    pub fn try_from_value<T>(self) -> Result<T, Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        crate::try_from_value(self.to_value()?)
+    }
+
     /// Tries to resolves to the value. If the object type is
     /// an identifier, it tries to resolve it in the given environment.
     /// Otherwise, returns a pointer to a constant value.
