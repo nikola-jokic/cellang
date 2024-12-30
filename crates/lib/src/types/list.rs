@@ -1,5 +1,6 @@
 use super::{Value, ValueKind};
 use miette::Error;
+use serde::de::DeserializeOwned;
 use serde::{ser::Serializer, Serialize};
 use serde::{Deserialize, Deserializer};
 use std::fmt;
@@ -31,6 +32,13 @@ impl List {
         self.inner.iter()
     }
 
+    pub fn try_into<T>(self) -> Result<T, Error>
+    where
+        T: DeserializeOwned,
+    {
+        crate::try_from_list(self)
+    }
+
     pub fn with_type(elem_type: ValueKind) -> Self {
         Self {
             elem_type: Some(elem_type),
@@ -38,6 +46,7 @@ impl List {
         }
     }
 
+    /// Returns the number of elements in the list.
     pub fn len(&self) -> usize {
         self.inner.len()
     }
@@ -356,13 +365,6 @@ impl<'de> Deserialize<'de> for List {
 
 impl fmt::Display for List {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[")?;
-        for (i, value) in self.inner.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", value)?;
-        }
-        write!(f, "]")
+        write!(f, "{self:?}")
     }
 }

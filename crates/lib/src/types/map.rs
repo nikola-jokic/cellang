@@ -1,5 +1,6 @@
 use super::{TryIntoValue, Value, ValueKind};
 use miette::Error;
+use serde::de::DeserializeOwned;
 use serde::Deserializer;
 use serde::{ser::Serializer, Deserialize, Serialize};
 use std::collections::hash_map::{
@@ -46,6 +47,13 @@ impl Map {
 
     pub fn inner(&self) -> &HashMap<Key, Value> {
         &self.inner
+    }
+
+    pub fn try_into<T>(self) -> Result<T, Error>
+    where
+        T: DeserializeOwned,
+    {
+        crate::try_from_map(self)
     }
 
     pub fn key_type(&self) -> Option<KeyKind> {
