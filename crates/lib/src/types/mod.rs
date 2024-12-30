@@ -17,6 +17,7 @@ use crate::Environment;
 pub type Function =
     Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error>>;
 
+/// Function is a wrapper for turning Value into any type that implements DeserializeOwned.
 pub fn try_from_value<T>(value: Value) -> Result<T, Error>
 where
     T: serde::de::DeserializeOwned,
@@ -27,6 +28,7 @@ where
     }
 }
 
+/// Function is a wrapper for turning Map into any type that implements DeserializeOwned.
 pub fn try_from_map<T>(value: Map) -> Result<T, Error>
 where
     T: serde::de::DeserializeOwned,
@@ -37,6 +39,7 @@ where
     }
 }
 
+/// Function is a wrapper for turning List into any type that implements DeserializeOwned.
 pub fn try_from_list<T>(value: List) -> Result<T, Error>
 where
     T: serde::de::DeserializeOwned,
