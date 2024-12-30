@@ -396,10 +396,7 @@ impl<'de> Deserialize<'de> for Map {
         D: Deserializer<'de>,
     {
         let inner = HashMap::<Key, Value>::deserialize(deserializer)?;
-        Ok(Map {
-            key_type: None,
-            inner,
-        })
+        Ok(Map::from(inner))
     }
 }
 
