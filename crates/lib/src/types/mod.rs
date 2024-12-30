@@ -36,3 +36,13 @@ where
         Err(err) => miette::bail!("Failed to deserialize value: {}", err),
     }
 }
+
+pub fn try_from_list<T>(value: List) -> Result<T, Error>
+where
+    T: serde::de::DeserializeOwned,
+{
+    match T::deserialize(value) {
+        Ok(value) => Ok(value),
+        Err(err) => miette::bail!("Failed to deserialize value: {}", err),
+    }
+}

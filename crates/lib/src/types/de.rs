@@ -6,18 +6,18 @@ use serde::{
 use std::collections::hash_map::{IntoKeys, IntoValues};
 use thiserror::Error;
 
-use super::{Key, Map};
+use super::{Key, List, Map};
 
 #[derive(Debug, Error, PartialEq)]
 pub enum DeserializeError {
     // todo: improve this
     #[error("deserialization error")]
-    DeserializationError,
+    DeserializationError(String),
 }
 
 impl serde::de::Error for DeserializeError {
     fn custom<T: std::fmt::Display>(msg: T) -> Self {
-        DeserializeError::DeserializationError
+        DeserializeError::DeserializationError(msg.to_string())
     }
 }
 
@@ -132,6 +132,21 @@ impl<'de> serde::de::Deserializer<'de> for Map {
     }
 }
 
+impl<'de> serde::de::Deserializer<'de> for List {
+    type Error = DeserializeError;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: serde::de::Visitor<'de>,
+    {
+        visitor.visit_seq(SeqDeserializer::new(self.inner().clone()))
+    }
+
+    forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf option map unit unit_struct newtype_struct seq tuple tuple_struct struct enum identifier ignored_any
+    }
+}
+
 impl<'de> serde::de::Deserializer<'de> for Value {
     type Error = DeserializeError;
 
@@ -141,7 +156,11 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         let m = match self {
             Value::Map(m) => m,
-            _ => return Err(DeserializeError::DeserializationError),
+            v => {
+                return Err(DeserializeError::DeserializationError(format!(
+                    "unexpected value: {v:?}"
+                )))
+            }
         };
 
         visitor.visit_map(MapDeserializer::new(m))
@@ -153,7 +172,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Bool(b) => visitor.visit_bool(b),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -163,7 +184,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Int(i) => visitor.visit_i8(i as i8),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}",
+            ))),
         }
     }
 
@@ -173,7 +196,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Int(i) => visitor.visit_i16(i as i16),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -183,7 +208,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Int(i) => visitor.visit_i32(i as i32),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -193,7 +220,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Int(i) => visitor.visit_i64(i),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -203,7 +232,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Uint(i) => visitor.visit_u8(i as u8),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -213,7 +244,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Uint(i) => visitor.visit_u16(i as u16),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -223,7 +256,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Uint(i) => visitor.visit_u32(i as u32),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -233,7 +268,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Uint(i) => visitor.visit_u64(i),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}",
+            ))),
         }
     }
 
@@ -243,7 +280,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Double(f) => visitor.visit_f32(f as f32),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -253,7 +292,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Double(f) => visitor.visit_f64(f),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -266,10 +307,14 @@ impl<'de> serde::de::Deserializer<'de> for Value {
                 if s.len() == 1 {
                     visitor.visit_char(s.chars().next().unwrap())
                 } else {
-                    Err(DeserializeError::DeserializationError)
+                    Err(DeserializeError::DeserializationError(
+                        "expected a single character".to_string(),
+                    ))
                 }
             }
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -279,7 +324,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::String(s) => visitor.visit_str(&s),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}",
+            ))),
         }
     }
 
@@ -289,7 +336,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::String(s) => visitor.visit_string(s),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}",
+            ))),
         }
     }
 
@@ -299,7 +348,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Bytes(b) => visitor.visit_bytes(&b),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}",
+            ))),
         }
     }
 
@@ -312,7 +363,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Bytes(b) => visitor.visit_byte_buf(b),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}",
+            ))),
         }
     }
 
@@ -332,7 +385,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Null => visitor.visit_unit(),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}"
+            ))),
         }
     }
 
@@ -346,7 +401,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         match self {
             Value::Null => visitor.visit_unit(),
-            _ => Err(DeserializeError::DeserializationError),
+            v => Err(DeserializeError::DeserializationError(format!(
+                "unexpected value: {v:?}",
+            ))),
         }
     }
 
@@ -367,7 +424,11 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         let vec = match self {
             Value::List(l) => l.inner().clone(),
-            _ => return Err(DeserializeError::DeserializationError),
+            v => {
+                return Err(DeserializeError::DeserializationError(format!(
+                    "unexpected value: {v:?}",
+                )))
+            }
         };
 
         let seq = SeqDeserializer::new(vec);
@@ -394,7 +455,11 @@ impl<'de> serde::de::Deserializer<'de> for Value {
                 v.sort_by_key(|(k, _)| *k);
                 v.into_iter().map(|(_, v)| v).collect()
             }
-            _ => return Err(DeserializeError::DeserializationError),
+            v => {
+                return Err(DeserializeError::DeserializationError(format!(
+                    "unexpected value: {v:?}"
+                )))
+            }
         };
 
         let seq = SeqDeserializer::new(vals);
@@ -419,7 +484,11 @@ impl<'de> serde::de::Deserializer<'de> for Value {
     {
         let m = match self {
             Value::Map(m) => m,
-            _ => return Err(DeserializeError::DeserializationError),
+            v => {
+                return Err(DeserializeError::DeserializationError(format!(
+                    "unexpected value: {v:?}",
+                )))
+            }
         };
 
         visitor.visit_map(MapDeserializer::new(m))
@@ -439,9 +508,9 @@ impl<'de> serde::de::Deserializer<'de> for Value {
 
     fn deserialize_enum<V>(
         self,
-        name: &'static str,
-        variants: &'static [&'static str],
-        visitor: V,
+        _name: &'static str,
+        _variants: &'static [&'static str],
+        _visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
@@ -451,7 +520,7 @@ impl<'de> serde::de::Deserializer<'de> for Value {
 
     fn deserialize_identifier<V>(
         self,
-        visitor: V,
+        _visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
@@ -461,7 +530,7 @@ impl<'de> serde::de::Deserializer<'de> for Value {
 
     fn deserialize_ignored_any<V>(
         self,
-        visitor: V,
+        _visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
