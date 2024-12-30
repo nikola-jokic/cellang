@@ -101,7 +101,7 @@ fn has_role(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 
     let user: User = match cellang::eval_ast(env, &tokens[0])?.to_value()? {
-        Value::Map(m) => cellang::try_from_map(m)?,
+        Value::Map(m) => m.try_into()?,
         _ => miette::bail!("Expected a map, got something else"),
     };
 
