@@ -420,6 +420,8 @@ enum Object<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::environment::EnvironmentBuilder;
 
@@ -904,7 +906,7 @@ mod tests {
         let mut env = EnvironmentBuilder::default();
         env.set_function(
             "foo",
-            Box::new(|_env, args: &[TokenTree]| {
+            Arc::new(|_env, args: &[TokenTree]| {
                 Ok(Value::Int(args.len() as i64))
             }),
         );

@@ -1,6 +1,7 @@
 use super::{deserialize_duration, serialize_duration, Key, List, Map};
 use base64::prelude::*;
 use miette::Error;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::{collections::HashMap, str::FromStr};
@@ -514,6 +515,13 @@ impl Value {
             Value::Timestamp(_) => ValueKind::Timestamp,
             Value::Duration(_) => ValueKind::Duration,
         }
+    }
+
+    pub fn try_into<T>(self) -> Result<T, Error>
+    where
+        T: DeserializeOwned,
+    {
+        crate::try_from_value(self)
     }
 
     pub fn plus(&self, other: &Value) -> Result<Value, Error> {

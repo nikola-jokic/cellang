@@ -593,6 +593,8 @@ pub fn duration(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::{EnvironmentBuilder, Function, Parser};
 
@@ -600,23 +602,23 @@ mod tests {
 
     #[test]
     fn implement_functions() {
-        is_function(Box::new(size));
-        is_function(Box::new(type_fn));
-        is_function(Box::new(has));
-        is_function(Box::new(all));
-        is_function(Box::new(exists));
-        is_function(Box::new(exists_one));
-        is_function(Box::new(map));
-        is_function(Box::new(filter));
-        is_function(Box::new(contains));
-        is_function(Box::new(starts_with));
-        is_function(Box::new(matches));
-        is_function(Box::new(uint));
-        is_function(Box::new(int));
-        is_function(Box::new(string));
-        is_function(Box::new(dyn_fn));
-        is_function(Box::new(duration));
-        is_function(Box::new(timestamp));
+        is_function(Arc::new(size));
+        is_function(Arc::new(type_fn));
+        is_function(Arc::new(has));
+        is_function(Arc::new(all));
+        is_function(Arc::new(exists));
+        is_function(Arc::new(exists_one));
+        is_function(Arc::new(map));
+        is_function(Arc::new(filter));
+        is_function(Arc::new(contains));
+        is_function(Arc::new(starts_with));
+        is_function(Arc::new(matches));
+        is_function(Arc::new(uint));
+        is_function(Arc::new(int));
+        is_function(Arc::new(string));
+        is_function(Arc::new(dyn_fn));
+        is_function(Arc::new(duration));
+        is_function(Arc::new(timestamp));
     }
 
     #[test]

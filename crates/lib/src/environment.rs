@@ -3,16 +3,7 @@ use crate::{functions, TryIntoValue};
 use crate::{Function, Map};
 use miette::Error;
 use std::collections::HashMap;
-
-/// Environment builder can be used to gradually build up the environment.
-pub struct EnvironmentBuilder<'a> {
-    variables: Option<Map>,
-    /// Option here is used to allow for child environments not to have functions.
-    /// The root environment is responsible for always allocating this map and providing
-    /// default functions.
-    functions: Option<HashMap<String, Function>>,
-    parent: Option<&'a Environment<'a>>,
-}
+use std::sync::Arc;
 
 /// The environment is a collection of variables and functions.
 /// The environment can have a parent environment, which is used for scoping.
@@ -81,6 +72,17 @@ impl Environment<'_> {
     }
 }
 
+/// Environment builder can be used to gradually build up the environment.
+#[derive(Clone)]
+pub struct EnvironmentBuilder<'a> {
+    variables: Option<Map>,
+    /// Option here is used to allow for child environments not to have functions.
+    /// The root environment is responsible for always allocating this map and providing
+    /// default functions.
+    functions: Option<HashMap<String, Function>>,
+    parent: Option<&'a Environment<'a>>,
+}
+
 impl Default for EnvironmentBuilder<'_> {
     fn default() -> Self {
         Self::root(None, None)
@@ -99,71 +101,71 @@ impl<'a> EnvironmentBuilder<'a> {
                 let mut m = functions.unwrap_or_default();
                 m.insert(
                     "size".to_string(),
-                    Box::new(functions::size) as Function,
+                    Arc::new(functions::size) as Function,
                 );
                 m.insert(
                     "type".to_string(),
-                    Box::new(functions::type_fn) as Function,
+                    Arc::new(functions::type_fn) as Function,
                 );
                 m.insert(
                     "has".to_string(),
-                    Box::new(functions::has) as Function,
+                    Arc::new(functions::has) as Function,
                 );
                 m.insert(
                     "all".to_string(),
-                    Box::new(functions::all) as Function,
+                    Arc::new(functions::all) as Function,
                 );
                 m.insert(
                     "exists".to_string(),
-                    Box::new(functions::exists) as Function,
+                    Arc::new(functions::exists) as Function,
                 );
                 m.insert(
                     "exists_one".to_string(),
-                    Box::new(functions::exists_one) as Function,
+                    Arc::new(functions::exists_one) as Function,
                 );
                 m.insert(
                     "map".to_string(),
-                    Box::new(functions::map) as Function,
+                    Arc::new(functions::map) as Function,
                 );
                 m.insert(
                     "filter".to_string(),
-                    Box::new(functions::filter) as Function,
+                    Arc::new(functions::filter) as Function,
                 );
                 m.insert(
                     "contains".to_string(),
-                    Box::new(functions::contains) as Function,
+                    Arc::new(functions::contains) as Function,
                 );
                 m.insert(
                     "startsWith".to_string(), // for some reason, this is cammel case in spec
-                    Box::new(functions::starts_with) as Function,
+                    Arc::new(functions::starts_with) as Function,
                 );
                 m.insert(
                     "matches".to_string(),
-                    Box::new(functions::matches) as Function,
+                    Arc::new(functions::matches) as Function,
                 );
                 m.insert(
                     "int".to_string(), // for some reason, this is cammel case in spec
-                    Box::new(functions::int) as Function,
+                    Arc::new(functions::int) as Function,
                 );
                 m.insert(
                     "uint".to_string(), // for some reason, this is cammel case in spec
-                    Box::new(functions::uint) as Function,
+                    Arc::new(functions::uint) as Function,
                 );
                 m.insert(
                     "string".to_string(), // for some reason, this is cammel case in spec
-                    Box::new(functions::string) as Function,
+                    Arc::new(functions::string) as Function,
                 );
                 m.insert(
                     "timestamp".to_string(),
-                    Box::new(functions::timestamp) as Function,
+                    Arc::new(functions::timestamp) as Function,
                 );
                 m.insert(
                     "dyn".to_string(),
-                    Box::new(functions::dyn_fn) as Function,
+                    Arc::new(functions::dyn_fn) as Function,
                 );
                 m.insert(
                     "duration".to_string(),
-                    Box::new(functions::duration) as Function,
+                    Arc::new(functions::duration) as Function,
                 );
                 Some(m)
             },
@@ -177,6 +179,7 @@ impl<'a> EnvironmentBuilder<'a> {
     }
 
     /// Replaces the functions in the environment with the given functions.
+    /// This can override the default functions.
     pub fn set_functions(
         self,
         functions: Option<HashMap<String, Function>>,
@@ -204,6 +207,14 @@ impl<'a> EnvironmentBuilder<'a> {
         self.functions
             .get_or_insert(HashMap::new())
             .insert(name.to_string(), function);
+    }
+
+    pub fn take_variables(&mut self) -> Option<Map> {
+        self.variables.take()
+    }
+
+    pub fn take_functions(&mut self) -> Option<HashMap<String, Function>> {
+        self.functions.take()
     }
 
     /// Builds the environment. It holds a reference to the environment builder so it can

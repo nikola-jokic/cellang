@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cellang::{Environment, EnvironmentBuilder, List, Map, TokenTree, Value};
 use miette::Error;
 
@@ -52,7 +54,7 @@ fn main() {
     let mut env = EnvironmentBuilder::default();
 
     // Register the function
-    env.set_function("split", Box::new(split));
+    env.set_function("split", Arc::new(split));
 
     // Seal the environment so that it can be used for evaluation
     let env = env.build();

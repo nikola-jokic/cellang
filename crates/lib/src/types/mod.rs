@@ -5,6 +5,8 @@ pub mod map;
 mod ser;
 pub mod value;
 
+use std::sync::Arc;
+
 pub use self::duration::*;
 pub use self::list::*;
 pub use self::map::*;
@@ -16,8 +18,9 @@ use crate::parser::TokenTree;
 use crate::Environment;
 
 /// Function is a wrapper for a dynamic function that can be registered in the environment.
-pub type Function =
-    Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error>>;
+pub type Function = Arc<
+    dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error> + Send + Sync,
+>;
 
 /// Function is a wrapper for turning Value into any type that implements DeserializeOwned.
 pub fn try_from_value<T>(value: Value) -> Result<T, Error>
