@@ -17,7 +17,7 @@ use crate::Environment;
 
 /// Function is a wrapper for a dynamic function that can be registered in the environment.
 pub type Function =
-    Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error> + Send>;
+    Box<dyn Fn(&Environment, &[TokenTree]) -> Result<Value, Error>>;
 
 /// Function is a wrapper for turning Value into any type that implements DeserializeOwned.
 pub fn try_from_value<T>(value: Value) -> Result<T, Error>
