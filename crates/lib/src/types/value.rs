@@ -1,9 +1,10 @@
 use super::{Key, List, Map};
+use base64::prelude::*;
 use miette::Error;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fmt;
-use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
+use std::{collections::HashMap, str::FromStr};
+use time::{Duration, OffsetDateTime};
 
 /// ValueKind is an enum that represents the different types of values that can be stored in a
 /// Value.
@@ -24,6 +25,36 @@ pub enum ValueKind {
     Null,
 }
 
+pub trait TryIntoValue {
+    type Error: std::error::Error + 'static;
+    fn try_into_value(self) -> Result<Value, Self::Error>;
+}
+
+impl<T> TryIntoValue for T
+where
+    T: serde::Serialize,
+{
+    type Error = super::ser::SerializeError;
+    fn try_into_value(self) -> Result<Value, Self::Error> {
+        self.serialize(super::ser::Serializer)
+    }
+}
+
+pub trait TryFromValue: Sized {
+    type Error: std::error::Error + 'static;
+    fn try_from_value(value: Value) -> Result<Self, Self::Error>;
+}
+
+impl<T> TryFromValue for T
+where
+    T: serde::de::DeserializeOwned,
+{
+    type Error = super::de::DeserializeError;
+    fn try_from_value(value: Value) -> Result<Self, Self::Error> {
+        T::deserialize(value)
+    }
+}
+
 /// Value is a primitive value for each ValueKind. Resolution for a value could be a constant,
 /// for example, an Int(1), or a resolved value from a variable.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -42,99 +73,180 @@ pub enum Value {
     Duration(Duration),
 }
 
-impl From<serde_json::Value> for Value {
-    fn from(value: serde_json::Value) -> Self {
-        match value {
-            serde_json::Value::Null => Value::Null,
-            serde_json::Value::Bool(b) => Value::Bool(b),
-            serde_json::Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    Value::Int(i)
-                } else if let Some(u) = n.as_u64() {
-                    Value::Uint(u)
-                } else {
-                    Value::Double(n.as_f64().unwrap())
-                }
-            }
-            serde_json::Value::String(s) => Value::String(s),
-            serde_json::Value::Array(a) => {
-                if a.is_empty() {
-                    Value::List(List::new())
-                } else {
-                    Value::List(List::from(
-                        a.into_iter().map(Value::from).collect::<Vec<Value>>(),
-                    ))
-                }
-            }
-            serde_json::Value::Object(o) => {
-                if o.is_empty() {
-                    Value::Map(Map::new())
-                } else {
-                    Value::Map(Map::from(
-                        o.into_iter()
-                            .map(|(k, v)| (Key::from(k), Value::from(v)))
-                            .collect::<HashMap<Key, Value>>(),
-                    ))
-                }
-            }
-        }
+impl FromStr for Value {
+    type Err = miette::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Value::String(s.to_string()))
     }
 }
 
-impl From<Value> for serde_json::Value {
+impl From<i8> for Value {
+    fn from(value: i8) -> Self {
+        Value::Int(value as i64)
+    }
+}
+
+impl From<Value> for i8 {
     fn from(value: Value) -> Self {
         match value {
-            Value::Int(n) => serde_json::Value::Number(n.into()),
-            Value::Uint(n) => serde_json::Value::Number(n.into()),
-            Value::Double(n) => serde_json::to_value(n).unwrap(),
-            Value::String(s) => serde_json::Value::String(s),
-            Value::Bool(b) => serde_json::Value::Bool(b),
-            Value::Map(map) => serde_json::to_value(map).unwrap(),
-            Value::List(list) => serde_json::to_value(list).unwrap(),
-            Value::Bytes(b) => serde_json::Value::Array(
-                b.into_iter().map(|b| b.into()).collect(),
-            ),
-            Value::Null => serde_json::Value::Null,
-            Value::Timestamp(t) => {
-                serde_json::Value::String(t.format(&Rfc3339).unwrap())
-            }
-            Value::Duration(d) => serde_json::Value::String(d.to_string()),
+            Value::Int(n) => n as i8,
+            _ => panic!("Cannot convert {:?} to i8", value),
         }
     }
 }
 
-macro_rules! impl_owned_value_conversions {
-    ($($target_type: ty => $value_variant:path),* $(,)?) => {
-        $(
-            impl From<$target_type> for Value {
-                fn from(value: $target_type) -> Self {
-                    $value_variant(value)
-                }
-            }
-
-            impl From<Value> for $target_type {
-                fn from(value: Value) -> Self {
-                    match value {
-                        $value_variant(v) => v,
-                        _ => panic!("Invalid conversion from {:?} to {:?}", value, stringify!($target_type)),
-                    }
-                }
-            }
-        )*
+impl From<i16> for Value {
+    fn from(value: i16) -> Self {
+        Value::Int(value as i64)
     }
 }
 
-impl_owned_value_conversions! {
-    i64 => Value::Int,
-    u64 => Value::Uint,
-    f64 => Value::Double,
-    bool => Value::Bool,
-    String => Value::String,
-    Map => Value::Map,
-    List => Value::List,
-    Vec<u8> => Value::Bytes,
-    OffsetDateTime => Value::Timestamp,
-    Duration => Value::Duration,
+impl From<Value> for i16 {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Int(n) => n as i16,
+            _ => panic!("Cannot convert {:?} to i16", value),
+        }
+    }
+}
+
+impl From<i32> for Value {
+    fn from(value: i32) -> Self {
+        Value::Uint(value as u64)
+    }
+}
+
+impl From<Value> for i32 {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Int(n) => n as i32,
+            _ => panic!("Cannot convert {:?} to i32", value),
+        }
+    }
+}
+
+impl From<i64> for Value {
+    fn from(value: i64) -> Self {
+        Value::Int(value)
+    }
+}
+
+impl From<isize> for Value {
+    fn from(value: isize) -> Self {
+        Value::Int(value as i64)
+    }
+}
+
+impl From<Value> for isize {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Int(n) => n as isize,
+            _ => panic!("Cannot convert {:?} to isize", value),
+        }
+    }
+}
+
+impl From<Value> for i64 {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Int(n) => n,
+            _ => panic!("Cannot convert {:?} to i64", value),
+        }
+    }
+}
+
+impl From<u8> for Value {
+    fn from(value: u8) -> Self {
+        Value::Uint(value as u64)
+    }
+}
+
+impl From<Value> for u8 {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Uint(n) => n as u8,
+            _ => panic!("Cannot convert {:?} to u8", value),
+        }
+    }
+}
+
+impl From<u16> for Value {
+    fn from(value: u16) -> Self {
+        Value::Uint(value as u64)
+    }
+}
+
+impl From<Value> for u16 {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Uint(n) => n as u16,
+            _ => panic!("Cannot convert {:?} to u16", value),
+        }
+    }
+}
+
+impl From<u32> for Value {
+    fn from(value: u32) -> Self {
+        Value::Uint(value as u64)
+    }
+}
+
+impl From<Value> for u32 {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Uint(n) => n as u32,
+            _ => panic!("Cannot convert {:?} to u32", value),
+        }
+    }
+}
+
+impl From<u64> for Value {
+    fn from(value: u64) -> Self {
+        Value::Uint(value)
+    }
+}
+
+impl From<usize> for Value {
+    fn from(value: usize) -> Self {
+        Value::Uint(value as u64)
+    }
+}
+
+impl From<Value> for u64 {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Uint(n) => n,
+            _ => panic!("Cannot convert {:?} to u64", value),
+        }
+    }
+}
+
+impl From<f64> for Value {
+    fn from(value: f64) -> Self {
+        Value::Double(value)
+    }
+}
+
+impl From<Value> for f64 {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Double(n) => n,
+            _ => panic!("Cannot convert {:?} to f64", value),
+        }
+    }
+}
+
+impl From<String> for Value {
+    fn from(value: String) -> Self {
+        Value::String(value)
+    }
+}
+
+impl From<&String> for Value {
+    fn from(value: &String) -> Self {
+        Value::String(value.clone())
+    }
 }
 
 impl From<&str> for Value {
@@ -143,22 +255,225 @@ impl From<&str> for Value {
     }
 }
 
-impl<T> From<Vec<T>> for Value
-where
-    T: Into<Value>,
-{
-    fn from(value: Vec<T>) -> Self {
-        Value::List(List::from(value))
+impl From<Value> for String {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::String(s) => s,
+            _ => panic!("Cannot convert {:?} to String", value),
+        }
+    }
+}
+
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Value::Bool(value)
+    }
+}
+
+impl From<Value> for bool {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Bool(b) => b,
+            _ => panic!("Cannot convert {:?} to bool", value),
+        }
+    }
+}
+
+impl From<Map> for Value {
+    fn from(value: Map) -> Self {
+        Value::Map(value)
     }
 }
 
 impl<K, V> From<HashMap<K, V>> for Value
 where
     K: Into<Key>,
-    V: Into<Value>,
+    V: TryIntoValue,
 {
-    fn from(v: HashMap<K, V>) -> Value {
-        Value::Map(Map::from(v))
+    fn from(value: HashMap<K, V>) -> Self {
+        Value::Map(value.into())
+    }
+}
+
+impl<K, V> FromIterator<(K, V)> for Value
+where
+    K: Into<Key>,
+    V: TryIntoValue,
+{
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+    {
+        let mut map = Map::new();
+        for (k, v) in iter {
+            map.insert(k.into(), v.try_into_value().unwrap()).unwrap();
+        }
+        Value::Map(map)
+    }
+}
+
+impl From<List> for Value {
+    fn from(value: List) -> Self {
+        Value::List(value)
+    }
+}
+
+impl From<Vec<Value>> for Value {
+    fn from(value: Vec<Value>) -> Self {
+        Value::List(value.into())
+    }
+}
+
+impl From<Vec<&Value>> for Value {
+    fn from(value: Vec<&Value>) -> Self {
+        Value::List(value.iter().cloned().cloned().collect())
+    }
+}
+
+impl From<Vec<i8>> for Value {
+    fn from(value: Vec<i8>) -> Self {
+        Value::List(
+            value
+                .iter()
+                .map(|v| Value::Int(*v as i64))
+                .collect::<Vec<Value>>()
+                .into(),
+        )
+    }
+}
+
+impl From<Vec<isize>> for Value {
+    fn from(value: Vec<isize>) -> Self {
+        Value::List(
+            value
+                .iter()
+                .map(|v| Value::Int(*v as i64))
+                .collect::<Vec<Value>>()
+                .into(),
+        )
+    }
+}
+
+impl From<Vec<i16>> for Value {
+    fn from(value: Vec<i16>) -> Self {
+        Value::List(
+            value
+                .iter()
+                .map(|v| Value::Int(*v as i64))
+                .collect::<Vec<Value>>()
+                .into(),
+        )
+    }
+}
+
+impl From<Vec<i32>> for Value {
+    fn from(value: Vec<i32>) -> Self {
+        Value::List(
+            value
+                .iter()
+                .map(|v| Value::Int(*v as i64))
+                .collect::<Vec<Value>>()
+                .into(),
+        )
+    }
+}
+
+impl From<Vec<i64>> for Value {
+    fn from(value: Vec<i64>) -> Self {
+        Value::List(
+            value
+                .iter()
+                .map(|v| Value::Int(*v))
+                .collect::<Vec<Value>>()
+                .into(),
+        )
+    }
+}
+
+impl From<Vec<u16>> for Value {
+    fn from(value: Vec<u16>) -> Self {
+        Value::List(
+            value
+                .iter()
+                .map(|v| Value::Uint(*v as u64))
+                .collect::<Vec<Value>>()
+                .into(),
+        )
+    }
+}
+
+impl From<Vec<u32>> for Value {
+    fn from(value: Vec<u32>) -> Self {
+        Value::List(
+            value
+                .iter()
+                .map(|v| Value::Uint(*v as u64))
+                .collect::<Vec<Value>>()
+                .into(),
+        )
+    }
+}
+
+impl From<Vec<u64>> for Value {
+    fn from(value: Vec<u64>) -> Self {
+        Value::List(
+            value
+                .iter()
+                .map(|v| Value::Uint(*v))
+                .collect::<Vec<Value>>()
+                .into(),
+        )
+    }
+}
+
+impl From<Vec<u8>> for Value {
+    fn from(value: Vec<u8>) -> Self {
+        Value::Bytes(value)
+    }
+}
+
+impl From<Value> for Vec<u8> {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Bytes(b) => b,
+            _ => panic!("Cannot convert {:?} to Vec<u8>", value),
+        }
+    }
+}
+
+impl From<&[u8]> for Value {
+    fn from(value: &[u8]) -> Self {
+        Value::Bytes(value.to_vec())
+    }
+}
+
+impl From<OffsetDateTime> for Value {
+    fn from(value: OffsetDateTime) -> Self {
+        Value::Timestamp(value)
+    }
+}
+
+impl From<Value> for OffsetDateTime {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Timestamp(t) => t,
+            _ => panic!("Cannot convert {:?} to OffsetDateTime", value),
+        }
+    }
+}
+
+impl From<Duration> for Value {
+    fn from(value: Duration) -> Self {
+        Value::Duration(value)
+    }
+}
+
+impl From<Value> for Duration {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::Duration(d) => d,
+            _ => panic!("Cannot convert {:?} to Duration", value),
+        }
     }
 }
 
@@ -172,7 +487,7 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Map(map) => write!(f, "{map}"),
             Value::List(list) => write!(f, "{list}"),
-            Value::Bytes(b) => write!(f, "{b:?}"),
+            Value::Bytes(b) => BASE64_STANDARD.encode(b).fmt(f),
             Value::Null => write!(f, "null"),
             Value::Timestamp(v) => write!(f, "{v}"),
             Value::Duration(v) => write!(f, "{v:?}"),
@@ -382,5 +697,80 @@ impl Value {
         };
 
         Ok(v)
+    }
+}
+
+#[cfg(test)]
+mod test_serialize {
+    use super::*;
+
+    #[test]
+    fn test_vector() {
+        let v = vec![1, 2, 3, 4, 5];
+        let value: Value = v.into();
+        let expected = Value::List(
+            vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3),
+                Value::Int(4),
+                Value::Int(5),
+            ]
+            .into(),
+        );
+        assert_eq!(value, expected);
+    }
+
+    #[test]
+    fn test_hashmap() {
+        let mut map = HashMap::new();
+        map.insert("a", 1);
+        map.insert("b", 2);
+        map.insert("c", 3);
+
+        let value: Value = map.into();
+        let expected = Value::Map(
+            vec![
+                (Key::from("a"), Value::Int(1)),
+                (Key::from("b"), Value::Int(2)),
+                (Key::from("c"), Value::Int(3)),
+            ]
+            .into_iter()
+            .collect::<HashMap<Key, Value>>()
+            .into(),
+        );
+
+        assert_eq!(value, expected);
+    }
+
+    #[test]
+    fn test_object() {
+        #[derive(Debug, Serialize, Deserialize, PartialEq)]
+        struct Object {
+            a: i32,
+            b: String,
+            c: bool,
+        }
+
+        let obj = Object {
+            a: 1,
+            b: "hello".to_string(),
+            c: true,
+        };
+
+        let value: Value = obj.try_into_value().unwrap();
+
+        let expected = Value::Map(
+            vec![
+                (Key::from("a"), Value::Int(1)),
+                (Key::from("b"), Value::String("hello".to_string())),
+                (Key::from("c"), Value::Bool(true)),
+            ]
+            .into_iter()
+            .collect::<HashMap<Key, Value>>()
+            .into(),
+        );
+
+        assert_eq!(value, expected);
     }
 }

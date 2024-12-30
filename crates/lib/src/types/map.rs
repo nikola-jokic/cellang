@@ -1,9 +1,10 @@
-use super::{Value, ValueKind};
+use super::{TryIntoValue, Value, ValueKind};
 use miette::Error;
 use serde::Deserializer;
 use serde::{ser::Serializer, Deserialize, Serialize};
 use std::collections::hash_map::{
-    self, Entry, IntoIter, IntoValues, Iter, IterMut, Keys, RandomState,
+    self, Entry, IntoIter, IntoKeys, IntoValues, Iter, IterMut, Keys,
+    RandomState, Values, ValuesMut,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -34,34 +35,6 @@ impl Default for Map {
     }
 }
 
-impl<K, V> From<HashMap<K, V>> for Map
-where
-    K: Into<Key>,
-    V: Into<Value>,
-{
-    fn from(inner: HashMap<K, V>) -> Self {
-        if inner.is_empty() {
-            Self::new()
-        } else {
-            let mut map = Map::new();
-            for (k, v) in inner {
-                map.insert(k.into(), v.into()).unwrap();
-            }
-            map
-        }
-    }
-}
-
-impl FromIterator<(Key, Value)> for Map {
-    fn from_iter<T: IntoIterator<Item = (Key, Value)>>(iter: T) -> Self {
-        let mut map = Map::new();
-        for (k, v) in iter {
-            map.insert(k, v).unwrap();
-        }
-        map
-    }
-}
-
 impl Map {
     /// The new returns a map with no key type and no elements.
     pub fn new() -> Self {
@@ -69,6 +42,14 @@ impl Map {
             key_type: None,
             inner: HashMap::new(),
         }
+    }
+
+    pub fn inner(&self) -> &HashMap<Key, Value> {
+        &self.inner
+    }
+
+    pub fn key_type(&self) -> Option<KeyKind> {
+        self.key_type.clone()
     }
 
     pub fn with_key_type(key_type: KeyKind) -> Self {
@@ -190,7 +171,7 @@ impl Map {
     }
 
     /// Wrapper for [into_keys](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.into_keys)
-    pub fn into_keys(self) -> impl Iterator<Item = Key> {
+    pub fn into_keys(self) -> IntoKeys<Key, Value> {
         self.inner.into_keys()
     }
 
@@ -285,13 +266,14 @@ impl Map {
         }
     }
 
-    /// Wrapper for [values](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values)
-    pub fn values(&self) -> impl Iterator<Item = &Value> {
+    /// Wrapper for
+    /// [values](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values)
+    pub fn values(&self) -> Values<'_, Key, Value> {
         self.inner.values()
     }
 
     /// Wrapper for [values_mut](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values_mut)
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Value> {
+    pub fn values_mut(&mut self) -> ValuesMut<'_, Key, Value> {
         self.inner.values_mut()
     }
 
@@ -354,6 +336,34 @@ impl Map {
     }
 }
 
+impl<K, V> From<HashMap<K, V>> for Map
+where
+    K: Into<Key>,
+    V: TryIntoValue,
+{
+    fn from(inner: HashMap<K, V>) -> Self {
+        if inner.is_empty() {
+            Self::new()
+        } else {
+            let mut map = Map::new();
+            for (k, v) in inner {
+                map.insert(k.into(), v.try_into_value().unwrap()).unwrap();
+            }
+            map
+        }
+    }
+}
+
+impl FromIterator<(Key, Value)> for Map {
+    fn from_iter<T: IntoIterator<Item = (Key, Value)>>(iter: T) -> Self {
+        let mut map = Map::new();
+        for (k, v) in iter {
+            map.insert(k, v).unwrap();
+        }
+        map
+    }
+}
+
 impl IntoIterator for Map {
     type Item = (Key, Value);
     type IntoIter = IntoIter<Key, Value>;
@@ -372,36 +382,16 @@ impl Serialize for Map {
     }
 }
 
-impl From<serde_json::Value> for Map {
-    fn from(value: serde_json::Value) -> Self {
-        match value {
-            serde_json::Value::Object(inner) => Map::from(
-                inner
-                    .into_iter()
-                    .map(|(k, v)| (Key::String(k), Value::from(v)))
-                    .collect::<HashMap<Key, Value>>(),
-            ),
-            _ => Map::new(),
-        }
-    }
-}
-
 impl<'de> Deserialize<'de> for Map {
     fn deserialize<D>(deserializer: D) -> Result<Map, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
-        if let serde_json::Value::Object(inner) = value {
-            Ok(Map::from(
-                inner
-                    .into_iter()
-                    .map(|(k, v)| (Key::String(k), Value::from(v)))
-                    .collect::<HashMap<Key, Value>>(),
-            ))
-        } else {
-            Err(serde::de::Error::custom("Invalid map"))
-        }
+        let inner = HashMap::<Key, Value>::deserialize(deserializer)?;
+        Ok(Map {
+            key_type: None,
+            inner,
+        })
     }
 }
 
@@ -450,6 +440,30 @@ impl From<&str> for Key {
     }
 }
 
+impl From<String> for Key {
+    fn from(value: String) -> Self {
+        Key::String(value)
+    }
+}
+
+impl From<i64> for Key {
+    fn from(value: i64) -> Self {
+        Key::Int(value)
+    }
+}
+
+impl From<u64> for Key {
+    fn from(value: u64) -> Self {
+        Key::Uint(value)
+    }
+}
+
+impl From<bool> for Key {
+    fn from(value: bool) -> Self {
+        Key::Bool(value)
+    }
+}
+
 impl TryFrom<Value> for Key {
     type Error = Error;
 
@@ -459,6 +473,20 @@ impl TryFrom<Value> for Key {
             Value::Uint(n) => Ok(Key::Uint(n)),
             Value::String(s) => Ok(Key::String(s)),
             Value::Bool(b) => Ok(Key::Bool(b)),
+            _ => miette::bail!("Invalid map key: {:?}", value),
+        }
+    }
+}
+
+impl TryFrom<&Value> for Key {
+    type Error = Error;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int(n) => Ok(Key::Int(*n)),
+            Value::Uint(n) => Ok(Key::Uint(*n)),
+            Value::String(s) => Ok(Key::String(s.clone())),
+            Value::Bool(b) => Ok(Key::Bool(*b)),
             _ => miette::bail!("Invalid map key: {:?}", value),
         }
     }
@@ -475,34 +503,6 @@ impl Key {
     }
 }
 
-macro_rules! impl_owned_key_conversions {
-    ($($target_type: ty => $value_variant:path),* $(,)?) => {
-        $(
-            impl From<$target_type> for Key {
-                fn from(value: $target_type) -> Self {
-                    $value_variant(value)
-                }
-            }
-
-            impl From<Key> for $target_type {
-                fn from(value: Key) -> Self {
-                    match value {
-                        $value_variant(v) => v,
-                        _ => panic!("Invalid conversion from {:?} to {:?}", value, stringify!($target_type)),
-                    }
-                }
-            }
-        )*
-    }
-}
-
-impl_owned_key_conversions! {
-    i64 => Key::Int,
-    u64 => Key::Uint,
-    String => Key::String,
-    bool => Key::Bool,
-}
-
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -511,24 +511,5 @@ impl fmt::Display for Key {
             Key::String(s) => write!(f, "{s}"),
             Key::Bool(b) => write!(f, "{b}"),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_deserialize_map() {
-        let map = Map::from(serde_json::json!({
-            "a": 1,
-            "b": 2,
-            "c": 3,
-        }));
-
-        assert_eq!(map.len(), 3);
-        assert_eq!(map.get(&Key::from("a")).unwrap().unwrap(), &Value::Int(1));
-        assert_eq!(map.get(&Key::from("b")).unwrap().unwrap(), &Value::Int(2));
-        assert_eq!(map.get(&Key::from("c")).unwrap().unwrap(), &Value::Int(3));
     }
 }

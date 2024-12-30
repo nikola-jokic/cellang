@@ -1,4 +1,4 @@
-use cellang::{Environment, EnvironmentBuilder, Map, TokenTree, Value};
+use cellang::{Environment, EnvironmentBuilder, TokenTree, Value};
 use miette::Error;
 use serde::{Deserialize, Serialize};
 
@@ -45,31 +45,6 @@ pub struct User {
     pub roles: Vec<String>,
 }
 
-impl From<User> for Value {
-    fn from(user: User) -> Self {
-        Value::Map(
-            vec![
-                ("name".into(), user.name.into()),
-                ("roles".into(), user.roles.into()),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    }
-}
-
-impl From<Map> for User {
-    fn from(map: Map) -> Self {
-        User {
-            name: map.get(&"name".into()).unwrap().unwrap().to_string(),
-            roles: match map.get(&"roles".into()).unwrap().unwrap() {
-                Value::List(l) => l.iter().map(|v| v.to_string()).collect(),
-                _ => panic!("Expected a list"),
-            },
-        }
-    }
-}
-
 fn list_users() -> Result<Vec<User>, Error> {
     Ok(vec![
         User {
@@ -97,7 +72,7 @@ fn has_role(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 
     let user: User = match cellang::eval_ast(env, &tokens[0])?.to_value()? {
-        Value::Map(m) => m.into(),
+        Value::Map(m) => cellang::try_from_map(m)?,
         _ => miette::bail!("Expected a map, got something else"),
     };
 
