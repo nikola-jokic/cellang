@@ -1,9 +1,10 @@
-use super::{Value, ValueKind};
+use super::{TryIntoValue, Value, ValueKind};
 use miette::Error;
 use serde::Deserializer;
 use serde::{ser::Serializer, Deserialize, Serialize};
 use std::collections::hash_map::{
-    self, Entry, IntoIter, IntoValues, Iter, IterMut, Keys, RandomState,
+    self, Entry, IntoIter, IntoKeys, IntoValues, Iter, IterMut, Keys,
+    RandomState, Values, ValuesMut,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -41,6 +42,14 @@ impl Map {
             key_type: None,
             inner: HashMap::new(),
         }
+    }
+
+    pub fn inner(&self) -> &HashMap<Key, Value> {
+        &self.inner
+    }
+
+    pub fn key_type(&self) -> Option<KeyKind> {
+        self.key_type.clone()
     }
 
     pub fn with_key_type(key_type: KeyKind) -> Self {
@@ -162,7 +171,7 @@ impl Map {
     }
 
     /// Wrapper for [into_keys](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.into_keys)
-    pub fn into_keys(self) -> impl Iterator<Item = Key> {
+    pub fn into_keys(self) -> IntoKeys<Key, Value> {
         self.inner.into_keys()
     }
 
@@ -257,13 +266,14 @@ impl Map {
         }
     }
 
-    /// Wrapper for [values](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values)
-    pub fn values(&self) -> impl Iterator<Item = &Value> {
+    /// Wrapper for
+    /// [values](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values)
+    pub fn values(&self) -> Values<'_, Key, Value> {
         self.inner.values()
     }
 
     /// Wrapper for [values_mut](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values_mut)
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Value> {
+    pub fn values_mut(&mut self) -> ValuesMut<'_, Key, Value> {
         self.inner.values_mut()
     }
 
@@ -329,7 +339,7 @@ impl Map {
 impl<K, V> From<HashMap<K, V>> for Map
 where
     K: Into<Key>,
-    V: Into<Value>,
+    V: TryIntoValue,
 {
     fn from(inner: HashMap<K, V>) -> Self {
         if inner.is_empty() {
@@ -337,7 +347,7 @@ where
         } else {
             let mut map = Map::new();
             for (k, v) in inner {
-                map.insert(k.into(), v.into()).unwrap();
+                map.insert(k.into(), v.try_into_value().unwrap()).unwrap();
             }
             map
         }
@@ -430,6 +440,30 @@ impl From<&str> for Key {
     }
 }
 
+impl From<String> for Key {
+    fn from(value: String) -> Self {
+        Key::String(value)
+    }
+}
+
+impl From<i64> for Key {
+    fn from(value: i64) -> Self {
+        Key::Int(value)
+    }
+}
+
+impl From<u64> for Key {
+    fn from(value: u64) -> Self {
+        Key::Uint(value)
+    }
+}
+
+impl From<bool> for Key {
+    fn from(value: bool) -> Self {
+        Key::Bool(value)
+    }
+}
+
 impl TryFrom<Value> for Key {
     type Error = Error;
 
@@ -467,34 +501,6 @@ impl Key {
             Key::Bool(_) => KeyKind::Bool,
         }
     }
-}
-
-macro_rules! impl_owned_key_conversions {
-    ($($target_type: ty => $value_variant:path),* $(,)?) => {
-        $(
-            impl From<$target_type> for Key {
-                fn from(value: $target_type) -> Self {
-                    $value_variant(value)
-                }
-            }
-
-            impl From<Key> for $target_type {
-                fn from(value: Key) -> Self {
-                    match value {
-                        $value_variant(v) => v,
-                        _ => panic!("Invalid conversion from {:?} to {:?}", value, stringify!($target_type)),
-                    }
-                }
-            }
-        )*
-    }
-}
-
-impl_owned_key_conversions! {
-    i64 => Key::Int,
-    u64 => Key::Uint,
-    String => Key::String,
-    bool => Key::Bool,
 }
 
 impl fmt::Display for Key {

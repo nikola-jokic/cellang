@@ -19,6 +19,10 @@ impl List {
         }
     }
 
+    pub fn inner(&self) -> &Vec<Value> {
+        &self.inner
+    }
+
     pub fn element_type(&self) -> Option<ValueKind> {
         self.elem_type.clone()
     }
@@ -275,6 +279,28 @@ impl List {
             }
         }
         Ok(())
+    }
+}
+
+impl Extend<Value> for List {
+    fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = Value>,
+    {
+        for value in iter {
+            self.push(value).unwrap();
+        }
+    }
+}
+
+impl FromIterator<Value> for List {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Value>,
+    {
+        let mut list = List::new();
+        list.extend(iter);
+        list
     }
 }
 
