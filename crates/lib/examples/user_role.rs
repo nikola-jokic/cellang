@@ -1,4 +1,4 @@
-use cellang::{Environment, EnvironmentBuilder, Map, TokenTree, Value};
+use cellang::{Environment, EnvironmentBuilder, TokenTree, Value};
 use miette::Error;
 use serde::{Deserialize, Serialize};
 

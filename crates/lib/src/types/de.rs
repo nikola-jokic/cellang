@@ -10,7 +10,6 @@ use super::{Key, List, Map};
 
 #[derive(Debug, Error, PartialEq)]
 pub enum DeserializeError {
-    // todo: improve this
     #[error("deserialization error")]
     DeserializationError(String),
 }
@@ -63,7 +62,7 @@ struct MapDeserializer<'a> {
     lifetime: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a> MapDeserializer<'a> {
+impl MapDeserializer<'_> {
     fn new(map: Map) -> Self {
         MapDeserializer {
             keys: map.clone().into_keys(),
@@ -510,31 +509,32 @@ impl<'de> serde::de::Deserializer<'de> for Value {
         self,
         _name: &'static str,
         _variants: &'static [&'static str],
-        _visitor: V,
+        visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        todo!()
+        self.deserialize_any(visitor)
     }
 
     fn deserialize_identifier<V>(
         self,
-        _visitor: V,
+        visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        todo!()
+        self.deserialize_string(visitor)
     }
 
     fn deserialize_ignored_any<V>(
         self,
-        _visitor: V,
+        visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: serde::de::Visitor<'de>,
     {
-        todo!()
+        drop(self);
+        visitor.visit_unit()
     }
 }

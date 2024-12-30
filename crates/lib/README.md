@@ -27,7 +27,7 @@ to it.
 Let's show more complicated example ([user_role](./examples/user_role.rs)). Check-out the [examples](./examples/) directory for more examples, or consider contributing one!
 
 ```rust
-use cellang::{Environment, EnvironmentBuilder, Map, TokenTree, Value};
+use cellang::{Environment, EnvironmentBuilder, TokenTree, Value};
 use miette::Error;
 use serde::{Deserialize, Serialize};
 
@@ -74,31 +74,6 @@ pub struct User {
     pub roles: Vec<String>,
 }
 
-impl From<User> for Value {
-    fn from(user: User) -> Self {
-        Value::Map(
-            vec![
-                ("name".into(), user.name.into()),
-                ("roles".into(), user.roles.into()),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    }
-}
-
-impl From<Map> for User {
-    fn from(map: Map) -> Self {
-        User {
-            name: map.get(&"name".into()).unwrap().unwrap().to_string(),
-            roles: match map.get(&"roles".into()).unwrap().unwrap() {
-                Value::List(l) => l.iter().map(|v| v.to_string()).collect(),
-                _ => panic!("Expected a list"),
-            },
-        }
-    }
-}
-
 fn list_users() -> Result<Vec<User>, Error> {
     Ok(vec![
         User {
@@ -116,21 +91,17 @@ fn list_users() -> Result<Vec<User>, Error> {
         User {
             name: "David".into(),
             roles: vec!["user".into()],
-        }
+        },
     ])
 }
 
-/// The call would be something like `user.has_role('admin')`
-/// Since the context is turned into the first argument, the call can also be
-/// `has_role(user, 'admin')`. Therefore, the operation is `Call`, and arguments
-/// are TokenTree representing user, and a TokenTree representing Value::String
 fn has_role(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 2 {
         miette::bail!("Expected 2 arguments, got {}", tokens.len());
     }
 
     let user: User = match cellang::eval_ast(env, &tokens[0])?.to_value()? {
-        Value::Map(m) => m.into(),
+        Value::Map(m) => cellang::try_from_map(m)?,
         _ => miette::bail!("Expected a map, got something else"),
     };
 
