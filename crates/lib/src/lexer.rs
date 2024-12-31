@@ -22,7 +22,7 @@ pub struct Token<'src> {
     pub origin: &'src str,
     pub offset: usize,
     pub line: usize,
-    pub kind: TokenKind,
+    pub ty: TokenType,
 }
 
 impl Token<'_> {
@@ -35,11 +35,11 @@ impl Token<'_> {
     }
 }
 
-/// TokenKind represents the kind of token.
+/// TokenType represents the type of the token.
 /// It is used by the parser to build the AST.
 /// The parser is responsible for deciding how to interpret the token.
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum TokenKind {
+pub enum TokenType {
     LeftParen,
     RightParen,
     LeftBracket,
@@ -95,91 +95,91 @@ pub enum TokenKind {
     While,
 }
 
-impl fmt::Display for TokenKind {
+impl fmt::Display for TokenType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TokenKind::LeftParen => write!(f, "'('"),
-            TokenKind::RightParen => write!(f, "')'"),
-            TokenKind::LeftBracket => write!(f, "'['"),
-            TokenKind::RightBracket => write!(f, "']'"),
-            TokenKind::LeftBrace => write!(f, "'{{'"),
-            TokenKind::RightBrace => write!(f, "'}}'"),
-            TokenKind::Dot => write!(f, "'.'"),
-            TokenKind::Comma => write!(f, "','"),
-            TokenKind::Plus => write!(f, "'+'"),
-            TokenKind::Percent => write!(f, "'%'"),
-            TokenKind::Minus => write!(f, "'-'"),
-            TokenKind::Semicolon => write!(f, "'-'"),
-            TokenKind::Not => write!(f, "'!'"),
-            TokenKind::NotEqual => write!(f, "'!='"),
-            TokenKind::Equal => write!(f, "'='"),
-            TokenKind::EqualEqual => write!(f, "'=='"),
-            TokenKind::Greater => write!(f, "'>'"),
-            TokenKind::GreaterEqual => write!(f, "'>='"),
-            TokenKind::Less => write!(f, "'<'"),
-            TokenKind::QuestionMark => write!(f, "'?'"),
-            TokenKind::LessEqual => write!(f, "'<='"),
-            TokenKind::Slash => write!(f, "'/'"),
-            TokenKind::Colon => write!(f, "':'"),
-            TokenKind::RawString => write!(f, "RAW_STRING"),
-            TokenKind::Star => write!(f, "'*'"),
-            TokenKind::String => write!(f, "STRING"),
-            TokenKind::Bytes => write!(f, "BYTES"),
-            TokenKind::RawBytes => write!(f, "RAW_BYTES"),
-            TokenKind::Ident => write!(f, "IDENTIFIER"),
-            TokenKind::Int(n) => write!(f, "INT {}", n),
-            TokenKind::Uint(n) => write!(f, "UINT {}", n),
-            TokenKind::Double(n) => write!(f, "DOUBLE {}", n),
-            TokenKind::And => write!(f, "'&&'"),
-            TokenKind::Or => write!(f, "'||'"),
-            TokenKind::True => write!(f, "'true'"),
-            TokenKind::False => write!(f, "'false'"),
-            TokenKind::Null => write!(f, "'null'"),
-            TokenKind::In => write!(f, "'in'"),
-            TokenKind::As => write!(f, "'as'"),
-            TokenKind::Break => write!(f, "'break'"),
-            TokenKind::Const => write!(f, "'const'"),
-            TokenKind::Else => write!(f, "'else'"),
-            TokenKind::For => write!(f, "'for'"),
-            TokenKind::Function => write!(f, "'function'"),
-            TokenKind::If => write!(f, "'if'"),
-            TokenKind::Import => write!(f, "'import'"),
-            TokenKind::Let => write!(f, "'let'"),
-            TokenKind::Loop => write!(f, "'loop'"),
-            TokenKind::Package => write!(f, "'package'"),
-            TokenKind::Namespace => write!(f, "'namespace'"),
-            TokenKind::Var => write!(f, "'var'"),
-            TokenKind::Void => write!(f, "'void'"),
-            TokenKind::While => write!(f, "'while'"),
+            TokenType::LeftParen => write!(f, "'('"),
+            TokenType::RightParen => write!(f, "')'"),
+            TokenType::LeftBracket => write!(f, "'['"),
+            TokenType::RightBracket => write!(f, "']'"),
+            TokenType::LeftBrace => write!(f, "'{{'"),
+            TokenType::RightBrace => write!(f, "'}}'"),
+            TokenType::Dot => write!(f, "'.'"),
+            TokenType::Comma => write!(f, "','"),
+            TokenType::Plus => write!(f, "'+'"),
+            TokenType::Percent => write!(f, "'%'"),
+            TokenType::Minus => write!(f, "'-'"),
+            TokenType::Semicolon => write!(f, "'-'"),
+            TokenType::Not => write!(f, "'!'"),
+            TokenType::NotEqual => write!(f, "'!='"),
+            TokenType::Equal => write!(f, "'='"),
+            TokenType::EqualEqual => write!(f, "'=='"),
+            TokenType::Greater => write!(f, "'>'"),
+            TokenType::GreaterEqual => write!(f, "'>='"),
+            TokenType::Less => write!(f, "'<'"),
+            TokenType::QuestionMark => write!(f, "'?'"),
+            TokenType::LessEqual => write!(f, "'<='"),
+            TokenType::Slash => write!(f, "'/'"),
+            TokenType::Colon => write!(f, "':'"),
+            TokenType::RawString => write!(f, "RAW_STRING"),
+            TokenType::Star => write!(f, "'*'"),
+            TokenType::String => write!(f, "STRING"),
+            TokenType::Bytes => write!(f, "BYTES"),
+            TokenType::RawBytes => write!(f, "RAW_BYTES"),
+            TokenType::Ident => write!(f, "IDENTIFIER"),
+            TokenType::Int(n) => write!(f, "INT {}", n),
+            TokenType::Uint(n) => write!(f, "UINT {}", n),
+            TokenType::Double(n) => write!(f, "DOUBLE {}", n),
+            TokenType::And => write!(f, "'&&'"),
+            TokenType::Or => write!(f, "'||'"),
+            TokenType::True => write!(f, "'true'"),
+            TokenType::False => write!(f, "'false'"),
+            TokenType::Null => write!(f, "'null'"),
+            TokenType::In => write!(f, "'in'"),
+            TokenType::As => write!(f, "'as'"),
+            TokenType::Break => write!(f, "'break'"),
+            TokenType::Const => write!(f, "'const'"),
+            TokenType::Else => write!(f, "'else'"),
+            TokenType::For => write!(f, "'for'"),
+            TokenType::Function => write!(f, "'function'"),
+            TokenType::If => write!(f, "'if'"),
+            TokenType::Import => write!(f, "'import'"),
+            TokenType::Let => write!(f, "'let'"),
+            TokenType::Loop => write!(f, "'loop'"),
+            TokenType::Package => write!(f, "'package'"),
+            TokenType::Namespace => write!(f, "'namespace'"),
+            TokenType::Var => write!(f, "'var'"),
+            TokenType::Void => write!(f, "'void'"),
+            TokenType::While => write!(f, "'while'"),
         }
     }
 }
 
-fn keywords() -> &'static HashMap<&'static str, TokenKind> {
-    static KEYWORDS: OnceLock<HashMap<&'static str, TokenKind>> =
+fn keywords() -> &'static HashMap<&'static str, TokenType> {
+    static KEYWORDS: OnceLock<HashMap<&'static str, TokenType>> =
         OnceLock::new();
     KEYWORDS.get_or_init(|| {
         let mut map = HashMap::new();
-        map.insert("true", TokenKind::True);
-        map.insert("false", TokenKind::False);
-        map.insert("null", TokenKind::Null);
-        map.insert("in", TokenKind::In);
-        map.insert("as", TokenKind::As);
-        map.insert("break", TokenKind::Break);
-        map.insert("const", TokenKind::As);
-        map.insert("continue", TokenKind::Const);
-        map.insert("else", TokenKind::Else);
-        map.insert("for", TokenKind::For);
-        map.insert("function", TokenKind::Function);
-        map.insert("if", TokenKind::If);
-        map.insert("import", TokenKind::Import);
-        map.insert("let", TokenKind::Let);
-        map.insert("loop", TokenKind::Loop);
-        map.insert("package", TokenKind::Package);
-        map.insert("namespace", TokenKind::Namespace);
-        map.insert("var", TokenKind::Var);
-        map.insert("void", TokenKind::Void);
-        map.insert("while", TokenKind::While);
+        map.insert("true", TokenType::True);
+        map.insert("false", TokenType::False);
+        map.insert("null", TokenType::Null);
+        map.insert("in", TokenType::In);
+        map.insert("as", TokenType::As);
+        map.insert("break", TokenType::Break);
+        map.insert("const", TokenType::As);
+        map.insert("continue", TokenType::Const);
+        map.insert("else", TokenType::Else);
+        map.insert("for", TokenType::For);
+        map.insert("function", TokenType::Function);
+        map.insert("if", TokenType::If);
+        map.insert("import", TokenType::Import);
+        map.insert("let", TokenType::Let);
+        map.insert("loop", TokenType::Loop);
+        map.insert("package", TokenType::Package);
+        map.insert("namespace", TokenType::Namespace);
+        map.insert("var", TokenType::Var);
+        map.insert("void", TokenType::Void);
+        map.insert("while", TokenType::While);
 
         map
     })
@@ -212,64 +212,64 @@ fn single_char_escape() -> &'static HashMap<char, char> {
 impl fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let origin = self.origin;
-        match self.kind {
-            TokenKind::QuestionMark => write!(f, "QUESTIONMARK {origin} nil"),
-            TokenKind::Star => write!(f, "STAR {origin} nil"),
-            TokenKind::Colon => write!(f, "COLON {origin} nil"),
-            TokenKind::In => write!(f, "IN {origin} nil"),
-            TokenKind::Break => write!(f, "BREAK {origin} nil"),
-            TokenKind::Const => write!(f, "CONST {origin} nil"),
-            TokenKind::Import => write!(f, "IMPORT {origin} nil"),
-            TokenKind::Let => write!(f, "LET {origin} nil "),
-            TokenKind::Loop => write!(f, "LOOP {origin} nil"),
-            TokenKind::Package => write!(f, "PACKAGE {origin} nil"),
-            TokenKind::Namespace => write!(f, "NAMESPACE {origin} nil"),
-            TokenKind::Void => write!(f, "VOID {origin} nil"),
-            TokenKind::As => write!(f, "AS {origin} nil"),
-            TokenKind::LeftParen => write!(f, "LEFT_PAREN {origin} nil"),
-            TokenKind::RightParen => write!(f, "RIGHT_PAREN {origin} nil"),
-            TokenKind::LeftBracket => write!(f, "LEFT_BRACKET {origin} nil"),
-            TokenKind::RightBracket => write!(f, "RIGHT_BRACKET {origin} nil"),
-            TokenKind::LeftBrace => write!(f, "LEFT_BRACE {origin} nil"),
-            TokenKind::RightBrace => write!(f, "RIGHT_BRACE {origin} nil"),
-            TokenKind::Dot => write!(f, "DOT {origin} nil"),
-            TokenKind::Comma => write!(f, "COMMA {origin} nil"),
-            TokenKind::Plus => write!(f, "PLUS {origin} nil"),
-            TokenKind::Minus => write!(f, "MINUS {origin} nil"),
-            TokenKind::Semicolon => write!(f, "SEMICOLON {origin} nil"),
-            TokenKind::String => {
+        match self.ty {
+            TokenType::QuestionMark => write!(f, "QUESTIONMARK {origin} nil"),
+            TokenType::Star => write!(f, "STAR {origin} nil"),
+            TokenType::Colon => write!(f, "COLON {origin} nil"),
+            TokenType::In => write!(f, "IN {origin} nil"),
+            TokenType::Break => write!(f, "BREAK {origin} nil"),
+            TokenType::Const => write!(f, "CONST {origin} nil"),
+            TokenType::Import => write!(f, "IMPORT {origin} nil"),
+            TokenType::Let => write!(f, "LET {origin} nil "),
+            TokenType::Loop => write!(f, "LOOP {origin} nil"),
+            TokenType::Package => write!(f, "PACKAGE {origin} nil"),
+            TokenType::Namespace => write!(f, "NAMESPACE {origin} nil"),
+            TokenType::Void => write!(f, "VOID {origin} nil"),
+            TokenType::As => write!(f, "AS {origin} nil"),
+            TokenType::LeftParen => write!(f, "LEFT_PAREN {origin} nil"),
+            TokenType::RightParen => write!(f, "RIGHT_PAREN {origin} nil"),
+            TokenType::LeftBracket => write!(f, "LEFT_BRACKET {origin} nil"),
+            TokenType::RightBracket => write!(f, "RIGHT_BRACKET {origin} nil"),
+            TokenType::LeftBrace => write!(f, "LEFT_BRACE {origin} nil"),
+            TokenType::RightBrace => write!(f, "RIGHT_BRACE {origin} nil"),
+            TokenType::Dot => write!(f, "DOT {origin} nil"),
+            TokenType::Comma => write!(f, "COMMA {origin} nil"),
+            TokenType::Plus => write!(f, "PLUS {origin} nil"),
+            TokenType::Minus => write!(f, "MINUS {origin} nil"),
+            TokenType::Semicolon => write!(f, "SEMICOLON {origin} nil"),
+            TokenType::String => {
                 write!(f, "STRING {origin} {}", Token::unescape(origin))
             }
-            TokenKind::RawString => {
+            TokenType::RawString => {
                 write!(f, "RAW_STRING {origin} {}", Token::unescape(origin))
             }
-            TokenKind::Ident => write!(f, "IDENTIFIER {origin} nil"),
-            TokenKind::Int(n) => write!(f, "INT {origin} {n}"),
-            TokenKind::Uint(n) => write!(f, "UINT {origin} {n}"),
-            TokenKind::Double(n) => write!(f, "DOUBLE {origin} {n}"),
-            TokenKind::Bytes => write!(f, "BYTES {origin} nil"),
-            TokenKind::RawBytes => write!(f, "RAW_BYTES {origin} nil"),
-            TokenKind::And => write!(f, "AND {origin} nil"),
-            TokenKind::Else => write!(f, "ELSE {origin} nil"),
-            TokenKind::False => write!(f, "FALSE {origin} nil"),
-            TokenKind::For => write!(f, "FOR {origin} nil"),
-            TokenKind::Function => write!(f, "FUN {origin} nil"),
-            TokenKind::If => write!(f, "IF {origin} nil"),
-            TokenKind::Null => write!(f, "NIL {origin} nil"),
-            TokenKind::Or => write!(f, "OR {origin} nil"),
-            TokenKind::True => write!(f, "TRUE {origin} nil"),
-            TokenKind::Var => write!(f, "VAR {origin} nil"),
-            TokenKind::While => write!(f, "WHILE {origin} nil"),
-            TokenKind::Not => write!(f, "BANG {origin} nil"),
-            TokenKind::NotEqual => write!(f, "BANG_EQUAL {origin} nil"),
-            TokenKind::Equal => write!(f, "EQUAL {origin} nil"),
-            TokenKind::EqualEqual => write!(f, "EQUAL_EQUAL {origin} nil"),
-            TokenKind::Greater => write!(f, "GREATER {origin} nil"),
-            TokenKind::GreaterEqual => write!(f, "GREATER_EQUAL {origin} nil"),
-            TokenKind::Less => write!(f, "LESS {origin} nil"),
-            TokenKind::LessEqual => write!(f, "LESS_EQUAL {origin} nil"),
-            TokenKind::Slash => write!(f, "SLASH {origin} nil"),
-            TokenKind::Percent => write!(f, "PERCENT {origin} nil"),
+            TokenType::Ident => write!(f, "IDENTIFIER {origin} nil"),
+            TokenType::Int(n) => write!(f, "INT {origin} {n}"),
+            TokenType::Uint(n) => write!(f, "UINT {origin} {n}"),
+            TokenType::Double(n) => write!(f, "DOUBLE {origin} {n}"),
+            TokenType::Bytes => write!(f, "BYTES {origin} nil"),
+            TokenType::RawBytes => write!(f, "RAW_BYTES {origin} nil"),
+            TokenType::And => write!(f, "AND {origin} nil"),
+            TokenType::Else => write!(f, "ELSE {origin} nil"),
+            TokenType::False => write!(f, "FALSE {origin} nil"),
+            TokenType::For => write!(f, "FOR {origin} nil"),
+            TokenType::Function => write!(f, "FUN {origin} nil"),
+            TokenType::If => write!(f, "IF {origin} nil"),
+            TokenType::Null => write!(f, "NIL {origin} nil"),
+            TokenType::Or => write!(f, "OR {origin} nil"),
+            TokenType::True => write!(f, "TRUE {origin} nil"),
+            TokenType::Var => write!(f, "VAR {origin} nil"),
+            TokenType::While => write!(f, "WHILE {origin} nil"),
+            TokenType::Not => write!(f, "BANG {origin} nil"),
+            TokenType::NotEqual => write!(f, "BANG_EQUAL {origin} nil"),
+            TokenType::Equal => write!(f, "EQUAL {origin} nil"),
+            TokenType::EqualEqual => write!(f, "EQUAL_EQUAL {origin} nil"),
+            TokenType::Greater => write!(f, "GREATER {origin} nil"),
+            TokenType::GreaterEqual => write!(f, "GREATER_EQUAL {origin} nil"),
+            TokenType::Less => write!(f, "LESS {origin} nil"),
+            TokenType::LessEqual => write!(f, "LESS_EQUAL {origin} nil"),
+            TokenType::Slash => write!(f, "SLASH {origin} nil"),
+            TokenType::Percent => write!(f, "PERCENT {origin} nil"),
         }
     }
 }
@@ -298,16 +298,16 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    /// Expect a token of a specific kind.
-    /// If the next token is not of the expected kind, an error is returned
+    /// Expect a token of a specific type.
+    /// If the next token is not of the expected type, an error is returned
     /// with a labeled span pointing to the unexpected token and an error message
     /// provided by the caller.
     pub fn expect(
         &mut self,
-        expected: TokenKind,
+        expected: TokenType,
         unexpected: &str,
     ) -> Result<Token<'src>, miette::Error> {
-        self.expect_where(|next| next.kind == expected, unexpected)
+        self.expect_where(|next| next.ty == expected, unexpected)
     }
 
     /// Expect a token that satisfies a predicate.
@@ -380,13 +380,13 @@ impl<'src> Iterator for Lexer<'src> {
                 DecimalNumber,
                 HexNumber,
                 Ident,
-                OrEqual(TokenKind, TokenKind),
+                OrEqual(TokenType, TokenType),
             }
 
             let line = self.line;
-            let just = move |kind: TokenKind| {
+            let just = move |ty: TokenType| {
                 Some(Ok(Token {
-                    kind,
+                    ty,
                     line,
                     offset: c_at,
                     origin: c_str,
@@ -394,44 +394,44 @@ impl<'src> Iterator for Lexer<'src> {
             };
 
             let started = match c {
-                '(' => return just(TokenKind::LeftParen),
-                ')' => return just(TokenKind::RightParen),
-                '[' => return just(TokenKind::LeftBracket),
-                ']' => return just(TokenKind::RightBracket),
-                '{' => return just(TokenKind::LeftBrace),
-                '}' => return just(TokenKind::RightBrace),
-                ':' => return just(TokenKind::Colon),
-                ',' => return just(TokenKind::Comma),
+                '(' => return just(TokenType::LeftParen),
+                ')' => return just(TokenType::RightParen),
+                '[' => return just(TokenType::LeftBracket),
+                ']' => return just(TokenType::RightBracket),
+                '{' => return just(TokenType::LeftBrace),
+                '}' => return just(TokenType::RightBrace),
+                ':' => return just(TokenType::Colon),
+                ',' => return just(TokenType::Comma),
                 '.' => {
                     if self.rest.starts_with(|c: char| c.is_ascii_digit()) {
                         Started::DecimalNumber
                     } else {
-                        return just(TokenKind::Dot);
+                        return just(TokenType::Dot);
                     }
                 }
-                '*' => return just(TokenKind::Star),
-                '%' => return just(TokenKind::Percent),
+                '*' => return just(TokenType::Star),
+                '%' => return just(TokenType::Percent),
                 '/' => Started::Slash,
-                '-' => return just(TokenKind::Minus),
-                '+' => return just(TokenKind::Plus),
-                ';' => return just(TokenKind::Semicolon),
-                '<' => Started::OrEqual(TokenKind::Less, TokenKind::LessEqual),
+                '-' => return just(TokenType::Minus),
+                '+' => return just(TokenType::Plus),
+                ';' => return just(TokenType::Semicolon),
+                '<' => Started::OrEqual(TokenType::Less, TokenType::LessEqual),
                 '>' => Started::OrEqual(
-                    TokenKind::Greater,
-                    TokenKind::GreaterEqual,
+                    TokenType::Greater,
+                    TokenType::GreaterEqual,
                 ),
-                '!' => Started::OrEqual(TokenKind::Not, TokenKind::NotEqual),
+                '!' => Started::OrEqual(TokenType::Not, TokenType::NotEqual),
                 '=' => {
-                    Started::OrEqual(TokenKind::Equal, TokenKind::EqualEqual)
+                    Started::OrEqual(TokenType::Equal, TokenType::EqualEqual)
                 }
                 '"' => Started::String,
                 '\'' => Started::String,
-                '?' => return just(TokenKind::QuestionMark),
+                '?' => return just(TokenType::QuestionMark),
                 '&' => {
                     if self.rest.starts_with('&') {
                         self.byte += 1;
                         self.rest = &self.rest[1..];
-                        return just(TokenKind::And);
+                        return just(TokenType::And);
                     } else {
                         return Some(Err(miette::miette! {
                             labels = vec![LabeledSpan::at(
@@ -447,7 +447,7 @@ impl<'src> Iterator for Lexer<'src> {
                     if self.rest.starts_with('|') {
                         self.byte += 1;
                         self.rest = &self.rest[1..];
-                        return just(TokenKind::Or);
+                        return just(TokenType::Or);
                     } else {
                         return Some(Err(miette::miette! {
                             labels = vec![LabeledSpan::at(
@@ -527,7 +527,7 @@ impl<'src> Iterator for Lexer<'src> {
                         continue;
                     } else {
                         Some(Ok(Token {
-                            kind: TokenKind::Slash,
+                            ty: TokenType::Slash,
                             line: self.line,
                             offset: c_at,
                             origin: c_str,
@@ -543,7 +543,7 @@ impl<'src> Iterator for Lexer<'src> {
                     let extra_bytes = n - c.len_utf8();
                     self.read_extra(extra_bytes);
                     Some(Ok(Token {
-                        kind: TokenKind::String,
+                        ty: TokenType::String,
                         line: self.line,
                         offset: c_at,
                         origin: literal,
@@ -559,7 +559,7 @@ impl<'src> Iterator for Lexer<'src> {
 
                     self.read_extra(n);
                     Some(Ok(Token {
-                        kind: TokenKind::RawString,
+                        ty: TokenType::RawString,
                         line: self.line,
                         offset: c_at,
                         origin: literal,
@@ -574,7 +574,7 @@ impl<'src> Iterator for Lexer<'src> {
                     };
                     self.read_extra(n);
                     Some(Ok(Token {
-                        kind: TokenKind::Bytes,
+                        ty: TokenType::Bytes,
                         line: self.line,
                         offset: c_at,
                         origin: literal,
@@ -591,7 +591,7 @@ impl<'src> Iterator for Lexer<'src> {
                     let extra_bytes = n + 1;
                     self.read_extra(extra_bytes);
                     Some(Ok(Token {
-                        kind: TokenKind::RawBytes,
+                        ty: TokenType::RawBytes,
                         line: self.line,
                         offset: c_at,
                         origin: literal,
@@ -607,13 +607,13 @@ impl<'src> Iterator for Lexer<'src> {
                     self.byte += extra_bytes;
                     self.rest = &self.rest[extra_bytes..];
 
-                    let kind = match keywords().get(literal) {
-                        Some(kind) => *kind,
-                        None => TokenKind::Ident,
+                    let ty = match keywords().get(literal) {
+                        Some(ty) => *ty,
+                        None => TokenType::Ident,
                     };
 
                     Some(Ok(Token {
-                        kind,
+                        ty,
                         line: self.line,
                         offset: c_at,
                         origin: literal,
@@ -687,7 +687,7 @@ impl<'src> Iterator for Lexer<'src> {
                             let extra_bytes = read - c.len_utf8();
                             self.read_extra(extra_bytes);
                             Some(Ok(Token {
-                                kind: TokenKind::Int(
+                                ty: TokenType::Int(
                                     c_onwards[..read].parse().unwrap(),
                                 ),
                                 line: self.line,
@@ -701,7 +701,7 @@ impl<'src> Iterator for Lexer<'src> {
                             let extra_bytes = index - 2 - c.len_utf8();
                             self.read_extra(extra_bytes);
                             Some(Ok(Token {
-                                kind: TokenKind::Int(
+                                ty: TokenType::Int(
                                     c_onwards[..read].parse().unwrap(),
                                 ),
                                 line: self.line,
@@ -713,7 +713,7 @@ impl<'src> Iterator for Lexer<'src> {
                             let extra_bytes = index - c.len_utf8();
                             self.read_extra(extra_bytes);
                             Some(Ok(Token {
-                                kind: TokenKind::Int(
+                                ty: TokenType::Int(
                                     c_onwards[..index].parse().unwrap(),
                                 ),
                                 line: self.line,
@@ -725,7 +725,7 @@ impl<'src> Iterator for Lexer<'src> {
                             let extra_bytes = index - c.len_utf8();
                             self.read_extra(extra_bytes);
                             Some(Ok(Token {
-                                kind: TokenKind::Uint(
+                                ty: TokenType::Uint(
                                     c_onwards[..index - 1].parse().unwrap(),
                                 ),
                                 line: self.line,
@@ -737,7 +737,7 @@ impl<'src> Iterator for Lexer<'src> {
                             let extra_bytes = index - c.len_utf8();
                             self.read_extra(extra_bytes);
                             Some(Ok(Token {
-                                kind: TokenKind::Double(
+                                ty: TokenType::Double(
                                     c_onwards[..index].parse().unwrap(),
                                 ),
                                 line: self.line,
@@ -779,7 +779,7 @@ impl<'src> Iterator for Lexer<'src> {
                     if c_onwards[..end + 2].ends_with(['u', 'U']) {
                         let literal = &c_onwards[..end + 2 - 1]; // ignore u
                         Some(Ok(Token {
-                            kind: TokenKind::Uint(
+                            ty: TokenType::Uint(
                                 u64::from_str_radix(&literal[2..], 16).unwrap(),
                             ),
                             line: self.line,
@@ -789,7 +789,7 @@ impl<'src> Iterator for Lexer<'src> {
                     } else {
                         let literal = &c_onwards[..end + 2];
                         Some(Ok(Token {
-                            kind: TokenKind::Int(
+                            ty: TokenType::Int(
                                 i64::from_str_radix(&literal[2..], 16).unwrap(),
                             ),
                             line: self.line,
@@ -804,14 +804,14 @@ impl<'src> Iterator for Lexer<'src> {
                         self.rest = &self.rest[1..];
                         self.byte += 1;
                         Some(Ok(Token {
-                            kind: or_else,
+                            ty: or_else,
                             line: self.line,
                             offset: c_at,
                             origin: span,
                         }))
                     } else {
                         Some(Ok(Token {
-                            kind: token,
+                            ty: token,
                             line: self.line,
                             offset: c_at,
                             origin: c_str,
@@ -1137,7 +1137,7 @@ mod tests {
         for t in good {
             let mut lexer = Lexer::new(t);
             let token = lexer.next().unwrap().unwrap();
-            assert_eq!(token.kind, TokenKind::Ident);
+            assert_eq!(token.ty, TokenType::Ident);
             assert_eq!(token.origin, t);
         }
     }
@@ -1151,7 +1151,7 @@ mod tests {
             assert!(!matches!(
                 token,
                 Ok(Token {
-                    kind: TokenKind::Ident,
+                    ty: TokenType::Ident,
                     ..
                 })
             ));
@@ -1164,7 +1164,7 @@ mod tests {
         for t in kw {
             let mut lexer = Lexer::new(t);
             let token = lexer.next().unwrap().unwrap();
-            assert_eq!(token.kind, *keywords().get(t).unwrap());
+            assert_eq!(token.ty, *keywords().get(t).unwrap());
         }
     }
 
@@ -1172,7 +1172,7 @@ mod tests {
     fn test_and() {
         let mut lexer = Lexer::new("&&");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::And);
+        assert_eq!(token.ty, TokenType::And);
 
         let mut lexer = Lexer::new("&|");
         let token = lexer.next().unwrap();
@@ -1183,7 +1183,7 @@ mod tests {
     fn test_or() {
         let mut lexer = Lexer::new("||");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Or);
+        assert_eq!(token.ty, TokenType::Or);
 
         let mut lexer = Lexer::new("|&");
         let token = lexer.next().unwrap();
@@ -1194,85 +1194,85 @@ mod tests {
     fn test_decimal_parsing() {
         let mut lexer = Lexer::new("0");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Int(0));
+        assert_eq!(token.ty, TokenType::Int(0));
         let token = lexer.next();
         assert!(token.is_none());
 
         let mut lexer = Lexer::new("123");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Int(123));
+        assert_eq!(token.ty, TokenType::Int(123));
         let token = lexer.next();
         assert!(token.is_none());
 
         let mut lexer = Lexer::new("123u");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Uint(123));
+        assert_eq!(token.ty, TokenType::Uint(123));
         let token = lexer.next();
         assert!(token.is_none());
 
         let mut lexer = Lexer::new("123.");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Int(123));
+        assert_eq!(token.ty, TokenType::Int(123));
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Dot);
+        assert_eq!(token.ty, TokenType::Dot);
 
         let mut lexer = Lexer::new("123u.");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Uint(123));
+        assert_eq!(token.ty, TokenType::Uint(123));
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Dot);
+        assert_eq!(token.ty, TokenType::Dot);
 
         let mut lexer = Lexer::new("123.123");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Double(123.123));
+        assert_eq!(token.ty, TokenType::Double(123.123));
         let token = lexer.next();
         assert!(token.is_none(), "{:?}", token);
 
         let mut lexer = Lexer::new("123.123.");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Double(123.123));
+        assert_eq!(token.ty, TokenType::Double(123.123));
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Dot);
+        assert_eq!(token.ty, TokenType::Dot);
 
         let mut lexer = Lexer::new("1.2e3");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Double(1.2e3));
+        assert_eq!(token.ty, TokenType::Double(1.2e3));
         let token = lexer.next();
         assert!(token.is_none());
 
         let mut lexer = Lexer::new("1.2e+3");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Double(1.2e+3));
+        assert_eq!(token.ty, TokenType::Double(1.2e+3));
         let token = lexer.next();
         assert!(token.is_none());
 
         let mut lexer = Lexer::new("1.2e-3");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Double(1.2e-3));
+        assert_eq!(token.ty, TokenType::Double(1.2e-3));
         let token = lexer.next();
         assert!(token.is_none());
 
         let mut lexer = Lexer::new("1.2e3.");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Double(1.2e3));
+        assert_eq!(token.ty, TokenType::Double(1.2e3));
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Dot);
+        assert_eq!(token.ty, TokenType::Dot);
 
         let mut lexer = Lexer::new(".2");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Double(0.2));
+        assert_eq!(token.ty, TokenType::Double(0.2));
         let token = lexer.next();
         assert!(token.is_none());
 
         let mut lexer = Lexer::new(".2.");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Double(0.2));
+        assert_eq!(token.ty, TokenType::Double(0.2));
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Dot);
+        assert_eq!(token.ty, TokenType::Dot);
 
         let mut lexer = Lexer::new(".2e3");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Double(0.2e3));
+        assert_eq!(token.ty, TokenType::Double(0.2e3));
         let token = lexer.next();
         assert!(token.is_none());
     }
@@ -1281,15 +1281,15 @@ mod tests {
     fn test_hex_parsing() {
         let mut lexer = Lexer::new("0x123");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Int(0x123));
+        assert_eq!(token.ty, TokenType::Int(0x123));
         let token = lexer.next();
         assert!(token.is_none());
 
         let mut lexer = Lexer::new("0x123.");
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Int(0x123));
+        assert_eq!(token.ty, TokenType::Int(0x123));
         let token = lexer.next().unwrap().unwrap();
-        assert_eq!(token.kind, TokenKind::Dot);
+        assert_eq!(token.ty, TokenType::Dot);
 
         let mut token = Lexer::new("0x");
         let token = token.next().unwrap();
@@ -1302,7 +1302,7 @@ mod tests {
             let input = format!("{delim}foo{delim}");
             let mut lexer = Lexer::new(&input);
             let token = lexer.next().unwrap().unwrap();
-            assert_eq!(token.kind, TokenKind::String);
+            assert_eq!(token.ty, TokenType::String);
             assert_eq!(token.origin, "foo");
             let next = lexer.next();
             assert!(next.is_none());
@@ -1316,7 +1316,7 @@ mod tests {
                 let input = format!("{r}{delim}foo{delim}");
                 let mut lexer = Lexer::new(&input);
                 let token = lexer.next().unwrap().unwrap();
-                assert_eq!(token.kind, TokenKind::RawString);
+                assert_eq!(token.ty, TokenType::RawString);
                 assert_eq!(token.origin, "foo");
                 let next = lexer.next();
                 assert!(next.is_none());
@@ -1331,7 +1331,7 @@ mod tests {
                 let input = format!("{b}{delim}foo{delim}");
                 let mut lexer = Lexer::new(&input);
                 let token = lexer.next().unwrap().unwrap();
-                assert_eq!(token.kind, TokenKind::Bytes);
+                assert_eq!(token.ty, TokenType::Bytes);
                 assert_eq!(token.origin, "foo");
                 let next = lexer.next();
                 assert!(next.is_none());
@@ -1345,7 +1345,7 @@ mod tests {
             let input = format!("{delim}\nfoo\n{delim}");
             let mut lexer = Lexer::new(&input);
             let token = lexer.next().unwrap().unwrap();
-            assert_eq!(token.kind, TokenKind::String);
+            assert_eq!(token.ty, TokenType::String);
             assert_eq!(token.origin, "\nfoo\n");
             let next = lexer.next();
             assert!(next.is_none());
@@ -1359,7 +1359,7 @@ mod tests {
                 let input = format!("{r}{delim}\nfoo\n{delim}");
                 let mut lexer = Lexer::new(&input);
                 let token = lexer.next().unwrap().unwrap();
-                assert_eq!(token.kind, TokenKind::RawString);
+                assert_eq!(token.ty, TokenType::RawString);
                 assert_eq!(token.origin, "\nfoo\n");
                 let next = lexer.next();
                 assert!(next.is_none());
@@ -1374,7 +1374,7 @@ mod tests {
                 let input = format!("{b}{delim}\nfoo\n{delim}", delim = delim);
                 let mut lexer = Lexer::new(&input);
                 let token = lexer.next().unwrap().unwrap();
-                assert_eq!(token.kind, TokenKind::Bytes);
+                assert_eq!(token.ty, TokenType::Bytes);
                 assert_eq!(token.origin, "\nfoo\n");
                 let next = lexer.next();
                 assert!(next.is_none());
@@ -1389,7 +1389,7 @@ mod tests {
                 let input = format!("{rb}{delim}\nfoo\n{delim}", delim = delim);
                 let mut lexer = Lexer::new(&input);
                 let token = lexer.next().unwrap().unwrap();
-                assert_eq!(token.kind, TokenKind::RawBytes);
+                assert_eq!(token.ty, TokenType::RawBytes);
                 assert_eq!(token.origin, "\nfoo\n");
                 let next = lexer.next();
                 assert!(next.is_none());
@@ -1400,22 +1400,22 @@ mod tests {
     #[test]
     fn test_types() {
         let tt = vec![
-            ("true", TokenKind::True),
-            ("false", TokenKind::False),
-            ("42", TokenKind::Int(42)),
-            ("42u", TokenKind::Uint(42)),
-            ("42.0", TokenKind::Double(42.0)),
-            ("\"foo\"", TokenKind::String),
-            ("'foo'", TokenKind::String),
-            ("b\"foo\"", TokenKind::Bytes),
-            ("b'foo'", TokenKind::Bytes),
-            ("null", TokenKind::Null),
+            ("true", TokenType::True),
+            ("false", TokenType::False),
+            ("42", TokenType::Int(42)),
+            ("42u", TokenType::Uint(42)),
+            ("42.0", TokenType::Double(42.0)),
+            ("\"foo\"", TokenType::String),
+            ("'foo'", TokenType::String),
+            ("b\"foo\"", TokenType::Bytes),
+            ("b'foo'", TokenType::Bytes),
+            ("null", TokenType::Null),
         ];
 
         for (t, e) in tt {
             let mut lexer = Lexer::new(t);
             let token = lexer.next().unwrap().unwrap();
-            assert_eq!(token.kind, e);
+            assert_eq!(token.ty, e);
         }
     }
 

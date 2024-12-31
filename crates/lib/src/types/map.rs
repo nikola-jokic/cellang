@@ -1,4 +1,4 @@
-use super::{TryIntoValue, Value, ValueKind};
+use super::{TryIntoValue, Value, ValueType};
 use miette::Error;
 use serde::de::DeserializeOwned;
 use serde::Deserializer;
@@ -13,7 +13,7 @@ use std::fmt;
 /// Map is a wrapper around HashMap with additional type checking.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Map {
-    key_type: Option<KeyKind>,
+    key_type: Option<KeyType>,
     inner: HashMap<Key, Value>,
 }
 
@@ -45,10 +45,12 @@ impl Map {
         }
     }
 
+    #[inline]
     pub fn inner(&self) -> &HashMap<Key, Value> {
         &self.inner
     }
 
+    #[inline]
     pub fn try_into<T>(self) -> Result<T, Error>
     where
         T: DeserializeOwned,
@@ -56,11 +58,13 @@ impl Map {
         crate::try_from_map(self)
     }
 
-    pub fn key_type(&self) -> Option<KeyKind> {
+    #[inline]
+    pub fn key_type(&self) -> Option<KeyType> {
         self.key_type.clone()
     }
 
-    pub fn with_key_type(key_type: KeyKind) -> Self {
+    #[inline]
+    pub fn with_key_type(key_type: KeyType) -> Self {
         Self {
             key_type: Some(key_type),
             inner: HashMap::new(),
@@ -68,23 +72,26 @@ impl Map {
     }
 
     /// Wrapper for [capacity](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.capacity)
+    #[inline]
     pub fn capacity(&self) -> usize {
         self.inner.capacity()
     }
 
     /// Wrapper for [clear](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.clear)
     /// It doesn't clear the key type.
+    #[inline]
     pub fn clear(&mut self) {
         self.inner.clear();
     }
 
     /// Wrapper for [contains_key](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.contains_key)
-    /// It checks if the key type is the same as the key kind.
+    /// It checks if the key type is the same as the key type.
     /// If the key type is not set (map must be empty), it returns false.
+    #[inline]
     pub fn contains_key(&self, key: &Key) -> Result<bool, Error> {
         if let Some(ref key_type) = self.key_type {
-            if *key_type != key.kind() {
-                miette::bail!("Invalid key type: {:?}", key.kind());
+            if *key_type != key.type_of() {
+                miette::bail!("Invalid key type: {:?}", key.type_of());
             }
 
             Ok(self.inner.contains_key(key))
@@ -94,30 +101,33 @@ impl Map {
     }
 
     /// Wrapper for [drain](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.drain)
+    #[inline]
     pub fn drain(&mut self) -> hash_map::Drain<'_, Key, Value> {
         self.inner.drain()
     }
 
     /// Wrapper for [entry](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.entry)
-    /// It checks if the key type is the same as the key kind.
+    /// It checks if the key type is the same as the key type.
     /// If the key type is not set (map must be empty), it sets the key type.
+    #[inline]
     pub fn entry(&mut self, key: Key) -> Result<Entry<Key, Value>, Error> {
         if let Some(ref key_type) = self.key_type {
-            if *key_type != key.kind() {
-                miette::bail!("Invalid key type: {:?}", key.kind());
+            if *key_type != key.type_of() {
+                miette::bail!("Invalid key type: {:?}", key.type_of());
             }
         } else {
-            self.key_type = Some(key.kind());
+            self.key_type = Some(key.type_of());
         }
 
         Ok(self.inner.entry(key))
     }
 
     /// Wrapper for [get](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.reserve)
+    #[inline]
     pub fn get(&self, key: &Key) -> Result<Option<&Value>, Error> {
         if let Some(ref key_type) = self.key_type {
-            if *key_type != key.kind() {
-                miette::bail!("Invalid key type: {:?}", key.kind());
+            if *key_type != key.type_of() {
+                miette::bail!("Invalid key type: {:?}", key.type_of());
             }
 
             Ok(self.inner.get(key))
@@ -127,13 +137,14 @@ impl Map {
     }
 
     /// Wrapper for [get_key_value](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.get_key_value)
+    #[inline]
     pub fn get_key_value(
         &self,
         key: &Key,
     ) -> Result<Option<(&Key, &Value)>, Error> {
         if let Some(ref key_type) = self.key_type {
-            if *key_type != key.kind() {
-                miette::bail!("Invalid key type: {:?}", key.kind());
+            if *key_type != key.type_of() {
+                miette::bail!("Invalid key type: {:?}", key.type_of());
             }
 
             Ok(self.inner.get_key_value(key))
@@ -143,10 +154,11 @@ impl Map {
     }
 
     /// Wrapper for [get_mut](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.get_mut)
+    #[inline]
     pub fn get_mut(&mut self, key: &Key) -> Result<Option<&mut Value>, Error> {
         if let Some(ref key_type) = self.key_type {
-            if *key_type != key.kind() {
-                miette::bail!("Invalid key type: {:?}", key.kind());
+            if *key_type != key.type_of() {
+                miette::bail!("Invalid key type: {:?}", key.type_of());
             }
 
             Ok(self.inner.get_mut(key))
@@ -156,22 +168,24 @@ impl Map {
     }
 
     /// Wrapper for [hasher](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.hasher)
+    #[inline]
     pub fn hasher(&self) -> &RandomState {
         self.inner.hasher()
     }
 
     /// Wrapper for [insert](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.insert)
+    #[inline]
     pub fn insert(
         &mut self,
         key: Key,
         value: Value,
     ) -> Result<&mut Self, Error> {
         if let Some(ref key_type) = self.key_type {
-            if *key_type != key.kind() {
-                miette::bail!("Invalid key type: {:?}", key.kind());
+            if *key_type != key.type_of() {
+                miette::bail!("Invalid key type: {:?}", key.type_of());
             }
         } else {
-            self.key_type = Some(key.kind());
+            self.key_type = Some(key.type_of());
         }
 
         self.inner.insert(key, value);
@@ -179,59 +193,69 @@ impl Map {
     }
 
     /// Wrapper for [into_keys](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.into_keys)
+    #[inline]
     pub fn into_keys(self) -> IntoKeys<Key, Value> {
         self.inner.into_keys()
     }
 
     /// Wrapper for [into_values](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.into_values)
+    #[inline]
     pub fn into_values(self) -> IntoValues<Key, Value> {
         self.inner.into_values()
     }
 
     /// Wrapper for [is_empty](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.is_empty)
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
     /// Wrapper for [iter](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.iter)
+    #[inline]
     pub fn iter(&self) -> Iter<'_, Key, Value> {
         self.inner.iter()
     }
 
     /// Wrapper for [iter_mut](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.iter_mut)
+    #[inline]
     pub fn iter_mut(&mut self) -> IterMut<'_, Key, Value> {
         self.inner.iter_mut()
     }
 
     /// Wrapper for [keys](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.keys)
+    #[inline]
     pub fn keys(&self) -> Keys<'_, Key, Value> {
         self.inner.keys()
     }
 
     /// Wrapper for [len](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.len)
+    #[inline]
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
     /// Wrapper for [remove](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.remove)
+    #[inline]
     pub fn remove(&mut self, key: &Key) -> Result<Option<Value>, Error> {
         if let Some(ref key_type) = self.key_type {
-            if *key_type != key.kind() {
-                miette::bail!("Invalid key type: {:?}", key.kind());
+            if *key_type != key.type_of() {
+                miette::bail!("Invalid key type: {:?}", key.type_of());
             }
         } else {
-            self.key_type = Some(key.kind());
+            self.key_type = Some(key.type_of());
         }
 
         Ok(self.inner.remove(key))
     }
 
     /// Wrapper for [reserve](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.reserve)
+    #[inline]
     pub fn reserve(&mut self, additional: usize) {
         self.inner.reserve(additional)
     }
 
     /// Wrapper for [retain](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.retain)
+    #[inline]
     pub fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&Key, &mut Value) -> bool,
@@ -240,33 +264,37 @@ impl Map {
     }
 
     /// Wrapper for [shrink_to](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.shrink_to)
+    #[inline]
     pub fn shrink_to(&mut self, min_capacity: usize) {
         self.inner.shrink_to(min_capacity)
     }
 
     /// Wrapper for [shrink_to_fit](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.shrink_to_fit)
+    #[inline]
     pub fn shrink_to_fit(&mut self) {
         self.inner.shrink_to_fit()
     }
 
     /// Wrapper for [try_insert](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_insert)
+    #[inline]
     pub fn try_insert(
         &mut self,
         key: Key,
         value: Value,
     ) -> Result<Option<Value>, Error> {
         if let Some(ref key_type) = self.key_type {
-            if *key_type != key.kind() {
-                miette::bail!("Invalid key type: {:?}", key.kind());
+            if *key_type != key.type_of() {
+                miette::bail!("Invalid key type: {:?}", key.type_of());
             }
         } else {
-            self.key_type = Some(key.kind());
+            self.key_type = Some(key.type_of());
         }
 
         Ok(self.inner.insert(key, value))
     }
 
     /// Wrapper for [try_reserve](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.try_reserve)
+    #[inline]
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), Error> {
         match self.inner.try_reserve(additional) {
             Ok(_) => Ok(()),
@@ -276,16 +304,19 @@ impl Map {
 
     /// Wrapper for
     /// [values](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values)
+    #[inline]
     pub fn values(&self) -> Values<'_, Key, Value> {
         self.inner.values()
     }
 
     /// Wrapper for [values_mut](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.values_mut)
+    #[inline]
     pub fn values_mut(&mut self) -> ValuesMut<'_, Key, Value> {
         self.inner.values_mut()
     }
 
     /// Wrapper for [with_capacity](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_capacity)
+    #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             key_type: None,
@@ -294,7 +325,8 @@ impl Map {
     }
 
     /// Adds key type and instantiates an inner hashmap with the capacity provided as the argument.
-    pub fn with_type_and_capacity(key_type: KeyKind, capacity: usize) -> Self {
+    #[inline]
+    pub fn with_type_and_capacity(key_type: KeyType, capacity: usize) -> Self {
         Self {
             key_type: Some(key_type),
             inner: HashMap::with_capacity(capacity),
@@ -302,6 +334,7 @@ impl Map {
     }
 
     /// Wrapper for [with_capacity_and_hasher](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_capacity_and_hasher)
+    #[inline]
     pub fn with_capacity_and_hasher(
         capacity: usize,
         hash_builder: RandomState,
@@ -313,8 +346,9 @@ impl Map {
     }
 
     /// Creates new inner hashmap and sets the map type for type checking.
+    #[inline]
     pub fn with_type_capacity_and_hasher(
-        key_type: KeyKind,
+        key_type: KeyType,
         capacity: usize,
         hash_builder: RandomState,
     ) -> Self {
@@ -325,6 +359,7 @@ impl Map {
     }
 
     /// Wrapper for [with_hasher](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_hasher)
+    #[inline]
     pub fn with_hasher(hash_builder: RandomState) -> Self {
         Self {
             key_type: None,
@@ -333,8 +368,9 @@ impl Map {
     }
 
     /// Creates new inner hashmap and sets the map type for type checking.
+    #[inline]
     pub fn with_type_and_hasher(
-        key_type: KeyKind,
+        key_type: KeyType,
         hash_builder: RandomState,
     ) -> Self {
         Self {
@@ -400,31 +436,31 @@ impl<'de> Deserialize<'de> for Map {
     }
 }
 
-/// KeyKind represents the type of the key.
+/// KeyType represents the type of the key.
 #[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
-pub enum KeyKind {
+pub enum KeyType {
     Int,
     Uint,
     String,
     Bool,
 }
 
-impl From<Key> for KeyKind {
+impl From<Key> for KeyType {
     fn from(key: Key) -> Self {
-        key.kind()
+        key.type_of()
     }
 }
 
-impl TryFrom<ValueKind> for KeyKind {
+impl TryFrom<ValueType> for KeyType {
     type Error = Error;
 
-    fn try_from(kind: ValueKind) -> Result<Self, Self::Error> {
-        match kind {
-            ValueKind::Int => Ok(KeyKind::Int),
-            ValueKind::Uint => Ok(KeyKind::Uint),
-            ValueKind::String => Ok(KeyKind::String),
-            ValueKind::Bool => Ok(KeyKind::Bool),
-            _ => miette::bail!("Invalid map key kind: {:?}", kind),
+    fn try_from(ty: ValueType) -> Result<Self, Self::Error> {
+        match ty {
+            ValueType::Int => Ok(KeyType::Int),
+            ValueType::Uint => Ok(KeyType::Uint),
+            ValueType::String => Ok(KeyType::String),
+            ValueType::Bool => Ok(KeyType::Bool),
+            ty => miette::bail!("Invalid map key kind: {ty:?}"),
         }
     }
 }
@@ -498,12 +534,12 @@ impl TryFrom<&Value> for Key {
 }
 
 impl Key {
-    fn kind(&self) -> KeyKind {
+    fn type_of(&self) -> KeyType {
         match self {
-            Key::Int(_) => KeyKind::Int,
-            Key::Uint(_) => KeyKind::Uint,
-            Key::String(_) => KeyKind::String,
-            Key::Bool(_) => KeyKind::Bool,
+            Key::Int(_) => KeyType::Int,
+            Key::Uint(_) => KeyType::Uint,
+            Key::String(_) => KeyType::String,
+            Key::Bool(_) => KeyType::Bool,
         }
     }
 }
