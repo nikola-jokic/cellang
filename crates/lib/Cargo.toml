@@ -1,8 +1,8 @@
 [package]
 name = "cellang"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 authors = ["Nikola Jokic <jokicnikola07@gmail.com>"]
 description = "Interpreter for the CEL expression language"
 repository = "https://github.com/nikola-jokic/cellang"
