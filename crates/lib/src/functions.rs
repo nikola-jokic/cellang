@@ -2,7 +2,7 @@ use crate::{
     eval_ast,
     parser::{Atom, Op, TokenTree},
     types::{Duration, List, Map},
-    Environment, Key, KeyKind, Value,
+    Environment, Key, KeyType, Value,
 };
 use miette::Error;
 use regex::Regex;
@@ -102,7 +102,7 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
+    let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
     let mut all = true;
 
@@ -165,7 +165,7 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
+    let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
     let mut exists = false;
     match host {
@@ -231,7 +231,7 @@ pub fn exists_one(
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
+    let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
     let mut found = false;
     match host {
@@ -320,7 +320,7 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 list.len(),
             );
 
-            let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
+            let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
             for item in list.iter() {
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
@@ -334,7 +334,7 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 return Ok(Value::Map(map));
             }
             let mut new_map = Map::with_capacity(map.len());
-            let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
+            let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
             for (k, value) in map.iter() {
                 variables.insert(key.clone(), value.clone())?;
 
@@ -367,7 +367,7 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // expect third parameter to be a lambda
     let lambda = &tokens[2];
 
-    let mut variables = Map::with_type_and_capacity(KeyKind::String, 1);
+    let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
     match host {
         Value::List(list) => {

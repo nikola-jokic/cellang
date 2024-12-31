@@ -1,7 +1,7 @@
 use crate::{
     environment::Environment,
     parser::{Atom, Op, TokenTree},
-    types::{Key, KeyKind, Map, Value},
+    types::{Key, KeyType, Map, Value},
     Function, List, Parser,
 };
 use miette::Error;
@@ -263,12 +263,12 @@ pub fn eval_cons<'a>(
             let mut list = Vec::with_capacity(tokens.len());
             let mut iter = tokens.iter();
             let first = eval_ast(env, iter.next().unwrap())?.to_value()?;
-            let kind = first.kind();
+            let key_type = first.type_of();
             list.push(first);
 
             for token in iter {
                 let value = eval_ast(env, token)?.to_value()?;
-                if value.kind() != kind {
+                if value.type_of() != key_type {
                     miette::bail!("List elements must have the same type");
                 }
                 list.push(value);
@@ -291,7 +291,7 @@ pub fn eval_cons<'a>(
             let first_value =
                 eval_ast(env, iter.next().expect("Value must be present"))?
                     .to_value()?;
-            let key_kind = KeyKind::try_from(first_key.kind())?;
+            let key_type = KeyType::try_from(first_key.type_of())?;
 
             let mut map = HashMap::new();
             map.insert(Key::try_from(first_key)?, first_value);
@@ -299,8 +299,8 @@ pub fn eval_cons<'a>(
             while let (Some(key), Some(value)) = (iter.next(), iter.next()) {
                 let key = eval_ast(env, key)?.to_value()?;
                 let value = eval_ast(env, value)?.to_value()?;
-                let kk = KeyKind::try_from(key.kind())?;
-                if kk != key_kind {
+                let kty = KeyType::try_from(key.type_of())?;
+                if kty != key_type {
                     miette::bail!("Map elements must have the same type");
                 }
                 map.insert(Key::try_from(key)?, value);

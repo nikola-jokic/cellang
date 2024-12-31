@@ -12,7 +12,7 @@ use time::OffsetDateTime;
 #[derive(
     Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Serialize, Deserialize,
 )]
-pub enum ValueKind {
+pub enum ValueType {
     Int,
     Uint,
     Double,
@@ -501,19 +501,19 @@ impl fmt::Display for Value {
 }
 
 impl Value {
-    pub fn kind(&self) -> ValueKind {
+    pub fn type_of(&self) -> ValueType {
         match self {
-            Value::Int(_) => ValueKind::Int,
-            Value::Uint(_) => ValueKind::Uint,
-            Value::Double(_) => ValueKind::Double,
-            Value::String(_) => ValueKind::String,
-            Value::Bool(_) => ValueKind::Bool,
-            Value::Map(_) => ValueKind::Map,
-            Value::List(_) => ValueKind::List,
-            Value::Bytes(_) => ValueKind::Bytes,
-            Value::Null => ValueKind::Null,
-            Value::Timestamp(_) => ValueKind::Timestamp,
-            Value::Duration(_) => ValueKind::Duration,
+            Value::Int(_) => ValueType::Int,
+            Value::Uint(_) => ValueType::Uint,
+            Value::Double(_) => ValueType::Double,
+            Value::String(_) => ValueType::String,
+            Value::Bool(_) => ValueType::Bool,
+            Value::Map(_) => ValueType::Map,
+            Value::List(_) => ValueType::List,
+            Value::Bytes(_) => ValueType::Bytes,
+            Value::Null => ValueType::Null,
+            Value::Timestamp(_) => ValueType::Timestamp,
+            Value::Duration(_) => ValueType::Duration,
         }
     }
 
@@ -583,7 +583,7 @@ impl Value {
     /// The equal method compares two values and returns a boolean value.
     /// Values MUST be of the same type. If they are not, an error is returned.
     pub fn equal(&self, other: &Value) -> Result<Value, Error> {
-        if self.kind() != other.kind() {
+        if self.type_of() != other.type_of() {
             miette::bail!("Cannot compare {:?} and {:?}", self, other);
         }
         Ok(Value::Bool(self == other))
