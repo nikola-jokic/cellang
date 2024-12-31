@@ -85,7 +85,7 @@ impl Map {
     }
 
     /// Wrapper for [contains_key](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.contains_key)
-    /// It checks if the key type is the same as the key kind.
+    /// It checks if the key type is the same as the key type.
     /// If the key type is not set (map must be empty), it returns false.
     #[inline]
     pub fn contains_key(&self, key: &Key) -> Result<bool, Error> {
@@ -107,7 +107,7 @@ impl Map {
     }
 
     /// Wrapper for [entry](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.entry)
-    /// It checks if the key type is the same as the key kind.
+    /// It checks if the key type is the same as the key type.
     /// If the key type is not set (map must be empty), it sets the key type.
     #[inline]
     pub fn entry(&mut self, key: Key) -> Result<Entry<Key, Value>, Error> {
@@ -436,7 +436,7 @@ impl<'de> Deserialize<'de> for Map {
     }
 }
 
-/// KeyKind represents the type of the key.
+/// KeyType represents the type of the key.
 #[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
 pub enum KeyType {
     Int,
@@ -454,13 +454,13 @@ impl From<Key> for KeyType {
 impl TryFrom<ValueType> for KeyType {
     type Error = Error;
 
-    fn try_from(kind: ValueType) -> Result<Self, Self::Error> {
-        match kind {
+    fn try_from(ty: ValueType) -> Result<Self, Self::Error> {
+        match ty {
             ValueType::Int => Ok(KeyType::Int),
             ValueType::Uint => Ok(KeyType::Uint),
             ValueType::String => Ok(KeyType::String),
             ValueType::Bool => Ok(KeyType::Bool),
-            _ => miette::bail!("Invalid map key kind: {:?}", kind),
+            ty => miette::bail!("Invalid map key kind: {ty:?}"),
         }
     }
 }

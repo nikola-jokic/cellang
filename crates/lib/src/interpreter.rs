@@ -807,7 +807,7 @@ mod tests {
             assert_eq!(result, *expected, "input: {}", input);
         }
 
-        // keys must be of same kind
+        // keys must be of same type
         let tt = [
             ("{1: 2, 3u: 4}", "Map elements must have the same type"),
             (

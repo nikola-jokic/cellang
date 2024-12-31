@@ -2,7 +2,7 @@ use miette::{Context, Error, LabeledSpan};
 use std::borrow::Cow;
 use std::fmt;
 
-use crate::lexer::{Token, TokenKind};
+use crate::lexer::{Token, TokenType};
 use crate::Lexer;
 
 /// A parser for the language.
@@ -36,63 +36,63 @@ impl<'src> Parser<'src> {
         let mut lhs = match lhs {
             // atoms
             Token {
-                kind: TokenKind::Ident,
+                ty: TokenType::Ident,
                 origin,
                 ..
             } => TokenTree::Atom(Atom::Ident(origin)),
             Token {
-                kind: TokenKind::Int(n),
+                ty: TokenType::Int(n),
                 ..
             } => TokenTree::Atom(Atom::Int(n)),
             Token {
-                kind: TokenKind::Uint(n),
+                ty: TokenType::Uint(n),
                 ..
             } => TokenTree::Atom(Atom::Uint(n)),
             Token {
-                kind: TokenKind::Double(n),
+                ty: TokenType::Double(n),
                 ..
             } => TokenTree::Atom(Atom::Double(n)),
             Token {
-                kind: TokenKind::Null,
+                ty: TokenType::Null,
                 ..
             } => TokenTree::Atom(Atom::Null),
             Token {
-                kind: TokenKind::String,
+                ty: TokenType::String,
                 origin,
                 ..
             } => TokenTree::Atom(Atom::String(Token::unescape(origin))),
             Token {
-                kind: TokenKind::RawString,
+                ty: TokenType::RawString,
                 origin,
                 ..
             } => TokenTree::Atom(Atom::String(Token::unescape(origin))),
             Token {
-                kind: TokenKind::Bytes,
+                ty: TokenType::Bytes,
                 origin,
                 ..
             } => TokenTree::Atom(Atom::Bytes(Token::unescape_bytes(origin))),
             Token {
-                kind: TokenKind::RawBytes,
+                ty: TokenType::RawBytes,
                 origin,
                 ..
             } => TokenTree::Atom(Atom::Bytes(Token::unescape_bytes(origin))),
             Token {
-                kind: TokenKind::True,
+                ty: TokenType::True,
                 ..
             } => TokenTree::Atom(Atom::Bool(true)),
             Token {
-                kind: TokenKind::False,
+                ty: TokenType::False,
                 ..
             } => TokenTree::Atom(Atom::Bool(false)),
 
             // groups
             Token {
-                kind: TokenKind::LeftParen,
+                ty: TokenType::LeftParen,
                 ..
             } => {
                 let lhs = self.parse_expr(0)?;
                 self.lexer.expect(
-                    TokenKind::RightParen,
+                    TokenType::RightParen,
                     "Expected closing parenthesis",
                 )?;
                 TokenTree::Cons(Op::Group, vec![lhs])
@@ -100,12 +100,12 @@ impl<'src> Parser<'src> {
 
             // unary operators
             Token {
-                kind: TokenKind::Not | TokenKind::Minus,
+                ty: TokenType::Not | TokenType::Minus,
                 ..
             } => {
-                let op = match lhs.kind {
-                    TokenKind::Not => Op::Not,
-                    TokenKind::Minus => Op::Minus,
+                let op = match lhs.ty {
+                    TokenType::Not => Op::Not,
+                    TokenType::Minus => Op::Minus,
                     _ => unreachable!(),
                 };
                 let ((), r_bp) = prefix_binding_power(op);
@@ -115,12 +115,12 @@ impl<'src> Parser<'src> {
 
             // aggregate types
             Token {
-                kind: TokenKind::LeftBrace,
+                ty: TokenType::LeftBrace,
                 ..
             } => self.parse_map()?,
 
             Token {
-                kind: TokenKind::LeftBracket,
+                ty: TokenType::LeftBracket,
                 ..
             } => self.parse_list()?,
 
@@ -132,7 +132,7 @@ impl<'src> Parser<'src> {
                             "here",
                         ),
                     ],
-                        help = format!("Unexpected token: {:?}", token.kind),
+                        help = format!("Unexpected token: {:?}", token.ty),
                         "Unexpected token"
                 })
             }
@@ -152,85 +152,85 @@ impl<'src> Parser<'src> {
             let op = match op.map(|res| res.as_ref().expect("handled Err above")) {
                 None => break,
                 Some(Token {
-                    kind:
-                        TokenKind::RightParen
-                        | TokenKind::RightBracket
-                        | TokenKind::RightBrace
-                        | TokenKind::Comma
-                        | TokenKind::Colon
-                        | TokenKind::Semicolon,
+                    ty:
+                        TokenType::RightParen
+                        | TokenType::RightBracket
+                        | TokenType::RightBrace
+                        | TokenType::Comma
+                        | TokenType::Colon
+                        | TokenType::Semicolon,
                     ..
                 }) => break,
                 Some(Token {
-                    kind: TokenKind::LeftParen,
+                    ty: TokenType::LeftParen,
                     ..
                 }) => Op::Call,
                 Some(Token {
-                    kind: TokenKind::LeftBracket,
+                    ty: TokenType::LeftBracket,
                     ..
                 }) => Op::Index,
                 Some(Token {
-                    kind: TokenKind::Dot,
+                    ty: TokenType::Dot,
                     ..
                 }) => Op::Field,
                 Some(Token {
-                    kind: TokenKind::Minus,
+                    ty: TokenType::Minus,
                     ..
                 }) => Op::Minus,
                 Some(Token {
-                    kind: TokenKind::Plus,
+                    ty: TokenType::Plus,
                     ..
                 }) => Op::Plus,
                 Some(Token {
-                    kind: TokenKind::Star,
+                    ty: TokenType::Star,
                     ..
                 }) => Op::Multiply,
                 Some(Token {
-                    kind: TokenKind::Percent,
+                    ty: TokenType::Percent,
                     ..
                 }) => Op::Mod,
                 Some(Token {
-                    kind: TokenKind::NotEqual,
+                    ty: TokenType::NotEqual,
                     ..
                 }) => Op::NotEqual,
                 Some(Token {
-                    kind: TokenKind::In,
+                    ty: TokenType::In,
                     ..
                 }) => Op::In,
                 Some(Token {
-                    kind: TokenKind::EqualEqual,
+                    ty: TokenType::EqualEqual,
                     ..
                 }) => Op::EqualEqual,
                 Some(Token {
-                    kind: TokenKind::LessEqual,
+                    ty: TokenType::LessEqual,
                     ..
                 }) => Op::LessEqual,
                 Some(Token {
-                    kind: TokenKind::GreaterEqual,
+                    ty: TokenType::GreaterEqual,
                     ..
                 }) => Op::GreaterEqual,
                 Some(Token {
-                    kind: TokenKind::Less,
+                    ty: TokenType::Less,
                     ..
                 }) => Op::Less,
                 Some(Token {
-                    kind: TokenKind::Greater,
+                    ty: TokenType::Greater,
                     ..
                 }) => Op::Greater,
                 Some(Token {
-                    kind: TokenKind::Slash,
+                    ty: TokenType::Slash,
                     ..
                 }) => Op::Devide,
                 Some(Token {
-                    kind: TokenKind::And,
+                    ty: TokenType::And,
                     ..
                 }) => Op::And,
                 Some(Token {
-                    kind: TokenKind::Or,
+                    ty: TokenType::Or,
                     ..
                 }) => Op::Or,
                 Some(Token {
-                    kind: TokenKind::QuestionMark,
+                    ty: TokenType::QuestionMark,
                     ..
                 }) => Op::IfTernary,
 
@@ -262,7 +262,7 @@ impl<'src> Parser<'src> {
                             .parse_expr(0)
                             .wrap_err("in index expression")?;
                         self.lexer.expect(
-                            TokenKind::RightBracket,
+                            TokenType::RightBracket,
                             "Expected closing bracket",
                         )?;
                         TokenTree::Cons(op, vec![lhs, index])
@@ -281,7 +281,7 @@ impl<'src> Parser<'src> {
                     Op::IfTernary => {
                         let mhs = self.parse_expr(0)?;
                         self.lexer.expect(
-                            TokenKind::Colon,
+                            TokenType::Colon,
                             "Expected colon after the condition",
                         )?;
                         let rhs = self.parse_expr(r_bp)?;
@@ -319,7 +319,7 @@ impl<'src> Parser<'src> {
         if matches!(
             self.lexer.peek(),
             Some(Ok(Token {
-                kind: TokenKind::RightBrace,
+                ty: TokenType::RightBrace,
                 ..
             }))
         ) {
@@ -329,7 +329,7 @@ impl<'src> Parser<'src> {
         loop {
             let key = self.parse_expr(0).wrap_err("in map key")?;
             self.lexer.expect(
-                TokenKind::Colon,
+                TokenType::Colon,
                 "Expected colon between map key and value",
             )?;
             let value = self.parse_expr(0).wrap_err("in map value")?;
@@ -341,15 +341,15 @@ impl<'src> Parser<'src> {
                 .expect_where(
                     |token| {
                         matches!(
-                            token.kind,
-                            TokenKind::Comma | TokenKind::RightBrace
+                            token.ty,
+                            TokenType::Comma | TokenType::RightBrace
                         )
                     },
                     "continuing map",
                 )
                 .wrap_err("in map")?;
 
-            if token.kind == TokenKind::RightBrace {
+            if token.ty == TokenType::RightBrace {
                 break;
             }
         }
@@ -361,7 +361,7 @@ impl<'src> Parser<'src> {
         if matches!(
             self.lexer.peek(),
             Some(Ok(Token {
-                kind: TokenKind::RightBracket,
+                ty: TokenType::RightBracket,
                 ..
             }))
         ) {
@@ -376,15 +376,15 @@ impl<'src> Parser<'src> {
                 .expect_where(
                     |token| {
                         matches!(
-                            token.kind,
-                            TokenKind::Comma | TokenKind::RightBracket
+                            token.ty,
+                            TokenType::Comma | TokenType::RightBracket
                         )
                     },
                     "continuing list",
                 )
                 .wrap_err("in list")?;
 
-            if token.kind == TokenKind::RightBracket {
+            if token.ty == TokenType::RightBracket {
                 break;
             }
         }
@@ -397,7 +397,7 @@ impl<'src> Parser<'src> {
         if !matches!(
             self.lexer.peek(),
             Some(Ok(Token {
-                kind: TokenKind::RightParen,
+                ty: TokenType::RightParen,
                 ..
             }))
         ) {
@@ -411,15 +411,15 @@ impl<'src> Parser<'src> {
                     .expect_where(
                         |token| {
                             matches!(
-                                token.kind,
-                                TokenKind::Comma | TokenKind::RightParen
+                                token.ty,
+                                TokenType::Comma | TokenType::RightParen
                             )
                         },
                         "continuing argument list",
                     )
                     .wrap_err("in argument list of function call")?;
 
-                if token.kind == TokenKind::RightParen {
+                if token.ty == TokenType::RightParen {
                     break;
                 }
             }

@@ -7,7 +7,7 @@ use std::fmt;
 use std::{collections::HashMap, str::FromStr};
 use time::OffsetDateTime;
 
-/// ValueKind is an enum that represents the different types of values that can be stored in a
+/// ValueType is an enum that represents the different types of values that can be stored in a
 /// Value.
 #[derive(
     Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Serialize, Deserialize,
@@ -56,7 +56,7 @@ where
     }
 }
 
-/// Value is a primitive value for each ValueKind. Resolution for a value could be a constant,
+/// Value is a primitive value for each ValueType. Resolution for a value could be a constant,
 /// for example, an Int(1), or a resolved value from a variable.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
