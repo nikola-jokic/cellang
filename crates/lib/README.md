@@ -27,6 +27,8 @@ to it.
 Let's show more complicated example ([user_role](./examples/user_role.rs)). Check-out the [examples](./examples/) directory for more examples, or consider contributing one!
 
 ```rust
+use std::sync::Arc;
+
 use cellang::{Environment, EnvironmentBuilder, TokenTree, Value};
 use miette::Error;
 use serde::{Deserialize, Serialize};
@@ -42,7 +44,7 @@ fn main() {
     env.set_variable("users", users).unwrap();
 
     // Add a custom function to the environment
-    env.set_function("has_role", Box::new(has_role));
+    env.set_function("has_role", Arc::new(has_role));
 
     // Let's say the program tries to get the number of users with particular role
     let program = "size(users.filter(u, u.has_role(role)))";
