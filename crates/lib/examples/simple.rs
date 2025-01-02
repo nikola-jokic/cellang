@@ -1,9 +1,8 @@
-use cellang::EnvironmentBuilder;
+use cellang::Environment;
 
 fn main() {
     // Create a new environment with functions but without variables
-    let env = EnvironmentBuilder::default();
-    let env = env.build();
+    let env = Environment::root();
 
     // Evaluate a simple expression
     let value = cellang::eval(&env, "1 + 2 * 3").unwrap();
@@ -17,8 +16,7 @@ fn main() {
     assert_eq!(value, true.into());
 
     // Evaluate a simple expression with macros
-    let env = EnvironmentBuilder::default();
-    let env = env.build();
+    let env = Environment::root();
     let value =
         cellang::eval(&env, "'Hello, World!'.startsWith('Hello')").unwrap();
     assert_eq!(value, true.into());
