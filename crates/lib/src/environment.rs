@@ -3,7 +3,7 @@ use crate::{functions, TryIntoValue};
 use crate::{Function, Map};
 use miette::Error;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// The environment is a collection of variables and functions.
 /// The environment can have a parent environment, which is used for scoping.
@@ -17,6 +17,15 @@ pub struct Environment<'a> {
 }
 
 impl<'a> Environment<'a> {
+    /// Creates a root environment with empty variables and only default functions.
+    pub fn root() -> Environment<'a> {
+        Environment {
+            variables: None,
+            functions: Some(default_functions()),
+            parent: None,
+        }
+    }
+
     /// Creates a new child environment with empty variables and functions.
     pub fn child_builder(&self) -> EnvironmentBuilder {
         EnvironmentBuilder {
@@ -72,6 +81,58 @@ impl Environment<'_> {
     }
 }
 
+fn default_functions() -> &'static HashMap<String, Function> {
+    static FUNCTIONS: OnceLock<HashMap<String, Function>> = OnceLock::new();
+    FUNCTIONS.get_or_init(|| {
+        let mut m = HashMap::new();
+        m.insert("size".to_string(), Arc::new(functions::size) as Function);
+        m.insert("type".to_string(), Arc::new(functions::type_fn) as Function);
+        m.insert("has".to_string(), Arc::new(functions::has) as Function);
+        m.insert("all".to_string(), Arc::new(functions::all) as Function);
+        m.insert(
+            "exists".to_string(),
+            Arc::new(functions::exists) as Function,
+        );
+        m.insert(
+            "exists_one".to_string(),
+            Arc::new(functions::exists_one) as Function,
+        );
+        m.insert("map".to_string(), Arc::new(functions::map) as Function);
+        m.insert(
+            "filter".to_string(),
+            Arc::new(functions::filter) as Function,
+        );
+        m.insert(
+            "contains".to_string(),
+            Arc::new(functions::contains) as Function,
+        );
+        m.insert(
+            "startsWith".to_string(), // for some reason, this is cammel case in spec
+            Arc::new(functions::starts_with) as Function,
+        );
+        m.insert(
+            "matches".to_string(),
+            Arc::new(functions::matches) as Function,
+        );
+        m.insert("int".to_string(), Arc::new(functions::int) as Function);
+        m.insert("uint".to_string(), Arc::new(functions::uint) as Function);
+        m.insert(
+            "string".to_string(),
+            Arc::new(functions::string) as Function,
+        );
+        m.insert(
+            "timestamp".to_string(),
+            Arc::new(functions::timestamp) as Function,
+        );
+        m.insert("dyn".to_string(), Arc::new(functions::dyn_fn) as Function);
+        m.insert(
+            "duration".to_string(),
+            Arc::new(functions::duration) as Function,
+        );
+        m
+    })
+}
+
 /// Environment builder can be used to gradually build up the environment.
 #[derive(Clone)]
 pub struct EnvironmentBuilder<'a> {
@@ -99,74 +160,7 @@ impl<'a> EnvironmentBuilder<'a> {
             variables,
             functions: {
                 let mut m = functions.unwrap_or_default();
-                m.insert(
-                    "size".to_string(),
-                    Arc::new(functions::size) as Function,
-                );
-                m.insert(
-                    "type".to_string(),
-                    Arc::new(functions::type_fn) as Function,
-                );
-                m.insert(
-                    "has".to_string(),
-                    Arc::new(functions::has) as Function,
-                );
-                m.insert(
-                    "all".to_string(),
-                    Arc::new(functions::all) as Function,
-                );
-                m.insert(
-                    "exists".to_string(),
-                    Arc::new(functions::exists) as Function,
-                );
-                m.insert(
-                    "exists_one".to_string(),
-                    Arc::new(functions::exists_one) as Function,
-                );
-                m.insert(
-                    "map".to_string(),
-                    Arc::new(functions::map) as Function,
-                );
-                m.insert(
-                    "filter".to_string(),
-                    Arc::new(functions::filter) as Function,
-                );
-                m.insert(
-                    "contains".to_string(),
-                    Arc::new(functions::contains) as Function,
-                );
-                m.insert(
-                    "startsWith".to_string(), // for some reason, this is cammel case in spec
-                    Arc::new(functions::starts_with) as Function,
-                );
-                m.insert(
-                    "matches".to_string(),
-                    Arc::new(functions::matches) as Function,
-                );
-                m.insert(
-                    "int".to_string(), // for some reason, this is cammel case in spec
-                    Arc::new(functions::int) as Function,
-                );
-                m.insert(
-                    "uint".to_string(), // for some reason, this is cammel case in spec
-                    Arc::new(functions::uint) as Function,
-                );
-                m.insert(
-                    "string".to_string(), // for some reason, this is cammel case in spec
-                    Arc::new(functions::string) as Function,
-                );
-                m.insert(
-                    "timestamp".to_string(),
-                    Arc::new(functions::timestamp) as Function,
-                );
-                m.insert(
-                    "dyn".to_string(),
-                    Arc::new(functions::dyn_fn) as Function,
-                );
-                m.insert(
-                    "duration".to_string(),
-                    Arc::new(functions::duration) as Function,
-                );
+                m.extend(default_functions().clone());
                 Some(m)
             },
             parent: None,
