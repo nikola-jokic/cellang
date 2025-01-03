@@ -9,6 +9,11 @@ use regex::Regex;
 use time::{format_description::well_known::Iso8601, OffsetDateTime};
 
 /// Returns the size of a value.
+/// The value type must be one of the following:
+/// - string
+/// - list
+/// - map
+/// - bytes
 pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("Expected 1 argument, found {}", tokens.len());
@@ -25,6 +30,8 @@ pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
+/// Returns the type of a value as a Value::String.
+/// All value types are supported.
 pub fn type_fn(
     env: &Environment,
     tokens: &[TokenTree],
@@ -50,6 +57,7 @@ pub fn type_fn(
     Ok(v)
 }
 
+/// Tests whether a field is available
 pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
@@ -83,6 +91,7 @@ pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 }
 
+/// Tests whether all elements in the input list or all keys in a map satisfy the given predicate. The all macro behaves in a manner consistent with the Logical AND operator including in how it absorbs errors and short-circuits.
 pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 3 arguments, found {}", tokens.len());
@@ -92,13 +101,13 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     let lhs = eval_ast(env, &tokens[0])?;
     let host = match lhs.try_value()? {
         v if matches!(v, Value::List(_) | Value::Map(_)) => v,
-        _ => miette::bail!("Invalid type for all: {:?}", tokens[0]),
+        _ => miette::bail!("Invalid host type for all: {:?}", tokens[0]),
     };
 
     // expect second parameter to be an identifier
     let key = match &tokens[1] {
         TokenTree::Atom(Atom::Ident(ident)) => Key::from(*ident),
-        _ => miette::bail!("Invalid type for all: {:?}", tokens[1]),
+        _ => miette::bail!("Invalid identifier type for all: {:?}", tokens[1]),
     };
 
     // expect third parameter to be a lambda
@@ -121,13 +130,16 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                             break;
                         }
                     }
-                    _ => miette::bail!("Invalid type for all: {:?}", lambda),
+                    _ => miette::bail!(
+                        "Invalid predicate type for all: {:?}",
+                        lambda
+                    ),
                 }
             }
         }
         Value::Map(map) => {
-            for (_key, value) in map.iter() {
-                variables.insert(key.clone(), value.clone())?;
+            for value in map.keys() {
+                variables.insert(key.clone(), value.into())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.try_value()? {
@@ -137,7 +149,10 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                             break;
                         }
                     }
-                    _ => miette::bail!("Invalid type for all: {:?}", lambda),
+                    _ => miette::bail!(
+                        "Invalid predicate type for all: {:?}",
+                        lambda
+                    ),
                 }
             }
         }
@@ -147,6 +162,7 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(Value::Bool(all))
 }
 
+/// Tests whether any value in the list or any key in the map satisfies the predicate expression. The exists macro behaves in a manner consistent with the Logical OR operator including in how it absorbs errors and short-circuits.
 pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 3 arguments, found {}", tokens.len());
@@ -189,8 +205,8 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             }
         }
         Value::Map(map) => {
-            for (_key, value) in map.iter() {
-                variables.insert(key.clone(), value.clone())?;
+            for value in map.keys() {
+                variables.insert(key.clone(), value.into())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.try_value()? {
@@ -211,6 +227,7 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(Value::Bool(exists))
 }
 
+/// Tests whether exactly one list element or map key satisfies the predicate expression. This macro does not short-circuit in order to remain consistent with logical operators being the only operators which can absorb errors within CEL
 pub fn exists_one(
     env: &Environment,
     tokens: &[TokenTree],
@@ -262,8 +279,8 @@ pub fn exists_one(
             }
         }
         Value::Map(map) => {
-            for (_key, value) in map.iter() {
-                variables.insert(key.clone(), value.clone())?;
+            for value in map.keys() {
+                variables.insert(key.clone(), value.into())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.try_value()? {
@@ -814,7 +831,7 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 0").parse().unwrap();
+        let lambda = Parser::new("x >= 'a' && x <= 'z'").parse().unwrap();
 
         let env = env.build();
         let result =
@@ -823,14 +840,14 @@ mod tests {
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 1").parse().unwrap();
+        let lambda = Parser::new("x > 'a'").parse().unwrap();
         let result =
             all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("y > 1").parse().unwrap();
+        let lambda = Parser::new("y > 'a'").parse().unwrap();
         let result =
             all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_err(), "expected err got ok: result={:?}", result);
@@ -904,7 +921,7 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 2").parse().unwrap();
+        let lambda = Parser::new("x > 'b'").parse().unwrap();
 
         let env = env.build();
         let result =
@@ -913,14 +930,14 @@ mod tests {
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 3").parse().unwrap();
+        let lambda = Parser::new("x > 'z'").parse().unwrap();
         let result =
             exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("y > 1").parse().unwrap();
+        let lambda = Parser::new("y > 'a'").parse().unwrap();
         let result =
             exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_err(), "expected err got ok: result={:?}", result);
@@ -994,7 +1011,7 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 2").parse().unwrap();
+        let lambda = Parser::new("x > 'b'").parse().unwrap();
 
         let env = env.build();
         let result = exists_one(
@@ -1005,7 +1022,7 @@ mod tests {
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 3").parse().unwrap();
+        let lambda = Parser::new("x > 'c'").parse().unwrap();
         let result = exists_one(
             &env,
             &[TokenTree::Atom(Atom::Ident("m")), ident, lambda],
@@ -1014,7 +1031,7 @@ mod tests {
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("y > 1").parse().unwrap();
+        let lambda = Parser::new("y > 'a'").parse().unwrap();
         let result = exists_one(
             &env,
             &[TokenTree::Atom(Atom::Ident("m")), ident, lambda],

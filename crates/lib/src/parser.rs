@@ -271,6 +271,7 @@ impl<'src> Parser<'src> {
                 };
                 continue;
             }
+
             if let Some((l_bp, r_bp)) = infix_binding_power(op) {
                 if l_bp < min_bp {
                     break;
@@ -293,13 +294,16 @@ impl<'src> Parser<'src> {
                         match self.parse_expr(r_bp).wrap_err_with(|| {
                             format!("on the right-hand side of {lhs} {op}")
                         })? {
-                            TokenTree::Call { func, args } => TokenTree::Call {
-                                func,
-                                args: vec![lhs]
-                                    .into_iter()
-                                    .chain(args)
-                                    .collect(),
-                            },
+                            TokenTree::Call { func, args } => {
+                                self.lexer.next();
+                                TokenTree::Call {
+                                    func,
+                                    args: vec![lhs]
+                                        .into_iter()
+                                        .chain(args)
+                                        .collect(),
+                                }
+                            }
                             rhs => TokenTree::Cons(op, vec![lhs, rhs]),
                         }
                     }
@@ -594,7 +598,7 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
         | Op::GreaterEqual => (7, 8),
         Op::Plus | Op::Minus => (9, 10),
         Op::Multiply | Op::Devide | Op::Mod => (11, 12),
-        Op::Field => (16, 15),
+        Op::Field | Op::Call => (16, 15),
         _ => return None,
     };
     Some(res)
@@ -732,6 +736,33 @@ mod tests {
                 ]
             }
         );
+    }
+
+    #[test]
+    fn test_nested_method_call() {
+        let input = "foo.all(test, test.size() > 4)";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        let want = TokenTree::Call {
+            func: Box::new(TokenTree::Atom(Atom::Ident("all"))),
+            args: vec![
+                TokenTree::Atom(Atom::Ident("foo")),
+                TokenTree::Atom(Atom::Ident("test")),
+                TokenTree::Cons(
+                    Op::Greater,
+                    vec![
+                        TokenTree::Call {
+                            func: Box::new(TokenTree::Atom(Atom::Ident(
+                                "size",
+                            ))),
+                            args: vec![TokenTree::Atom(Atom::Ident("test"))],
+                        },
+                        TokenTree::Atom(Atom::Int(4)),
+                    ],
+                ),
+            ],
+        };
+        assert_eq!(tree, want, "expected {want:?}, got {tree:?}");
     }
 
     #[test]
@@ -990,6 +1021,26 @@ mod tests {
                             TokenTree::Atom(Atom::Int(3)),
                         ]
                     ),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_method_relation() {
+        let input = "foo.bar() < 4";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Less,
+                vec![
+                    TokenTree::Call {
+                        func: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
+                        args: vec![TokenTree::Atom(Atom::Ident("foo"))],
+                    },
+                    TokenTree::Atom(Atom::Int(4)),
                 ]
             )
         );

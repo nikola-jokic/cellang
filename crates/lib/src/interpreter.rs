@@ -1077,4 +1077,284 @@ mod tests {
             result
         );
     }
+
+    #[test]
+    fn test_builtin_type_ok() {
+        let tt = [
+            ("type(1)", Value::String("int".to_string())),
+            ("type(1u)", Value::String("uint".to_string())),
+            ("type(1.0)", Value::String("double".to_string())),
+            ("type('test')", Value::String("string".to_string())),
+            ("type(b'test')", Value::String("bytes".to_string())),
+            ("type(true)", Value::String("bool".to_string())),
+            ("type([1,2,3])", Value::String("list".to_string())),
+            ("type({'key': 'value'})", Value::String("map".to_string())),
+            ("type(null)", Value::String("null".to_string())),
+            (
+                "type(timestamp('2025-01-01T00:00:01Z'))",
+                Value::String("timestamp".to_string()),
+            ),
+            (
+                "type(duration('1h'))",
+                Value::String("duration".to_string()),
+            ),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_builtin_type_err() {
+        let tt = [
+            "type()",
+            "type(1, 2)",
+            "type(1, 2, 3)",
+            "type(1, 2, 3, 4)",
+            "type(1, 2, 3, 4, 5)",
+            "type(1, 2, 3, 4, 5, 6)",
+            "type(1, 2, 3, 4, 5, 6, 7)",
+            "type(1, 2, 3, 4, 5, 6, 7, 8)",
+        ];
+
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "input: {input}, result: {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_builtin_exists_ok() {
+        let tt = [
+            ("v.exists(x, x == 1)", Value::Bool(true)),
+            ("v.exists(x, x == 0)", Value::Bool(false)),
+            ("x.exists(k, k == 'f')", Value::Bool(true)),
+            ("x.exists(k, k == 'a')", Value::Bool(false)),
+        ];
+
+        let mut env = EnvironmentBuilder::default();
+        env.set_variable("v", vec![1, 2, 3, 2])
+            .expect("to set variable");
+        env.set_variable("x", {
+            let mut map = HashMap::new();
+            map.insert("f", 4);
+            map.insert("g", 1);
+            map.insert("h", 2);
+            map.insert("i", 3);
+            map.insert("j", 2);
+            Value::Map(map.into())
+        })
+        .expect("to set variable");
+
+        let env = env.build();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_builtin_exists_err() {
+        let tt = [
+            "[1,2,3].exists(x, x == 'a')",
+            "{1: 4}.exists(x, x == 'a')",
+            "1.exists(x, x == 0)",
+            "'test'.exists(k, k == 'f')",
+        ];
+
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "input: {input}, result: {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_builtin_exists_one_ok() {
+        let tt = [
+            ("[1,2,3].exists_one(x, x == 1)", Value::Bool(true)),
+            ("[1,2,2].exists_one(x, x == 2)", Value::Bool(false)),
+            ("{1: 2}.exists_one(k, k == 1)", Value::Bool(true)),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_builtin_exists_one_err() {
+        let tt = [
+            "[1,2,3].exists_one(x, x == 'a')",
+            "{1: 4}.exists_one(x, x == 'a')",
+            "1.exists_one(x, x == 0)",
+            "'test'.exists_one(k, k == 'f')",
+        ];
+
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "input: {input}, result: {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_builtin_size_ok() {
+        let tt = [
+            ("size('')", Value::Int(0)),
+            ("size('test')", Value::Int(4)),
+            ("size([])", Value::Int(0)),
+            ("size([1,2,3])", Value::Int(3)),
+            ("size({})", Value::Int(0)),
+            ("size({1: 2, 3: 4})", Value::Int(2)),
+            ("'test'.size()", Value::Int(4)),
+            ("[1,2,3].size()", Value::Int(3)),
+            ("{1: 2, 3: 4}.size()", Value::Int(2)),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_builtin_size_err() {
+        let tt = [
+            "size()",
+            "size('test', 'test')",
+            "size(1)",
+            "size(1u)",
+            "size(1.0)",
+            "size(bool)",
+            "size(duration('1h'))",
+            "size(timestamp('2025-01-01T00:00:01Z'))",
+        ];
+
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "input: {input}, result: {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_builtin_has_ok() {
+        let mut env = EnvironmentBuilder::default();
+        env.set_variable("foo", {
+            let mut map = HashMap::new();
+            map.insert("bar", 7);
+            Value::Map(map.into())
+        })
+        .expect("to set variable");
+
+        let env = env.build();
+
+        let result = eval(&env, "has(foo.bar)");
+        assert!(
+            result.is_ok(),
+            "Program 'has(foo.bar)' failed: {:?}",
+            result
+        );
+        let result = result.unwrap();
+        assert_eq!(
+            result,
+            Value::Bool(true),
+            "Program 'has(foo.bar)' failed: {:?}",
+            result
+        );
+
+        let result = eval(&env, "has(foo.bazz)");
+        assert!(
+            result.is_ok(),
+            "Program 'has(foo.baz)' failed: {:?}",
+            result
+        );
+        let result = result.unwrap();
+        assert_eq!(
+            result,
+            Value::Bool(false),
+            "Program 'has(foo.baz)' failed: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_builtin_has_err() {
+        let tt = ["has()", "has(foo)", "has(foo.1)"];
+
+        let mut env = EnvironmentBuilder::default();
+        env.set_variable("foo", {
+            let mut map = HashMap::new();
+            map.insert("bar", 7);
+            Value::Map(map.into())
+        })
+        .expect("to set variable");
+
+        let env = env.build();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "input: {input}, result: {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_builtin_all_ok() {
+        let tt = [
+            ("[true, true, true].all(x, x)", Value::Bool(true)),
+            ("[true, true, false].all(x, x)", Value::Bool(false)),
+            ("[1, 2, 3].all(x, x > 0)", Value::Bool(true)),
+            ("[1, 2, 3].all(x, x > 1)", Value::Bool(false)),
+            ("[1u, 2u, 3u].all(x, x > 0u)", Value::Bool(true)),
+            ("[3.14, 2.71, 1.61].all(num, num < 3.0)", Value::Bool(false)),
+            (
+                "[\"apple\", \"banana\", \"cherry\"].all(fruit, fruit.size() > 3)",
+                Value::Bool(true),
+            ),
+            (
+                "['apple', 'banana', 'cherry'].all(fruit, fruit.size() < 3)",
+                Value::Bool(false),
+            ),
+            ("[1u, 2u, 3u].all(x, x > 1u)", Value::Bool(false)),
+            ("{'a': 1, 'b': 2, 'c': 3}.all(key, key != 'b')", Value::Bool(false)),
+            ("{'a': 1, 'b': 2, 'c': 3}.all(key, key >= 'a')", Value::Bool(true)),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_builtin_all_err() {
+        let tt = [
+            "[true, true, true].all()",
+            "[true, true, true].all(x)",
+            "[true, true, true].all(x, x, x)",
+            "1u.all(x, x > 0u)",
+            "1.all(x, x > 0)",
+            "'test'.all(x, x > 'a')",
+            "1.0.all(x, x > 0.0)",
+        ];
+
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "input: {input}, result: {result:?}");
+        }
+    }
 }

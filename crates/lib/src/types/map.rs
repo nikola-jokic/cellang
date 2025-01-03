@@ -533,6 +533,28 @@ impl TryFrom<&Value> for Key {
     }
 }
 
+impl From<Key> for Value {
+    fn from(key: Key) -> Self {
+        match key {
+            Key::Int(n) => Value::Int(n),
+            Key::Uint(n) => Value::Uint(n),
+            Key::String(s) => Value::String(s),
+            Key::Bool(b) => Value::Bool(b),
+        }
+    }
+}
+
+impl From<&Key> for Value {
+    fn from(key: &Key) -> Self {
+        match key {
+            Key::Int(n) => Value::Int(*n),
+            Key::Uint(n) => Value::Uint(*n),
+            Key::String(s) => Value::String(s.clone()),
+            Key::Bool(b) => Value::Bool(*b),
+        }
+    }
+}
+
 impl Key {
     fn type_of(&self) -> KeyType {
         match self {
