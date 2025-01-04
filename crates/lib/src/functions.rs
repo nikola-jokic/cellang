@@ -480,6 +480,30 @@ pub fn starts_with(
     Ok(Value::Bool(s.starts_with(value.as_str())))
 }
 
+/// Tests whether the string operand ends with the specified suffix. Average time complexity is linear with respect to the size of the suffix string. Worst-case time complexity is proportional to the product of the sizes of the arguments.
+pub fn ends_with(
+    env: &Environment,
+    tokens: &[TokenTree],
+) -> Result<Value, Error> {
+    if tokens.len() != 2 {
+        miette::bail!("expected 2 arguments, found {}", tokens.len());
+    }
+
+    let s = eval_ast(env, &tokens[0])?;
+    let s = match s.try_value()? {
+        Value::String(s) => s,
+        _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[0]),
+    };
+
+    let value = eval_ast(env, &tokens[1])?;
+    let value = match value.try_value()? {
+        Value::String(s) => s,
+        _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[1]),
+    };
+
+    Ok(Value::Bool(s.ends_with(value.as_str())))
+}
+
 pub fn matches(
     env: &Environment,
     tokens: &[TokenTree],

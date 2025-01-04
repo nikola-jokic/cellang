@@ -1482,4 +1482,31 @@ mod tests {
             assert!(result.is_err(), "want err, got ok on input={input}'")
         }
     }
+
+    #[test]
+    fn test_builtin_ends_with_ok() {
+        let tt = [
+            (r#""hello world".endsWith("world")"#, Value::Bool(true)),
+            ("'foobar'.endsWith('bar')", Value::Bool(true)),
+            ("'foobar'.endsWith('foo')", Value::Bool(false)),
+            ("'foobar'.endsWith('baz')", Value::Bool(false)),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {input}")
+        }
+    }
+
+    #[test]
+    fn test_builtin_ends_with_err() {
+        let tt = [r#""hello world".endsWith(42)"#, "[1, 2, 3].startsWith(1)"];
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "want err, got ok on input={input}'")
+        }
+    }
 }
