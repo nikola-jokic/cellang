@@ -4,7 +4,7 @@ use crate::{
     types::{Duration, List, Map},
     Environment, Key, KeyType, Value,
 };
-use miette::Error;
+use miette::{Context, Error};
 use regex::Regex;
 use time::{format_description::well_known::Iso8601, OffsetDateTime};
 
@@ -306,6 +306,12 @@ pub fn exists_one(
     Ok(Value::Bool(found))
 }
 
+/// Returns a list where each element is the result of applying the transform expression to the corresponding input list element or input map key.
+/// There are two forms of map macro:
+/// - The three argument form transforms all elements.
+/// - The four argument form transforms only elements which satisfy the predicate.
+///
+/// The four argument form of the macro exists to simplify combined filter / map operations.
 pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 && tokens.len() != 4 {
         miette::bail!("expected 3 or 4 arguments, found {}", tokens.len());
@@ -318,7 +324,10 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     let this = if tokens.len() == 3 {
         lhs = eval_ast(env, &tokens[0])?;
         match lhs.try_value()? {
-            v if matches!(v, Value::List(_) | Value::Map(_)) => v,
+            v if matches!(v, Value::List(_)) => v,
+            Value::Map(map) => {
+                &Value::List(map.keys().map(Value::from).collect())
+            }
             _ => miette::bail!("Invalid type for map: {:?}", tokens[0]),
         }
     } else {
@@ -341,40 +350,24 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             if list.is_empty() {
                 return Ok(Value::List(list.clone())); // preserve type if set
             }
-            let mut new_list = List::with_type_and_capacity(
-                list.element_type().unwrap(),
-                list.len(),
-            );
-
+            let mut new_list = List::with_capacity(list.len());
             let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
             for item in list.iter() {
-                variables.insert(key.clone(), item.clone())?;
+                variables.insert(key.clone(), item.clone()).wrap_err(
+                    "Invalid item insert, key={key:?}, value={item:?}",
+                )?;
                 let mut env = env.child();
                 env.set_variables(&variables);
                 new_list.push(eval_ast(&env, lambda)?.to_value()?)?;
             }
             Ok(Value::List(new_list))
         }
-        Value::Map(map) => {
-            if map.is_empty() {
-                return Ok(Value::Map(map.clone())); // preserve type if set
-            }
-            let mut new_map = Map::with_capacity(map.len());
-            let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
-            for (k, value) in map.iter() {
-                variables.insert(key.clone(), value.clone())?;
-
-                let mut env = env.child();
-                env.set_variables(&variables);
-                new_map
-                    .insert(k.clone(), eval_ast(&env, lambda)?.to_value()?)?;
-            }
-            Ok(Value::Map(new_map))
-        }
-        _ => unreachable!(),
+        v => Err(miette::miette!("Expected list, got {v:?}")),
     }
 }
 
+/// Returns a list containing only the elements from the input list that satisfy the given predicate.
+/// The host type must be a list or a map.
 pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 2 arguments, found {}", tokens.len());
@@ -419,21 +412,21 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             Ok(Value::List(new_list))
         }
         Value::Map(map) => {
-            let mut new_map = Map::with_capacity(map.len());
-            for (k, v) in map.iter() {
-                variables.insert(key.clone(), v.clone())?;
+            let mut result = List::new();
+            for k in map.keys() {
+                variables.insert(key.clone(), k.clone().into())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.try_value()? {
                     Value::Bool(b) => {
                         if *b {
-                            new_map.insert(k.clone(), v.clone())?;
+                            result.push(k.into())?;
                         }
                     }
                     _ => miette::bail!("Invalid type for filter: {:?}", lambda),
                 }
             }
-            Ok(Value::Map(new_map))
+            Ok(Value::List(result))
         }
         _ => unreachable!(),
     }
@@ -629,7 +622,7 @@ pub fn duration(
 mod tests {
     use super::*;
     use crate::{EnvironmentBuilder, Function, Parser};
-    use std::sync::Arc;
+    use std::{collections::HashMap, sync::Arc};
 
     fn is_function(_: Function) {}
 
@@ -1100,25 +1093,28 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x + 1").parse().unwrap();
+        let lambda = Parser::new("m[x] + 1").parse().unwrap();
 
         let env = env.build();
         let result =
-            map(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
-        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
-        assert_eq!(
-            result.unwrap(),
-            Value::Map(
-                Map::new()
-                    .insert(Key::from("a"), Value::Int(2))
-                    .unwrap()
-                    .insert(Key::from("b"), Value::Int(3))
-                    .unwrap()
-                    .insert(Key::from("c"), Value::Int(4))
-                    .unwrap()
-                    .to_owned()
-            )
-        );
+            map(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda])
+                .expect("expected ok, got err on result");
+
+        // For now, let's go with the sum until ordering is preserved
+        match result {
+            Value::List(l) => {
+                let mut sum = 0i64;
+                for val in l {
+                    match val {
+                        Value::Int(n) => sum += n,
+                        v => panic!("expected int, got {v:?}"),
+                    };
+                }
+
+                assert_eq!(9i64, sum);
+            }
+            res => panic!("expected list, got {res:?}"),
+        }
     }
 
     #[test]
@@ -1183,26 +1179,30 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let filter = Parser::new("x > 1").parse().unwrap();
-        let lambda = Parser::new("x + 1").parse().unwrap();
+        let filter = Parser::new("m[x] > 1").parse().unwrap();
+        let lambda = Parser::new("m[x] + 1").parse().unwrap();
 
         let env = env.build();
         let result = map(
             &env,
             &[TokenTree::Atom(Atom::Ident("m")), ident, filter, lambda],
-        );
-        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
-        assert_eq!(
-            result.unwrap(),
-            Value::Map(
-                Map::new()
-                    .insert(Key::from("b"), Value::Int(3))
-                    .unwrap()
-                    .insert(Key::from("c"), Value::Int(4))
-                    .unwrap()
-                    .to_owned()
-            )
-        );
+        )
+        .expect("expected ok, got err");
+
+        match result {
+            Value::List(l) => {
+                let mut sum = 0i64;
+                for val in l {
+                    match val {
+                        Value::Int(n) => sum += n,
+                        v => panic!("expected int, got {v:?}"),
+                    };
+                }
+
+                assert_eq!(7i64, sum);
+            }
+            res => panic!("expected list, got {res:?}"),
+        }
     }
 
     #[test]
@@ -1266,22 +1266,31 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 1").parse().unwrap();
+        let lambda = Parser::new("x > 'a'").parse().unwrap();
 
         let env = env.build();
         let result =
-            filter(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
-        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
-        assert_eq!(
-            result.unwrap(),
-            Value::Map(
-                Map::new()
-                    .insert(Key::from("b"), Value::Int(2))
-                    .unwrap()
-                    .insert(Key::from("c"), Value::Int(3))
-                    .unwrap()
-                    .to_owned()
-            )
-        );
+            filter(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda])
+                .expect("expected ok, got err on filter");
+
+        match result {
+            Value::List(list) => {
+                let want = {
+                    let mut m = HashMap::new();
+                    m.insert("b".to_string(), 1i64);
+                    m.insert("c".to_string(), 1i64);
+                    m
+                };
+                let mut got = HashMap::new();
+                for item in list {
+                    match item {
+                        Value::String(s) => got.entry(s).or_insert(1),
+                        v => panic!("Expected string, got {v:?}"),
+                    };
+                }
+                assert_eq!(want, got)
+            }
+            v => panic!("Expected list, got {v:?}"),
+        }
     }
 }

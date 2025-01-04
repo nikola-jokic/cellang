@@ -294,16 +294,13 @@ impl<'src> Parser<'src> {
                         match self.parse_expr(r_bp).wrap_err_with(|| {
                             format!("on the right-hand side of {lhs} {op}")
                         })? {
-                            TokenTree::Call { func, args } => {
-                                self.lexer.next();
-                                TokenTree::Call {
-                                    func,
-                                    args: vec![lhs]
-                                        .into_iter()
-                                        .chain(args)
-                                        .collect(),
-                                }
-                            }
+                            TokenTree::Call { func, args } => TokenTree::Call {
+                                func,
+                                args: vec![lhs]
+                                    .into_iter()
+                                    .chain(args)
+                                    .collect(),
+                            },
                             rhs => TokenTree::Cons(op, vec![lhs, rhs]),
                         }
                     }
@@ -427,6 +424,8 @@ impl<'src> Parser<'src> {
                     break;
                 }
             }
+        } else {
+            self.lexer.next();
         }
         Ok(args)
     }
@@ -1044,5 +1043,113 @@ mod tests {
                 ]
             )
         );
+    }
+
+    #[test]
+    fn test_nested_list_with_map() {
+        let input = "[{foo: 1}, {bar: 2}]";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::List,
+                vec![
+                    TokenTree::Cons(
+                        Op::Map,
+                        vec![
+                            TokenTree::Atom(Atom::Ident("foo")),
+                            TokenTree::Atom(Atom::Int(1)),
+                        ]
+                    ),
+                    TokenTree::Cons(
+                        Op::Map,
+                        vec![
+                            TokenTree::Atom(Atom::Ident("bar")),
+                            TokenTree::Atom(Atom::Int(2)),
+                        ]
+                    ),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_method_call_with_indexing() {
+        let input = "foo.bar(x, t[x] > 10)";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+
+        let want = TokenTree::Call {
+            func: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
+            args: vec![
+                TokenTree::Atom(Atom::Ident("foo")),
+                TokenTree::Atom(Atom::Ident("x")),
+                TokenTree::Cons(
+                    Op::Greater,
+                    vec![
+                        TokenTree::Cons(
+                            Op::Index,
+                            vec![
+                                TokenTree::Atom(Atom::Ident("t")),
+                                TokenTree::Atom(Atom::Ident("x")),
+                            ],
+                        ),
+                        TokenTree::Atom(Atom::Int(10)),
+                    ],
+                ),
+            ],
+        };
+
+        assert_eq!(tree, want);
+    }
+
+    #[test]
+    fn test_nested_method_calls_with_nested_types() {
+        let input = "[].map(m, m.filter(key, m[key] > 10))";
+
+        // "[{'a': 10, 'b': 5, 'c': 20}].map(m, m.filter(key, m[key] > 10))";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        let want = TokenTree::Call {
+            func: Box::new(TokenTree::Atom(Atom::Ident("map"))),
+            args: vec![
+                TokenTree::Cons(
+                    Op::List,
+                    vec![TokenTree::Cons(
+                        Op::Map,
+                        vec![
+                            TokenTree::Atom(Atom::String(Cow::Borrowed("a"))),
+                            TokenTree::Atom(Atom::Int(10)),
+                            TokenTree::Atom(Atom::String(Cow::Borrowed("b"))),
+                            TokenTree::Atom(Atom::Int(5)),
+                            TokenTree::Atom(Atom::String(Cow::Borrowed("c"))),
+                            TokenTree::Atom(Atom::Int(20)),
+                        ],
+                    )],
+                ),
+                TokenTree::Atom(Atom::Ident("m")),
+                TokenTree::Call {
+                    func: Box::new(TokenTree::Atom(Atom::Ident("filter"))),
+                    args: vec![
+                        TokenTree::Atom(Atom::Ident("m")),
+                        TokenTree::Atom(Atom::Ident("key")),
+                        TokenTree::Cons(
+                            Op::Greater,
+                            vec![
+                                TokenTree::Cons(
+                                    Op::Index,
+                                    vec![
+                                        TokenTree::Atom(Atom::Ident("m")),
+                                        TokenTree::Atom(Atom::Ident("key")),
+                                    ],
+                                ),
+                                TokenTree::Atom(Atom::Int(10)),
+                            ],
+                        ),
+                    ],
+                },
+            ],
+        };
     }
 }

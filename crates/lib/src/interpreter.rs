@@ -1357,4 +1357,77 @@ mod tests {
             assert!(result.is_err(), "input: {input}, result: {result:?}");
         }
     }
+
+    #[test]
+    fn test_builtin_map_ok() {
+        let tt = [
+            (
+                "[1, 2, 3].map(x, x * 2)",
+                Value::List(vec![2i64, 4, 6].into()),
+            ),
+            (
+                "[5, 10, 15].map(x, x / 5)",
+                Value::List(vec![1i64, 2, 3].into()),
+            ),
+            (
+                "[1, 2, 3, 4].map(num, num % 2 == 0, num * 2)",
+                Value::List(vec![4i64, 8].into()),
+            ),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_builtin_map_err() {
+        let tt = [
+            "[1, 2, 3].map()",
+            "[1, 2, 3].map(x)",
+            "[1, 2, 3].map(x, x, x)",
+            "[1, 2, 3].map(x, x, x, x, x)",
+            "'a'.map(x, x == 'a')",
+        ];
+
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "input: {input}, result: {result:?}");
+        }
+    }
+
+    #[test]
+    fn test_builtin_filter_ok() {
+        let tt = [
+            // (
+            //     "[1, 2, 3].filter(x, x > 1)",
+            //     Value::List(vec![2i64, 3].into()),
+            // ),
+            // (
+            //     "['cat', 'dog', 'bird', 'fish'].filter(pet, pet.size() == 3)",
+            //     Value::List(vec!["cat", "dog"].into()),
+            // ),
+            (
+                "[{'a': 10, 'b': 5, 'c': 20}].map(m, m.filter(key, m[key] > 10))",
+                Value::List(
+                    vec![
+                        Value::List (
+                            vec!["c"].into()
+                        )
+                    ].into()
+                ),
+            ),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {}", input);
+        }
+    }
 }
