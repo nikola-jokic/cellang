@@ -1509,4 +1509,122 @@ mod tests {
             assert!(result.is_err(), "want err, got ok on input={input}'")
         }
     }
+
+    #[test]
+    fn test_builtin_matches_ok() {
+        let tt = [
+            ("'foobar'.matches('foo.*')", Value::Bool(true)),
+            ("'foobar'.matches('baz.*')", Value::Bool(false)),
+            ("matches('foobar', 'foo.*')", Value::Bool(true)),
+        ];
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {input}")
+        }
+    }
+
+    #[test]
+    fn test_builtin_matches_err() {
+        let tt = [
+            "'foobar'.matches(1)",
+            "{'bazfoo': 'foobaz'}.matches('baz.*')",
+        ];
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "want err, got ok on input={input}'")
+        }
+    }
+
+    #[test]
+    fn test_builtin_uint_ok() {
+        let tt = [
+            ("uint(123)", Value::Uint(123)),
+            ("uint(3.14)", Value::Uint(3)),
+            ("uint('123')", Value::Uint(123)),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {input}")
+        }
+    }
+
+    #[test]
+    fn test_builtin_uint_err() {
+        let tt = ["uint('abc')", "uint(-1)"];
+
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "want err, got ok on input={input}'")
+        }
+    }
+
+    #[test]
+    fn test_builtin_int_ok() {
+        let tt = [
+            ("int(123u)", Value::Int(123)),
+            ("int(3.14)", Value::Int(3)),
+            ("int('123')", Value::Int(123)),
+            ("int(timestamp('1970-01-01T00:00:01Z'))", Value::Int(1)),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {input}")
+        }
+    }
+
+    #[test]
+    fn test_builtin_int_err() {
+        let tt = ["int('abc')", "int()", "int(duration('1h'))"];
+
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "want err, got ok on input={input}'")
+        }
+    }
+
+    #[test]
+    fn test_builtin_string_ok() {
+        let tt = [
+            ("string('str')", Value::String("str".into())),
+            ("string(b'str')", Value::String("str".into())),
+            ("string(1)", Value::String("1".into())),
+            ("string(1.2)", Value::String("1.2".into())),
+            ("string(1u)", Value::String("1".into())),
+            ("string(true)", Value::String("true".into())),
+            ("string(false)", Value::String("false".into())),
+            (
+                "string(timestamp('2025-01-01T00:01:01Z'))",
+                Value::String("2025-01-01T00:01:01Z".into()),
+            ),
+            ("string(duration('1m1ms'))", Value::String("60.001s".into())),
+        ];
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {input}")
+        }
+    }
+
+    #[test]
+    fn test_builtin_string_err() {
+        let tt = ["string([1, 2, 3])", "string({'a': 'b', 'c': 'd'})"];
+
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "want err, got ok on input={input}'")
+        }
+    }
 }

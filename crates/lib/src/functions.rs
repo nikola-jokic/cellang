@@ -4,9 +4,9 @@ use crate::{
     types::{Duration, List, Map},
     Environment, Key, KeyType, Value,
 };
-use miette::{Context, Error};
+use miette::{Context, Error, IntoDiagnostic};
 use regex::Regex;
-use time::{format_description::well_known::Iso8601, OffsetDateTime};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 /// Returns the size of a value.
 /// The value type must be one of the following:
@@ -504,6 +504,9 @@ pub fn ends_with(
     Ok(Value::Bool(s.ends_with(value.as_str())))
 }
 
+/// Tests whether a string matches a rust regular expression. This differs from the
+/// original CEL documentation where RE2 expressions are used.
+/// If needed, RE2 implementation can be done
 pub fn matches(
     env: &Environment,
     tokens: &[TokenTree],
@@ -532,15 +535,19 @@ pub fn matches(
     }
 }
 
+/// Type denotation
 pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
 
     let v = match eval_ast(env, &tokens[0])?.to_value()? {
-        Value::Int(i) => Value::Uint(i as u64),
+        Value::Int(i) => Value::Uint(u64::try_from(i).into_diagnostic()?),
         Value::Uint(u) => Value::Uint(u),
-        Value::Double(d) => Value::Uint(d as u64),
+        Value::Double(d) => {
+            let i = d as i64;
+            Value::Uint(u64::try_from(i).into_diagnostic()?)
+        }
         Value::String(s) => match s.parse::<u64>() {
             Ok(u) => Value::Uint(u),
             Err(_) => miette::bail!("Invalid type for uint: {:?}", tokens[0]),
@@ -551,6 +558,7 @@ pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
+/// Type denotation
 pub fn int(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
@@ -571,6 +579,15 @@ pub fn int(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
+/// Type denotation
+/// string(string) -> string (identity)
+/// string(bool) -> string converts true to "true" and false to "false"
+/// string(int) -> string converts integer values to base 10 representation
+/// string(uint) -> string converts unsigned integer values to base 10 representation
+/// string(double) -> string converts a double to a string
+/// string(bytes) -> string converts a byte sequence to a utf-8 string
+/// string(timestamp) -> string converts a timestamp value to RFC3339 format
+/// string(duration) -> string converts a duration value to seconds and fractional seconds with an 's' suffix
 pub fn string(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
@@ -584,14 +601,21 @@ pub fn string(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         Value::Bytes(s) => String::from_utf8_lossy(&s).to_string().into(),
         Value::Bool(b) => b.to_string().into(),
         Value::Null => "null".into(),
-        Value::Timestamp(t) => t.to_string().into(),
-        Value::Duration(d) => d.to_string().into(),
+        Value::Timestamp(t) => t.format(&Rfc3339).into_diagnostic()?.into(),
+        Value::Duration(d) => {
+            dbg!(&d);
+            dbg!(d.whole_seconds());
+            let total_seconds = d.whole_seconds() as f64
+                + (d.subsec_milliseconds() as f64 / 1000f64);
+            format!("{}s", total_seconds).into()
+        }
         _ => miette::bail!("Invalid type for string: {:?}", tokens[0]),
     };
 
     Ok(v)
 }
 
+/// Type conversion, according to RFC3339
 pub fn timestamp(
     env: &Environment,
     tokens: &[TokenTree],
@@ -601,8 +625,9 @@ pub fn timestamp(
     }
 
     let v = match eval_ast(env, &tokens[0])?.to_value()? {
+        v if matches!(v, Value::Timestamp(_)) => v,
         Value::String(s) => {
-            let t = match OffsetDateTime::parse(&s, &Iso8601::PARSING) {
+            let t = match OffsetDateTime::parse(&s, &Rfc3339) {
                 Ok(t) => t,
                 Err(e) => miette::bail!("Invalid timestamp: {:?}", e),
             };
