@@ -111,6 +111,10 @@ fn default_functions() -> &'static HashMap<String, Function> {
             Arc::new(functions::starts_with) as Function,
         );
         m.insert(
+            "endsWith".to_string(),
+            Arc::new(functions::ends_with) as Function,
+        );
+        m.insert(
             "matches".to_string(),
             Arc::new(functions::matches) as Function,
         );

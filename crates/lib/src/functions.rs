@@ -4,11 +4,16 @@ use crate::{
     types::{Duration, List, Map},
     Environment, Key, KeyType, Value,
 };
-use miette::Error;
+use miette::{Context, Error, IntoDiagnostic};
 use regex::Regex;
-use time::{format_description::well_known::Iso8601, OffsetDateTime};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 /// Returns the size of a value.
+/// The value type must be one of the following:
+/// - string
+/// - list
+/// - map
+/// - bytes
 pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("Expected 1 argument, found {}", tokens.len());
@@ -25,6 +30,8 @@ pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
+/// Returns the type of a value as a Value::String.
+/// All value types are supported.
 pub fn type_fn(
     env: &Environment,
     tokens: &[TokenTree],
@@ -50,6 +57,7 @@ pub fn type_fn(
     Ok(v)
 }
 
+/// Tests whether a field is available
 pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
@@ -57,7 +65,8 @@ pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
     match &tokens[0] {
         TokenTree::Cons(op, tokens) if matches!(op, Op::Field | Op::Index) => {
-            let map = match eval_ast(env, &tokens[0])?.to_value()? {
+            let lhs = eval_ast(env, &tokens[0])?;
+            let map = match lhs.try_value()? {
                 Value::Map(m) => m,
                 _ => miette::bail!("Invalid type for has: {:?}", tokens[0]),
             };
@@ -70,9 +79,9 @@ pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                     let key = Key::from(*ident);
                     Ok(Value::Bool(map.contains_key(&key)?))
                 }
-                TokenTree::Cons(_op, tokens) => {
+                TokenTree::Cons(_, tokens) => {
                     let mut env = env.child();
-                    env.set_variables(&map);
+                    env.set_variables(map);
                     has(&env, tokens)
                 }
                 tree => miette::bail!("Invalid type for has: {:?}", tree),
@@ -82,21 +91,23 @@ pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 }
 
+/// Tests whether all elements in the input list or all keys in a map satisfy the given predicate. The all macro behaves in a manner consistent with the Logical AND operator including in how it absorbs errors and short-circuits.
 pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 3 arguments, found {}", tokens.len());
     }
 
     // expect first parameter to be a list
-    let host = match eval_ast(env, &tokens[0])?.to_value()? {
+    let lhs = eval_ast(env, &tokens[0])?;
+    let host = match lhs.try_value()? {
         v if matches!(v, Value::List(_) | Value::Map(_)) => v,
-        _ => miette::bail!("Invalid type for all: {:?}", tokens[0]),
+        _ => miette::bail!("Invalid host type for all: {:?}", tokens[0]),
     };
 
     // expect second parameter to be an identifier
     let key = match &tokens[1] {
         TokenTree::Atom(Atom::Ident(ident)) => Key::from(*ident),
-        _ => miette::bail!("Invalid type for all: {:?}", tokens[1]),
+        _ => miette::bail!("Invalid identifier type for all: {:?}", tokens[1]),
     };
 
     // expect third parameter to be a lambda
@@ -112,30 +123,36 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value()? {
+                match eval_ast(&env, lambda)?.try_value()? {
                     Value::Bool(b) => {
                         if !b {
                             all = false;
                             break;
                         }
                     }
-                    _ => miette::bail!("Invalid type for all: {:?}", lambda),
+                    _ => miette::bail!(
+                        "Invalid predicate type for all: {:?}",
+                        lambda
+                    ),
                 }
             }
         }
         Value::Map(map) => {
-            for (_key, value) in map.iter() {
-                variables.insert(key.clone(), value.clone())?;
+            for value in map.keys() {
+                variables.insert(key.clone(), value.into())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value()? {
+                match eval_ast(&env, lambda)?.try_value()? {
                     Value::Bool(b) => {
                         if !b {
                             all = false;
                             break;
                         }
                     }
-                    _ => miette::bail!("Invalid type for all: {:?}", lambda),
+                    _ => miette::bail!(
+                        "Invalid predicate type for all: {:?}",
+                        lambda
+                    ),
                 }
             }
         }
@@ -145,13 +162,15 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(Value::Bool(all))
 }
 
+/// Tests whether any value in the list or any key in the map satisfies the predicate expression. The exists macro behaves in a manner consistent with the Logical OR operator including in how it absorbs errors and short-circuits.
 pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 3 arguments, found {}", tokens.len());
     }
 
     // expect first parameter to be a list
-    let host = match eval_ast(env, &tokens[0])?.to_value()? {
+    let lhs = eval_ast(env, &tokens[0])?;
+    let host = match lhs.try_value()? {
         v if matches!(v, Value::List(_) | Value::Map(_)) => v,
         _ => miette::bail!("Invalid type for exists: {:?}", tokens[0]),
     };
@@ -174,9 +193,9 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value()? {
+                match eval_ast(&env, lambda)?.try_value()? {
                     Value::Bool(b) => {
-                        if b {
+                        if *b {
                             exists = true;
                             break;
                         }
@@ -186,13 +205,13 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             }
         }
         Value::Map(map) => {
-            for (_key, value) in map.iter() {
-                variables.insert(key.clone(), value.clone())?;
+            for value in map.keys() {
+                variables.insert(key.clone(), value.into())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value()? {
+                match eval_ast(&env, lambda)?.try_value()? {
                     Value::Bool(b) => {
-                        if b {
+                        if *b {
                             exists = true;
                             break;
                         }
@@ -208,6 +227,7 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(Value::Bool(exists))
 }
 
+/// Tests whether exactly one list element or map key satisfies the predicate expression. This macro does not short-circuit in order to remain consistent with logical operators being the only operators which can absorb errors within CEL
 pub fn exists_one(
     env: &Environment,
     tokens: &[TokenTree],
@@ -217,7 +237,8 @@ pub fn exists_one(
     }
 
     // expect first parameter to be a list
-    let host = match eval_ast(env, &tokens[0])?.to_value()? {
+    let lhs = eval_ast(env, &tokens[0])?;
+    let host = match lhs.to_value()? {
         v if matches!(v, Value::List(_) | Value::Map(_)) => v,
         _ => miette::bail!("Invalid type for exists_one: {:?}", tokens[0]),
     };
@@ -240,9 +261,9 @@ pub fn exists_one(
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value()? {
+                match eval_ast(&env, lambda)?.try_value()? {
                     Value::Bool(b) => {
-                        if b {
+                        if *b {
                             if found {
                                 found = false;
                                 break;
@@ -258,13 +279,13 @@ pub fn exists_one(
             }
         }
         Value::Map(map) => {
-            for (_key, value) in map.iter() {
-                variables.insert(key.clone(), value.clone())?;
+            for value in map.keys() {
+                variables.insert(key.clone(), value.into())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value()? {
+                match eval_ast(&env, lambda)?.try_value()? {
                     Value::Bool(b) => {
-                        if b {
+                        if *b {
                             if found {
                                 found = false;
                                 break;
@@ -285,18 +306,32 @@ pub fn exists_one(
     Ok(Value::Bool(found))
 }
 
+/// Returns a list where each element is the result of applying the transform expression to the corresponding input list element or input map key.
+/// There are two forms of map macro:
+/// - The three argument form transforms all elements.
+/// - The four argument form transforms only elements which satisfy the predicate.
+///
+/// The four argument form of the macro exists to simplify combined filter / map operations.
 pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 && tokens.len() != 4 {
         miette::bail!("expected 3 or 4 arguments, found {}", tokens.len());
     }
 
+    // Host the value reference
+    let lhs;
+
+    // If there are 3 arguments, no filtering is needed
     let this = if tokens.len() == 3 {
-        match eval_ast(env, &tokens[0])?.to_value()? {
-            v if matches!(v, Value::List(_) | Value::Map(_)) => v,
+        lhs = eval_ast(env, &tokens[0])?;
+        match lhs.try_value()? {
+            v if matches!(v, Value::List(_)) => v,
+            Value::Map(map) => {
+                &Value::List(map.keys().map(Value::from).collect())
+            }
             _ => miette::bail!("Invalid type for map: {:?}", tokens[0]),
         }
     } else {
-        filter(env, &tokens[0..3])?
+        &filter(env, &tokens[0..3])?
     };
 
     let key = match &tokens[1] {
@@ -313,47 +348,33 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     match this {
         Value::List(list) => {
             if list.is_empty() {
-                return Ok(Value::List(list));
+                return Ok(Value::List(list.clone())); // preserve type if set
             }
-            let mut new_list = List::with_type_and_capacity(
-                list.element_type().unwrap(),
-                list.len(),
-            );
-
+            let mut new_list = List::with_capacity(list.len());
             let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
             for item in list.iter() {
-                variables.insert(key.clone(), item.clone())?;
+                variables.insert(key.clone(), item.clone()).wrap_err(
+                    "Invalid item insert, key={key:?}, value={item:?}",
+                )?;
                 let mut env = env.child();
                 env.set_variables(&variables);
                 new_list.push(eval_ast(&env, lambda)?.to_value()?)?;
             }
             Ok(Value::List(new_list))
         }
-        Value::Map(map) => {
-            if map.is_empty() {
-                return Ok(Value::Map(map));
-            }
-            let mut new_map = Map::with_capacity(map.len());
-            let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
-            for (k, value) in map.iter() {
-                variables.insert(key.clone(), value.clone())?;
-
-                let mut env = env.child();
-                env.set_variables(&variables);
-                new_map
-                    .insert(k.clone(), eval_ast(&env, lambda)?.to_value()?)?;
-            }
-            Ok(Value::Map(new_map))
-        }
-        _ => unreachable!(),
+        v => Err(miette::miette!("Expected list, got {v:?}")),
     }
 }
 
+/// Returns a list containing only the elements from the input list that satisfy the given predicate.
+/// The host type must be a list or a map.
 pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
-    let host = match eval_ast(env, &tokens[0])?.to_value()? {
+
+    let lhs = eval_ast(env, &tokens[0])?;
+    let host = match lhs.try_value()? {
         v if matches!(v, Value::List(_) | Value::Map(_)) => v,
         _ => miette::bail!("Invalid type for filter: {:?}", tokens[0]),
     };
@@ -379,9 +400,9 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 variables.insert(key.clone(), item.clone())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value()? {
+                match eval_ast(&env, lambda)?.try_value()? {
                     Value::Bool(b) => {
-                        if b {
+                        if *b {
                             new_list.push(item.clone())?;
                         }
                     }
@@ -391,26 +412,27 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             Ok(Value::List(new_list))
         }
         Value::Map(map) => {
-            let mut new_map = Map::with_capacity(map.len());
-            for (k, v) in map.iter() {
-                variables.insert(key.clone(), v.clone())?;
+            let mut result = List::new();
+            for k in map.keys() {
+                variables.insert(key.clone(), k.clone().into())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.to_value()? {
+                match eval_ast(&env, lambda)?.try_value()? {
                     Value::Bool(b) => {
-                        if b {
-                            new_map.insert(k.clone(), v.clone())?;
+                        if *b {
+                            result.push(k.into())?;
                         }
                     }
                     _ => miette::bail!("Invalid type for filter: {:?}", lambda),
                 }
             }
-            Ok(Value::Map(new_map))
+            Ok(Value::List(result))
         }
         _ => unreachable!(),
     }
 }
 
+/// Tests whether the string operand contains the substring. Time complexity is proportional to the product of the sizes of the arguments.
 pub fn contains(
     env: &Environment,
     tokens: &[TokenTree],
@@ -419,19 +441,22 @@ pub fn contains(
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
 
-    let s = match eval_ast(env, &tokens[0])?.to_value()? {
+    let s = eval_ast(env, &tokens[0])?;
+    let s = match s.try_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for contains: {:?}", tokens[0]),
     };
 
-    let value = match eval_ast(env, &tokens[1])?.to_value()? {
+    let value = eval_ast(env, &tokens[1])?;
+    let value = match value.try_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for contains: {:?}", tokens[1]),
     };
 
-    Ok(Value::Bool(s.contains(&*value)))
+    Ok(Value::Bool(s.contains(value.as_str())))
 }
 
+/// Tests whether the string operand starts with the specified prefix. Average time complexity is linear with respect to the size of the prefix. Worst-case time complexity is proportional to the product of the sizes of the arguments.
 pub fn starts_with(
     env: &Environment,
     tokens: &[TokenTree],
@@ -440,19 +465,48 @@ pub fn starts_with(
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
 
-    let s = match eval_ast(env, &tokens[0])?.to_value()? {
+    let s = eval_ast(env, &tokens[0])?;
+    let s = match s.try_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[0]),
     };
 
-    let value = match eval_ast(env, &tokens[1])?.to_value()? {
+    let value = eval_ast(env, &tokens[1])?;
+    let value = match value.try_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[1]),
     };
 
-    Ok(Value::Bool(s.starts_with(&*value)))
+    Ok(Value::Bool(s.starts_with(value.as_str())))
 }
 
+/// Tests whether the string operand ends with the specified suffix. Average time complexity is linear with respect to the size of the suffix string. Worst-case time complexity is proportional to the product of the sizes of the arguments.
+pub fn ends_with(
+    env: &Environment,
+    tokens: &[TokenTree],
+) -> Result<Value, Error> {
+    if tokens.len() != 2 {
+        miette::bail!("expected 2 arguments, found {}", tokens.len());
+    }
+
+    let s = eval_ast(env, &tokens[0])?;
+    let s = match s.try_value()? {
+        Value::String(s) => s,
+        _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[0]),
+    };
+
+    let value = eval_ast(env, &tokens[1])?;
+    let value = match value.try_value()? {
+        Value::String(s) => s,
+        _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[1]),
+    };
+
+    Ok(Value::Bool(s.ends_with(value.as_str())))
+}
+
+/// Tests whether a string matches a rust regular expression. This differs from the
+/// original CEL documentation where RE2 expressions are used.
+/// If needed, RE2 implementation can be done
 pub fn matches(
     env: &Environment,
     tokens: &[TokenTree],
@@ -461,33 +515,39 @@ pub fn matches(
         miette::bail!("expected 2 arguments, found {}", tokens.len());
     }
 
-    let s = match eval_ast(env, &tokens[0])?.to_value()? {
+    let s = eval_ast(env, &tokens[0])?;
+    let s = match s.try_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for matches: {:?}", tokens[0]),
     };
 
-    let value = match eval_ast(env, &tokens[1])?.to_value()? {
+    let value = eval_ast(env, &tokens[1])?;
+    let value = match value.try_value()? {
         Value::String(s) => s,
         _ => miette::bail!("Invalid type for matches: {:?}", tokens[1]),
     };
 
-    let re = Regex::new(&value);
+    let re = Regex::new(value.as_str());
 
     match re {
-        Ok(re) => Ok(Value::Bool(re.is_match(&s))),
+        Ok(re) => Ok(Value::Bool(re.is_match(s.as_str()))),
         Err(e) => miette::bail!("Invalid regex: {}", e),
     }
 }
 
+/// Type denotation
 pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
     }
 
     let v = match eval_ast(env, &tokens[0])?.to_value()? {
-        Value::Int(i) => Value::Uint(i as u64),
+        Value::Int(i) => Value::Uint(u64::try_from(i).into_diagnostic()?),
         Value::Uint(u) => Value::Uint(u),
-        Value::Double(d) => Value::Uint(d as u64),
+        Value::Double(d) => {
+            let i = d as i64;
+            Value::Uint(u64::try_from(i).into_diagnostic()?)
+        }
         Value::String(s) => match s.parse::<u64>() {
             Ok(u) => Value::Uint(u),
             Err(_) => miette::bail!("Invalid type for uint: {:?}", tokens[0]),
@@ -498,6 +558,7 @@ pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
+/// Type denotation
 pub fn int(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
@@ -518,6 +579,15 @@ pub fn int(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(v)
 }
 
+/// Type denotation
+/// string(string) -> string (identity)
+/// string(bool) -> string converts true to "true" and false to "false"
+/// string(int) -> string converts integer values to base 10 representation
+/// string(uint) -> string converts unsigned integer values to base 10 representation
+/// string(double) -> string converts a double to a string
+/// string(bytes) -> string converts a byte sequence to a utf-8 string
+/// string(timestamp) -> string converts a timestamp value to RFC3339 format
+/// string(duration) -> string converts a duration value to seconds and fractional seconds with an 's' suffix
 pub fn string(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
@@ -531,14 +601,21 @@ pub fn string(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         Value::Bytes(s) => String::from_utf8_lossy(&s).to_string().into(),
         Value::Bool(b) => b.to_string().into(),
         Value::Null => "null".into(),
-        Value::Timestamp(t) => t.to_string().into(),
-        Value::Duration(d) => d.to_string().into(),
+        Value::Timestamp(t) => t.format(&Rfc3339).into_diagnostic()?.into(),
+        Value::Duration(d) => {
+            dbg!(&d);
+            dbg!(d.whole_seconds());
+            let total_seconds = d.whole_seconds() as f64
+                + (d.subsec_milliseconds() as f64 / 1000f64);
+            format!("{}s", total_seconds).into()
+        }
         _ => miette::bail!("Invalid type for string: {:?}", tokens[0]),
     };
 
     Ok(v)
 }
 
+/// Type conversion, according to RFC3339
 pub fn timestamp(
     env: &Environment,
     tokens: &[TokenTree],
@@ -548,8 +625,9 @@ pub fn timestamp(
     }
 
     let v = match eval_ast(env, &tokens[0])?.to_value()? {
+        v if matches!(v, Value::Timestamp(_)) => v,
         Value::String(s) => {
-            let t = match OffsetDateTime::parse(&s, &Iso8601::PARSING) {
+            let t = match OffsetDateTime::parse(&s, &Rfc3339) {
                 Ok(t) => t,
                 Err(e) => miette::bail!("Invalid timestamp: {:?}", e),
             };
@@ -562,16 +640,9 @@ pub fn timestamp(
     Ok(v)
 }
 
-pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
-    if tokens.len() != 1 {
-        miette::bail!("expected 1 argument, found {}", tokens.len());
-    }
-
-    let v = eval_ast(env, &tokens[0])?.to_value()?;
-
-    Ok(v)
-}
-
+/// Creates duration from string
+/// String must be formatted in the following way:
+/// 1h1m1s1ms1ns -- 1 hour, 1 minute, 1 second, 1 millisecond, 1 nanosecond
 pub fn duration(
     env: &Environment,
     tokens: &[TokenTree],
@@ -591,12 +662,21 @@ pub fn duration(
     Ok(v)
 }
 
+pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 1 {
+        miette::bail!("expected 1 argument, found {}", tokens.len());
+    }
+
+    let v = eval_ast(env, &tokens[0])?.to_value()?;
+
+    Ok(v)
+}
+
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
     use crate::{EnvironmentBuilder, Function, Parser};
+    use std::{collections::HashMap, sync::Arc};
 
     fn is_function(_: Function) {}
 
@@ -798,7 +878,7 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 0").parse().unwrap();
+        let lambda = Parser::new("x >= 'a' && x <= 'z'").parse().unwrap();
 
         let env = env.build();
         let result =
@@ -807,14 +887,14 @@ mod tests {
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 1").parse().unwrap();
+        let lambda = Parser::new("x > 'a'").parse().unwrap();
         let result =
             all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("y > 1").parse().unwrap();
+        let lambda = Parser::new("y > 'a'").parse().unwrap();
         let result =
             all(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_err(), "expected err got ok: result={:?}", result);
@@ -888,7 +968,7 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 2").parse().unwrap();
+        let lambda = Parser::new("x > 'b'").parse().unwrap();
 
         let env = env.build();
         let result =
@@ -897,14 +977,14 @@ mod tests {
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 3").parse().unwrap();
+        let lambda = Parser::new("x > 'z'").parse().unwrap();
         let result =
             exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_ok(), "expected ok got err: result={:?}", result);
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("y > 1").parse().unwrap();
+        let lambda = Parser::new("y > 'a'").parse().unwrap();
         let result =
             exists(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
         assert!(result.is_err(), "expected err got ok: result={:?}", result);
@@ -978,7 +1058,7 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 2").parse().unwrap();
+        let lambda = Parser::new("x > 'b'").parse().unwrap();
 
         let env = env.build();
         let result = exists_one(
@@ -989,7 +1069,7 @@ mod tests {
         assert_eq!(result.unwrap(), Value::Bool(true));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 3").parse().unwrap();
+        let lambda = Parser::new("x > 'c'").parse().unwrap();
         let result = exists_one(
             &env,
             &[TokenTree::Atom(Atom::Ident("m")), ident, lambda],
@@ -998,7 +1078,7 @@ mod tests {
         assert_eq!(result.unwrap(), Value::Bool(false));
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("y > 1").parse().unwrap();
+        let lambda = Parser::new("y > 'a'").parse().unwrap();
         let result = exists_one(
             &env,
             &[TokenTree::Atom(Atom::Ident("m")), ident, lambda],
@@ -1067,25 +1147,28 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x + 1").parse().unwrap();
+        let lambda = Parser::new("m[x] + 1").parse().unwrap();
 
         let env = env.build();
         let result =
-            map(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
-        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
-        assert_eq!(
-            result.unwrap(),
-            Value::Map(
-                Map::new()
-                    .insert(Key::from("a"), Value::Int(2))
-                    .unwrap()
-                    .insert(Key::from("b"), Value::Int(3))
-                    .unwrap()
-                    .insert(Key::from("c"), Value::Int(4))
-                    .unwrap()
-                    .to_owned()
-            )
-        );
+            map(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda])
+                .expect("expected ok, got err on result");
+
+        // For now, let's go with the sum until ordering is preserved
+        match result {
+            Value::List(l) => {
+                let mut sum = 0i64;
+                for val in l {
+                    match val {
+                        Value::Int(n) => sum += n,
+                        v => panic!("expected int, got {v:?}"),
+                    };
+                }
+
+                assert_eq!(9i64, sum);
+            }
+            res => panic!("expected list, got {res:?}"),
+        }
     }
 
     #[test]
@@ -1150,26 +1233,30 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let filter = Parser::new("x > 1").parse().unwrap();
-        let lambda = Parser::new("x + 1").parse().unwrap();
+        let filter = Parser::new("m[x] > 1").parse().unwrap();
+        let lambda = Parser::new("m[x] + 1").parse().unwrap();
 
         let env = env.build();
         let result = map(
             &env,
             &[TokenTree::Atom(Atom::Ident("m")), ident, filter, lambda],
-        );
-        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
-        assert_eq!(
-            result.unwrap(),
-            Value::Map(
-                Map::new()
-                    .insert(Key::from("b"), Value::Int(3))
-                    .unwrap()
-                    .insert(Key::from("c"), Value::Int(4))
-                    .unwrap()
-                    .to_owned()
-            )
-        );
+        )
+        .expect("expected ok, got err");
+
+        match result {
+            Value::List(l) => {
+                let mut sum = 0i64;
+                for val in l {
+                    match val {
+                        Value::Int(n) => sum += n,
+                        v => panic!("expected int, got {v:?}"),
+                    };
+                }
+
+                assert_eq!(7i64, sum);
+            }
+            res => panic!("expected list, got {res:?}"),
+        }
     }
 
     #[test]
@@ -1233,22 +1320,31 @@ mod tests {
         .unwrap();
 
         let ident = TokenTree::Atom(Atom::Ident("x"));
-        let lambda = Parser::new("x > 1").parse().unwrap();
+        let lambda = Parser::new("x > 'a'").parse().unwrap();
 
         let env = env.build();
         let result =
-            filter(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda]);
-        assert!(result.is_ok(), "expected ok got err: result={:?}", result);
-        assert_eq!(
-            result.unwrap(),
-            Value::Map(
-                Map::new()
-                    .insert(Key::from("b"), Value::Int(2))
-                    .unwrap()
-                    .insert(Key::from("c"), Value::Int(3))
-                    .unwrap()
-                    .to_owned()
-            )
-        );
+            filter(&env, &[TokenTree::Atom(Atom::Ident("m")), ident, lambda])
+                .expect("expected ok, got err on filter");
+
+        match result {
+            Value::List(list) => {
+                let want = {
+                    let mut m = HashMap::new();
+                    m.insert("b".to_string(), 1i64);
+                    m.insert("c".to_string(), 1i64);
+                    m
+                };
+                let mut got = HashMap::new();
+                for item in list {
+                    match item {
+                        Value::String(s) => got.entry(s).or_insert(1),
+                        v => panic!("Expected string, got {v:?}"),
+                    };
+                }
+                assert_eq!(want, got)
+            }
+            v => panic!("Expected list, got {v:?}"),
+        }
     }
 }

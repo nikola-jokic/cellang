@@ -271,6 +271,7 @@ impl<'src> Parser<'src> {
                 };
                 continue;
             }
+
             if let Some((l_bp, r_bp)) = infix_binding_power(op) {
                 if l_bp < min_bp {
                     break;
@@ -423,6 +424,8 @@ impl<'src> Parser<'src> {
                     break;
                 }
             }
+        } else {
+            self.lexer.next();
         }
         Ok(args)
     }
@@ -594,7 +597,7 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
         | Op::GreaterEqual => (7, 8),
         Op::Plus | Op::Minus => (9, 10),
         Op::Multiply | Op::Devide | Op::Mod => (11, 12),
-        Op::Field => (16, 15),
+        Op::Field | Op::Call => (16, 15),
         _ => return None,
     };
     Some(res)
@@ -732,6 +735,33 @@ mod tests {
                 ]
             }
         );
+    }
+
+    #[test]
+    fn test_nested_method_call() {
+        let input = "foo.all(test, test.size() > 4)";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        let want = TokenTree::Call {
+            func: Box::new(TokenTree::Atom(Atom::Ident("all"))),
+            args: vec![
+                TokenTree::Atom(Atom::Ident("foo")),
+                TokenTree::Atom(Atom::Ident("test")),
+                TokenTree::Cons(
+                    Op::Greater,
+                    vec![
+                        TokenTree::Call {
+                            func: Box::new(TokenTree::Atom(Atom::Ident(
+                                "size",
+                            ))),
+                            args: vec![TokenTree::Atom(Atom::Ident("test"))],
+                        },
+                        TokenTree::Atom(Atom::Int(4)),
+                    ],
+                ),
+            ],
+        };
+        assert_eq!(tree, want, "expected {want:?}, got {tree:?}");
     }
 
     #[test]
@@ -993,5 +1023,84 @@ mod tests {
                 ]
             )
         );
+    }
+
+    #[test]
+    fn test_method_relation() {
+        let input = "foo.bar() < 4";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Less,
+                vec![
+                    TokenTree::Call {
+                        func: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
+                        args: vec![TokenTree::Atom(Atom::Ident("foo"))],
+                    },
+                    TokenTree::Atom(Atom::Int(4)),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_nested_list_with_map() {
+        let input = "[{foo: 1}, {bar: 2}]";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::List,
+                vec![
+                    TokenTree::Cons(
+                        Op::Map,
+                        vec![
+                            TokenTree::Atom(Atom::Ident("foo")),
+                            TokenTree::Atom(Atom::Int(1)),
+                        ]
+                    ),
+                    TokenTree::Cons(
+                        Op::Map,
+                        vec![
+                            TokenTree::Atom(Atom::Ident("bar")),
+                            TokenTree::Atom(Atom::Int(2)),
+                        ]
+                    ),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_method_call_with_indexing() {
+        let input = "foo.bar(x, t[x] > 10)";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+
+        let want = TokenTree::Call {
+            func: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
+            args: vec![
+                TokenTree::Atom(Atom::Ident("foo")),
+                TokenTree::Atom(Atom::Ident("x")),
+                TokenTree::Cons(
+                    Op::Greater,
+                    vec![
+                        TokenTree::Cons(
+                            Op::Index,
+                            vec![
+                                TokenTree::Atom(Atom::Ident("t")),
+                                TokenTree::Atom(Atom::Ident("x")),
+                            ],
+                        ),
+                        TokenTree::Atom(Atom::Int(10)),
+                    ],
+                ),
+            ],
+        };
+
+        assert_eq!(tree, want);
     }
 }

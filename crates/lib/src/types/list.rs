@@ -4,6 +4,7 @@ use serde::de::DeserializeOwned;
 use serde::{ser::Serializer, Serialize};
 use serde::{Deserialize, Deserializer};
 use std::fmt;
+use std::ops::{Deref, DerefMut};
 use std::slice::{Iter, IterMut};
 use std::vec::{self};
 
@@ -15,6 +16,20 @@ use std::vec::{self};
 pub struct List {
     elem_type: Option<ValueType>,
     inner: Vec<Value>,
+}
+
+impl Deref for List {
+    type Target = [Value];
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for List {
+    fn deref_mut(&mut self) -> &mut [Value] {
+        self.inner.deref_mut()
+    }
 }
 
 impl List {

@@ -5,6 +5,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::{collections::HashMap, str::FromStr};
+use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 /// ValueType is an enum that represents the different types of values that can be stored in a
@@ -494,7 +495,7 @@ impl fmt::Display for Value {
             Value::List(list) => write!(f, "{list}"),
             Value::Bytes(b) => BASE64_STANDARD.encode(b).fmt(f),
             Value::Null => write!(f, "null"),
-            Value::Timestamp(v) => write!(f, "{v}"),
+            Value::Timestamp(v) => write!(f, "{}", v.format(&Rfc3339).unwrap()),
             Value::Duration(v) => write!(f, "{v:?}"),
         }
     }
