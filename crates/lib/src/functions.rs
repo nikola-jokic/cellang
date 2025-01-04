@@ -432,6 +432,7 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 }
 
+/// Tests whether the string operand contains the substring. Time complexity is proportional to the product of the sizes of the arguments.
 pub fn contains(
     env: &Environment,
     tokens: &[TokenTree],
@@ -455,6 +456,7 @@ pub fn contains(
     Ok(Value::Bool(s.contains(value.as_str())))
 }
 
+/// Tests whether the string operand starts with the specified prefix. Average time complexity is linear with respect to the size of the prefix. Worst-case time complexity is proportional to the product of the sizes of the arguments.
 pub fn starts_with(
     env: &Environment,
     tokens: &[TokenTree],

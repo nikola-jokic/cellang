@@ -1403,14 +1403,14 @@ mod tests {
     #[test]
     fn test_builtin_filter_ok() {
         let tt = [
-            // (
-            //     "[1, 2, 3].filter(x, x > 1)",
-            //     Value::List(vec![2i64, 3].into()),
-            // ),
-            // (
-            //     "['cat', 'dog', 'bird', 'fish'].filter(pet, pet.size() == 3)",
-            //     Value::List(vec!["cat", "dog"].into()),
-            // ),
+            (
+                "[1, 2, 3].filter(x, x > 1)",
+                Value::List(vec![2i64, 3].into()),
+            ),
+            (
+                "['cat', 'dog', 'bird', 'fish'].filter(pet, pet.size() == 3)",
+                Value::List(vec!["cat", "dog"].into()),
+            ),
             (
                 "[{'a': 10, 'b': 5, 'c': 20}].map(m, m.filter(key, m[key] > 10))",
                 Value::List(
@@ -1428,6 +1428,58 @@ mod tests {
             let result = eval(&env, input);
             assert!(result.is_ok(), "input: {input}, result: {result:?}");
             assert_eq!(result.unwrap(), expected, "input: {}", input);
+        }
+    }
+
+    #[test]
+    fn test_builtin_contains_ok() {
+        let tt = [
+            (r#""hello world".contains("world")"#, Value::Bool(true)),
+            ("'foobar'.contains('baz')", Value::Bool(false)),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {input}")
+        }
+    }
+
+    #[test]
+    fn test_builtin_contains_err() {
+        let tt = ["{'a': 1, 'b': 2}.contains('a')", "[1,2,3].contains(1)"];
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "want err, got ok on input={input}'")
+        }
+    }
+
+    #[test]
+    fn test_builtin_starts_with_ok() {
+        let tt = [
+            (r#""hello world".startsWith("hello ")"#, Value::Bool(true)),
+            ("'foobar'.startsWith('foo')", Value::Bool(true)),
+            ("'foobar'.startsWith('bar')", Value::Bool(false)),
+            ("'foobar'.startsWith('baz')", Value::Bool(false)),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {input}")
+        }
+    }
+
+    #[test]
+    fn test_builtin_starts_with_err() {
+        let tt = [r#""hello world".startsWith(42)"#, "[1, 2, 3].startsWith(1)"];
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "want err, got ok on input={input}'")
         }
     }
 }
