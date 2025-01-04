@@ -420,10 +420,11 @@ enum Object<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::*;
     use crate::environment::EnvironmentBuilder;
+    use std::sync::Arc;
+    use time::ext::NumericalDuration;
+    use time::macros::datetime;
 
     #[test]
     fn test_eval_primitives() {
@@ -1621,6 +1622,73 @@ mod tests {
     fn test_builtin_string_err() {
         let tt = ["string([1, 2, 3])", "string({'a': 'b', 'c': 'd'})"];
 
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "want err, got ok on input={input}'")
+        }
+    }
+
+    #[test]
+    fn test_builtin_timestamp_ok() {
+        let tt = [
+            (
+                "timestamp('2025-01-01T00:01:01Z')",
+                Value::Timestamp(datetime!(2025-01-01 00:01:01 UTC)),
+            ),
+            (
+                "timestamp(timestamp('2025-01-01T00:01:01Z'))",
+                Value::Timestamp(datetime!(2025-01-01 00:01:01 UTC)),
+            ),
+        ];
+
+        let env = Environment::root();
+        for (input, expected) in tt {
+            let result = eval(&env, input);
+            assert!(result.is_ok(), "input: {input}, result: {result:?}");
+            assert_eq!(result.unwrap(), expected, "input: {input}")
+        }
+    }
+
+    #[test]
+    fn test_builtin_timestamp_err() {
+        let tt = [
+            "timestamp('1.1.2025 11:11:11)",
+            "timestamp('2025-01-01T)",
+            "timestamp(duration('1h'))",
+            "timestamp(1)",
+        ];
+
+        let env = Environment::root();
+        for input in tt {
+            let result = eval(&env, input);
+            assert!(result.is_err(), "want err, got ok on input={input}'")
+        }
+    }
+
+    #[test]
+    fn test_builtin_duration_ok() {
+        let env = Environment::root();
+        let input = "duration('1h1m1s1ms1ns')";
+        let result = eval(&env, input);
+        assert!(result.is_ok(), "input: {input}, result: {result:?}");
+        let expected = 1.hours()
+            + 1.minutes()
+            + 1.seconds()
+            + 1.milliseconds()
+            + 1.nanoseconds();
+
+        assert_eq!(result.unwrap(), Value::Duration(expected));
+    }
+
+    #[test]
+    fn test_builtin_duration_err() {
+        let tt = [
+            "duration('1a')",
+            "duration(1)",
+            "duration(1.0)",
+            "duration('2025-01-01T01:01:01Z)",
+        ];
         let env = Environment::root();
         for input in tt {
             let result = eval(&env, input);

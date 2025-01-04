@@ -640,16 +640,9 @@ pub fn timestamp(
     Ok(v)
 }
 
-pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
-    if tokens.len() != 1 {
-        miette::bail!("expected 1 argument, found {}", tokens.len());
-    }
-
-    let v = eval_ast(env, &tokens[0])?.to_value()?;
-
-    Ok(v)
-}
-
+/// Creates duration from string
+/// String must be formatted in the following way:
+/// 1h1m1s1ms1ns -- 1 hour, 1 minute, 1 second, 1 millisecond, 1 nanosecond
 pub fn duration(
     env: &Environment,
     tokens: &[TokenTree],
@@ -665,6 +658,16 @@ pub fn duration(
         }
         _ => miette::bail!("Invalid type for duration: {:?}", tokens[0]),
     };
+
+    Ok(v)
+}
+
+pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
+    if tokens.len() != 1 {
+        miette::bail!("expected 1 argument, found {}", tokens.len());
+    }
+
+    let v = eval_ast(env, &tokens[0])?.to_value()?;
 
     Ok(v)
 }
