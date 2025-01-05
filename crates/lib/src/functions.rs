@@ -100,7 +100,8 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // expect first parameter to be a list
     let lhs = eval_ast(env, &tokens[0])?;
     let host = match lhs.try_value()? {
-        v if matches!(v, Value::List(_) | Value::Map(_)) => v,
+        v if matches!(v, Value::List(_)) => v,
+        Value::Map(map) => &Value::List(map.keys().map(Value::from).collect()),
         _ => miette::bail!("Invalid host type for all: {:?}", tokens[0]),
     };
 
@@ -137,25 +138,6 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 }
             }
         }
-        Value::Map(map) => {
-            for value in map.keys() {
-                variables.insert(key.clone(), value.into())?;
-                let mut env = env.child();
-                env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.try_value()? {
-                    Value::Bool(b) => {
-                        if !b {
-                            all = false;
-                            break;
-                        }
-                    }
-                    _ => miette::bail!(
-                        "Invalid predicate type for all: {:?}",
-                        lambda
-                    ),
-                }
-            }
-        }
         _ => unreachable!(),
     }
 
@@ -171,7 +153,8 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // expect first parameter to be a list
     let lhs = eval_ast(env, &tokens[0])?;
     let host = match lhs.try_value()? {
-        v if matches!(v, Value::List(_) | Value::Map(_)) => v,
+        v if matches!(v, Value::List(_)) => v,
+        Value::Map(map) => &Value::List(map.keys().map(Value::from).collect()),
         _ => miette::bail!("Invalid type for exists: {:?}", tokens[0]),
     };
 
@@ -204,23 +187,6 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 }
             }
         }
-        Value::Map(map) => {
-            for value in map.keys() {
-                variables.insert(key.clone(), value.into())?;
-                let mut env = env.child();
-                env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.try_value()? {
-                    Value::Bool(b) => {
-                        if *b {
-                            exists = true;
-                            break;
-                        }
-                    }
-                    _ => miette::bail!("Invalid type for exists: {:?}", lambda),
-                }
-            }
-        }
-
         _ => unreachable!(),
     }
 
@@ -238,8 +204,9 @@ pub fn exists_one(
 
     // expect first parameter to be a list
     let lhs = eval_ast(env, &tokens[0])?;
-    let host = match lhs.to_value()? {
-        v if matches!(v, Value::List(_) | Value::Map(_)) => v,
+    let host = match lhs.try_value()? {
+        v if matches!(v, Value::List(_)) => v,
+        Value::Map(map) => &Value::List(map.keys().map(Value::from).collect()),
         _ => miette::bail!("Invalid type for exists_one: {:?}", tokens[0]),
     };
 
@@ -259,28 +226,6 @@ pub fn exists_one(
         Value::List(list) => {
             for item in list.iter() {
                 variables.insert(key.clone(), item.clone())?;
-                let mut env = env.child();
-                env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.try_value()? {
-                    Value::Bool(b) => {
-                        if *b {
-                            if found {
-                                found = false;
-                                break;
-                            }
-                            found = true;
-                        }
-                    }
-                    _ => miette::bail!(
-                        "Invalid type for exists_one: {:?}",
-                        lambda
-                    ),
-                }
-            }
-        }
-        Value::Map(map) => {
-            for value in map.keys() {
-                variables.insert(key.clone(), value.into())?;
                 let mut env = env.child();
                 env.set_variables(&variables);
                 match eval_ast(&env, lambda)?.try_value()? {
@@ -362,7 +307,7 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             }
             Ok(Value::List(new_list))
         }
-        v => Err(miette::miette!("Expected list, got {v:?}")),
+        _ => unreachable!(),
     }
 }
 
@@ -375,7 +320,8 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
     let lhs = eval_ast(env, &tokens[0])?;
     let host = match lhs.try_value()? {
-        v if matches!(v, Value::List(_) | Value::Map(_)) => v,
+        v if matches!(v, Value::List(_)) => v,
+        Value::Map(map) => &Value::List(map.keys().map(Value::from).collect()),
         _ => miette::bail!("Invalid type for filter: {:?}", tokens[0]),
     };
 
@@ -410,23 +356,6 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 }
             }
             Ok(Value::List(new_list))
-        }
-        Value::Map(map) => {
-            let mut result = List::new();
-            for k in map.keys() {
-                variables.insert(key.clone(), k.clone().into())?;
-                let mut env = env.child();
-                env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.try_value()? {
-                    Value::Bool(b) => {
-                        if *b {
-                            result.push(k.into())?;
-                        }
-                    }
-                    _ => miette::bail!("Invalid type for filter: {:?}", lambda),
-                }
-            }
-            Ok(Value::List(result))
         }
         _ => unreachable!(),
     }
