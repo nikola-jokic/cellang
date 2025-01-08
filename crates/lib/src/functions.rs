@@ -25,6 +25,13 @@ pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         Value::String(s) => Value::Int(s.len() as i64),
         Value::List(list) => Value::Int(list.len() as i64),
         Value::Map(map) => Value::Int(map.len() as i64),
+        Value::Dyn(d) => match d {
+            Dyn::Bytes(b) => Value::Int(b.len() as i64),
+            Dyn::String(s) => Value::Int(s.len() as i64),
+            Dyn::List(list) => Value::Int(list.len() as i64),
+            Dyn::Map(map) => Value::Int(map.len() as i64),
+            _ => miette::bail!("Invalid type for size: {:?}", tokens[0]),
+        },
         _ => miette::bail!("Invalid type for size: {:?}", tokens[0]),
     };
 
