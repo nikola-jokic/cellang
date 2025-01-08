@@ -48,7 +48,7 @@ impl Dyn {
     }
 
     #[inline]
-    pub fn try_as_uint(&self) -> Result<u64, Error> {
+    pub fn try_as_u64(&self) -> Result<u64, Error> {
         match self {
             Dyn::Int(n) => Ok(u64::try_from(*n).into_diagnostic()?),
             Dyn::Uint(n) => Ok(*n),
@@ -62,7 +62,7 @@ impl Dyn {
     }
 
     #[inline]
-    pub fn try_as_double(&self) -> Result<f64, Error> {
+    pub fn try_as_f64(&self) -> Result<f64, Error> {
         match self {
             Dyn::Int(n) => {
                 if *n > f64::MAX as i64 || *n < f64::MIN as i64 {
@@ -87,7 +87,6 @@ impl Dyn {
         }
     }
 
-    /// TODO: Figure out if base64 repr is actually right for fmt::Display
     #[inline]
     pub fn try_as_string(&self) -> Result<String, Error> {
         match self {
@@ -174,7 +173,7 @@ impl Dyn {
     pub fn try_as_key_type(&self, ty: KeyType) -> Result<Key, Error> {
         match ty {
             KeyType::Int => Ok(Key::Int(self.try_as_i64()?)),
-            KeyType::Uint => Ok(Key::Uint(self.try_as_uint()?)),
+            KeyType::Uint => Ok(Key::Uint(self.try_as_u64()?)),
             KeyType::String => Ok(Key::String(self.try_as_string()?)),
             KeyType::Bool => match self {
                 Dyn::Bool(b) => Ok(Key::Bool(*b)),
@@ -187,8 +186,8 @@ impl Dyn {
     pub fn try_as_type(&self, ty: ValueType) -> Result<Value, Error> {
         match ty {
             ValueType::Int => Ok(Value::Int(self.try_as_i64()?)),
-            ValueType::Uint => Ok(Value::Uint(self.try_as_uint()?)),
-            ValueType::Double => Ok(Value::Double(self.try_as_double()?)),
+            ValueType::Uint => Ok(Value::Uint(self.try_as_u64()?)),
+            ValueType::Double => Ok(Value::Double(self.try_as_f64()?)),
             ValueType::String => Ok(Value::String(self.try_as_string()?)),
             ValueType::Bool => match self {
                 Dyn::Bool(b) => Ok(Value::Bool(*b)),
@@ -209,7 +208,6 @@ impl Dyn {
                 Dyn::Null => Ok(Value::Null),
                 _ => miette::bail!("Failed to convert to null"),
             },
-            // TODO: See if this is actually correct
             ValueType::Dyn => miette::bail!("Failed to convert to dyn"),
         }
     }
