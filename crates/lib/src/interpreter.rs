@@ -514,10 +514,14 @@ mod tests {
                     .unwrap()
             )
         );
+        assert_eq!(
+            eval(&env, "dyn(1u) + dyn(2u)").expect("dyn(1u) + dyn(2u)"),
+            Value::Uint(3)
+        );
     }
 
     #[test]
-    fn test_eval_minus() {
+    fn test_eval_basic_minus() {
         let env = EnvironmentBuilder::default();
         let env = env.build();
         assert_eq!(eval(&env, "1 - 2").expect("1 - 2"), Value::Int(-1));
@@ -525,6 +529,40 @@ mod tests {
         assert_eq!(
             eval(&env, "1.0 - 2.0").expect("1.0 - 2.0"),
             Value::Double(-1.0)
+        );
+    }
+
+    #[test]
+    fn test_eval_dyn_minus() {
+        let env = EnvironmentBuilder::default();
+        let env = env.build();
+        assert_eq!(
+            eval(&env, "1 - dyn(2)").expect("1 - dyn(2)"),
+            Value::Int(-1),
+            "1 - dyn(2)"
+        );
+
+        assert_eq!(
+            eval(&env, "1 - dyn(2u)").expect("1 - dyn(2u)"),
+            Value::Int(-1),
+            "1 - dyn(2u)"
+        );
+        assert_eq!(
+            eval(&env, "dyn(1u) - 2").expect("dyn(1u) - 2"),
+            Value::Int(-1),
+            "dyn(1u) - 2"
+        );
+
+        assert_eq!(
+            eval(&env, "1 - dyn(2.0)").expect("1 - dyn(2.0)"),
+            Value::Int(-1),
+            "1 - dyn(2u)"
+        );
+
+        assert_eq!(
+            eval(&env, "1 - dyn(\"2\")").expect("1 - dyn(\"2\")"),
+            Value::Int(-1),
+            "1 - dyn(\"2\")"
         );
     }
 
@@ -665,7 +703,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_greater() {
+    fn test_eval_basic_greater() {
         let env = EnvironmentBuilder::default();
         let env = env.build();
         assert_eq!(eval(&env, "2 > 1").expect("2 > 1"), Value::Bool(true));
@@ -679,6 +717,23 @@ mod tests {
         assert_eq!(
             eval(&env, "1.0 > 2.0").expect("1.0 > 2.0"),
             Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_eval_dyn_greater() {
+        let env = Environment::root();
+        assert_eq!(
+            eval(&env, "dyn(2) > 1").expect("dyn(2) > 1"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval(&env, "2 > dyn(1u)").expect("2 > dyn(1u)"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval(&env, "dyn(2u) > dyn(1u)").expect("dyn(2u) > dyn(1u)"),
+            Value::Bool(true)
         );
     }
 

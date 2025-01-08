@@ -530,10 +530,7 @@ impl Value {
                 key_type: m.key_type().map(Box::new),
             },
             Value::List(ref l) => ValueType::ListOf {
-                element_type: match l.element_type() {
-                    Some(e) => Some(Box::new(e)),
-                    None => None,
-                },
+                element_type: l.element_type().map(Box::new),
             },
             Value::Bytes(_) => ValueType::Bytes,
             Value::Null => ValueType::Null,
@@ -550,6 +547,7 @@ impl Value {
         crate::try_from_value(self)
     }
 
+    #[inline]
     pub fn plus(&self, other: &Value) -> Result<Value, Error> {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
@@ -575,7 +573,15 @@ impl Value {
             (Value::Duration(d1), Value::Duration(d2)) => {
                 Ok(Value::Duration(*d1 + *d2))
             }
-            (Value::Dyn(d), other) => d.plus(other),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_as_type(v1.type_of())?;
+                v1.plus(&v2)
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_as_type(other.type_of())?;
+                v.plus(other)
+            }
             (base, Value::Dyn(d)) => {
                 // plus is not associative, so we need to try both ways
                 let other = d.try_as_type(base.type_of())?;
@@ -589,6 +595,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn minus(&self, other: &Value) -> Result<Value, Error> {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
@@ -603,6 +610,20 @@ impl Value {
             (Value::Duration(d1), Value::Duration(d2)) => {
                 Ok(Value::Duration(*d1 - *d2))
             }
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_as_type(v1.type_of())?;
+                v1.minus(&v2)
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_as_type(other.type_of())?;
+                v.minus(other)
+            }
+            (base, Value::Dyn(d)) => {
+                // minus is not associative, so we need to try both ways
+                let other = d.try_as_type(base.type_of())?;
+                base.minus(&other)
+            }
             _ => miette::bail!(
                 "Invalid types for minus: {:?} and {:?}",
                 self,
@@ -612,14 +633,35 @@ impl Value {
     }
 
     /// The equal method compares two values and returns a boolean value.
-    /// Values MUST be of the same type. If they are not, an error is returned.
+    /// Values MUST be of the same type except for dyn.
+    /// If they are not, an error is returned.
+    #[inline]
     pub fn equal(&self, other: &Value) -> Result<Value, Error> {
-        if self.type_of() != other.type_of() {
-            miette::bail!("Cannot compare {:?} and {:?}", self, other);
+        match (self, other) {
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_as_type(v1.type_of())?;
+                v1.equal(&v2)
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_as_type(other.type_of())?;
+                v.equal(other)
+            }
+            (base, Value::Dyn(d)) => {
+                // equal is not associative, so we need to try both ways
+                let other = d.try_as_type(base.type_of())?;
+                base.equal(&other)
+            }
+            (lhs, rhs) => {
+                if lhs.type_of() != rhs.type_of() {
+                    miette::bail!("Cannot compare {:?} and {:?}", self, other);
+                }
+                Ok(Value::Bool(self == other))
+            }
         }
-        Ok(Value::Bool(self == other))
     }
 
+    #[inline]
     pub fn not_equal(&self, other: &Value) -> Result<Value, Error> {
         match self.equal(other) {
             Ok(Value::Bool(b)) => Ok(Value::Bool(!b)),
@@ -632,6 +674,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn greater(&self, other: &Value) -> Result<Value, Error> {
         let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs > rhs),
@@ -644,6 +687,20 @@ impl Value {
                 Value::Bool(t1 > t2)
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 > d2),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_as_type(v1.type_of())?;
+                v1.greater(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_as_type(other.type_of())?;
+                v.greater(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                // greater is not associative, so we need to try both ways
+                let other = d.try_as_type(base.type_of())?;
+                base.greater(&other)?
+            }
             (left, right) => {
                 miette::bail!("Cannot compare {:?} and {:?}", left, right)
             }
@@ -664,6 +721,19 @@ impl Value {
                 Value::Bool(t1 >= t2)
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 >= d2),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_as_type(v1.type_of())?;
+                v1.greater_equal(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_as_type(other.type_of())?;
+                v.greater_equal(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_as_type(base.type_of())?;
+                base.greater_equal(&other)?
+            }
             _ => miette::bail!("Failed to compare {self:?} >= {other:?}"),
         };
 
@@ -682,6 +752,19 @@ impl Value {
                 Value::Bool(t1 < t2)
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 < d2),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_as_type(v1.type_of())?;
+                v1.less(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_as_type(other.type_of())?;
+                v.less(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_as_type(base.type_of())?;
+                base.less(&other)?
+            }
             _ => miette::bail!("Failed to compare {self:?} < {other:?}"),
         };
 
@@ -700,6 +783,19 @@ impl Value {
                 Value::Bool(t1 <= t2)
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 <= d2),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_as_type(v1.type_of())?;
+                v1.less_equal(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_as_type(other.type_of())?;
+                v.less_equal(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_as_type(base.type_of())?;
+                base.less_equal(&other)?
+            }
             _ => miette::bail!("Failed to compare {self:?} <= {other:?}"),
         };
 
@@ -712,6 +808,19 @@ impl Value {
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
             (Value::Double(lhs), Value::Double(rhs)) => {
                 Value::Double(lhs * rhs)
+            }
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_as_type(v1.type_of())?;
+                v1.multiply(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_as_type(other.type_of())?;
+                v.multiply(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_as_type(base.type_of())?;
+                base.multiply(&other)?
             }
             _ => miette::bail!("Failed to multiply {self:?} * {other:?}"),
         };
@@ -726,6 +835,19 @@ impl Value {
             (Value::Double(lhs), Value::Double(rhs)) => {
                 Value::Double(lhs / rhs)
             }
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_as_type(v1.type_of())?;
+                v1.devide(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_as_type(other.type_of())?;
+                v.devide(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_as_type(base.type_of())?;
+                base.devide(&other)?
+            }
             _ => miette::bail!("Failed to devide {self:?} / {other:?}"),
         };
 
@@ -736,6 +858,19 @@ impl Value {
         let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_as_type(v1.type_of())?;
+                v1.reminder(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_as_type(other.type_of())?;
+                v.reminder(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_as_type(base.type_of())?;
+                base.reminder(&other)?
+            }
             _ => miette::bail!("Failed to get reminder {self:?} % {other:?}"),
         };
 

@@ -213,54 +213,6 @@ impl Dyn {
             ValueType::Dyn => miette::bail!("Failed to convert to dyn"),
         }
     }
-
-    pub fn plus(&self, other: &Value) -> Result<Value, Error> {
-        match other {
-            Value::Int(n) => Ok(Value::Int(self.try_as_i64()? + n)),
-            Value::Uint(n) => Ok(Value::Uint(self.try_as_uint()? + n)),
-            Value::Double(n) => Ok(Value::Double(self.try_as_double()? + n)),
-            Value::String(s) => {
-                Ok(Value::String(format!("{}{}", self.try_as_string()?, s)))
-            }
-            Value::Bytes(b) => {
-                let mut bytes = self.try_as_bytes()?;
-                bytes.extend_from_slice(b);
-                Ok(Value::Bytes(bytes))
-            }
-            Value::List(list) => {
-                let mut base = self.try_as_list_of(ValueType::ListOf {
-                    element_type: list.element_type().map(Box::new),
-                })?;
-
-                base.extend(list.clone());
-                Ok(Value::List(base))
-            }
-            Value::Timestamp(v) => {
-                let base = match self {
-                    Dyn::Duration(v) => *v,
-                    _ => miette::bail!("Failed to add timestamp"),
-                };
-
-                Ok(Value::Timestamp(*v + base))
-            }
-            Value::Duration(v) => match self {
-                Dyn::Duration(d) => Ok(Value::Duration(*v + *d)),
-                Dyn::Timestamp(t) => Ok(Value::Timestamp(*t + *v)),
-                _ => miette::bail!("Failed to add duration"),
-            },
-            Value::Dyn(_) => {
-                // Use self as a base
-                let s: Value = self.clone().try_into()?;
-                s.plus(other)
-            }
-
-            _ => miette::bail!(
-                "Invalid types for addition, lhs={:?}, rhs={:?}",
-                self,
-                other
-            ),
-        }
-    }
 }
 
 impl fmt::Display for Dyn {
