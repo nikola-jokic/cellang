@@ -1,3 +1,4 @@
+use super::dynamic::Dyn;
 use super::{deserialize_duration, serialize_duration, Key, List, Map};
 use base64::prelude::*;
 use miette::Error;
@@ -25,6 +26,7 @@ pub enum ValueType {
     Timestamp,
     Duration,
     Null,
+    Dyn,
 }
 
 pub trait TryIntoValue {
@@ -77,6 +79,7 @@ pub enum Value {
         deserialize_with = "deserialize_duration"
     )]
     Duration(time::Duration),
+    Dyn(Dyn),
 }
 
 impl FromStr for Value {
@@ -291,13 +294,14 @@ impl From<Map> for Value {
     }
 }
 
-impl<K, V> From<HashMap<K, V>> for Value
+impl<K, V> TryFrom<HashMap<K, V>> for Value
 where
     K: Into<Key>,
     V: TryIntoValue,
 {
-    fn from(value: HashMap<K, V>) -> Self {
-        Value::Map(value.into())
+    type Error = Error;
+    fn try_from(value: HashMap<K, V>) -> Result<Self, Error> {
+        Ok(Value::Map(value.try_into()?))
     }
 }
 
@@ -326,7 +330,7 @@ impl From<List> for Value {
 
 impl From<Vec<Value>> for Value {
     fn from(value: Vec<Value>) -> Self {
-        Value::List(value.into())
+        Value::List(value.try_into().unwrap())
     }
 }
 
@@ -343,7 +347,8 @@ impl From<Vec<i8>> for Value {
                 .iter()
                 .map(|v| Value::Int(*v as i64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -355,7 +360,8 @@ impl From<Vec<isize>> for Value {
                 .iter()
                 .map(|v| Value::Int(*v as i64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -367,7 +373,8 @@ impl From<Vec<i16>> for Value {
                 .iter()
                 .map(|v| Value::Int(*v as i64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -379,7 +386,8 @@ impl From<Vec<i32>> for Value {
                 .iter()
                 .map(|v| Value::Int(*v as i64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -391,7 +399,8 @@ impl From<Vec<i64>> for Value {
                 .iter()
                 .map(|v| Value::Int(*v))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -403,7 +412,8 @@ impl From<Vec<u16>> for Value {
                 .iter()
                 .map(|v| Value::Uint(*v as u64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -415,7 +425,8 @@ impl From<Vec<u32>> for Value {
                 .iter()
                 .map(|v| Value::Uint(*v as u64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -427,7 +438,8 @@ impl From<Vec<u64>> for Value {
                 .iter()
                 .map(|v| Value::Uint(*v))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -497,6 +509,7 @@ impl fmt::Display for Value {
             Value::Null => write!(f, "null"),
             Value::Timestamp(v) => write!(f, "{}", v.format(&Rfc3339).unwrap()),
             Value::Duration(v) => write!(f, "{v:?}"),
+            Value::Dyn(v) => write!(f, "{v}"),
         }
     }
 }
@@ -515,6 +528,7 @@ impl Value {
             Value::Null => ValueType::Null,
             Value::Timestamp(_) => ValueType::Timestamp,
             Value::Duration(_) => ValueType::Duration,
+            Value::Dyn(_) => ValueType::Dyn,
         }
     }
 
@@ -550,7 +564,8 @@ impl Value {
             (Value::Duration(d1), Value::Duration(d2)) => {
                 Ok(Value::Duration(*d1 + *d2))
             }
-
+            (Value::Dyn(d), other) => d.plus(other),
+            (other, Value::Dyn(_)) => self.plus(other),
             _ => miette::bail!(
                 "Invalid types for plus: {:?} and {:?}",
                 self,
@@ -729,7 +744,8 @@ mod test_serialize {
                 Value::Int(4),
                 Value::Int(5),
             ]
-            .into(),
+            .try_into()
+            .unwrap(),
         );
         assert_eq!(value, expected);
     }
@@ -741,7 +757,7 @@ mod test_serialize {
         map.insert("b", 2);
         map.insert("c", 3);
 
-        let value: Value = map.into();
+        let value: Value = map.try_into().unwrap();
         let expected = Value::Map(
             vec![
                 (Key::from("a"), Value::Int(1)),
@@ -750,7 +766,8 @@ mod test_serialize {
             ]
             .into_iter()
             .collect::<HashMap<Key, Value>>()
-            .into(),
+            .try_into()
+            .unwrap(),
         );
 
         assert_eq!(value, expected);
@@ -781,7 +798,8 @@ mod test_serialize {
             ]
             .into_iter()
             .collect::<HashMap<Key, Value>>()
-            .into(),
+            .try_into()
+            .unwrap(),
         );
 
         assert_eq!(value, expected);

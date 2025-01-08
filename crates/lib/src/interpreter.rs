@@ -274,7 +274,7 @@ pub fn eval_cons<'a>(
                 list.push(value);
             }
 
-            Value::List(list.into())
+            Value::List(list.try_into()?)
         }
         Op::Map => {
             if tokens.is_empty() {
@@ -306,7 +306,7 @@ pub fn eval_cons<'a>(
                 map.insert(Key::try_from(key)?, value);
             }
 
-            Value::Map(map.into())
+            Value::Map(map.try_into().unwrap())
         }
         Op::IfTernary => {
             let lhs = match eval_ast(env, &tokens[0])?.try_value()? {
@@ -727,13 +727,17 @@ mod tests {
         assert_eq!(
             eval(&env, "[1, 2, 3]").expect("[1, 2, 3]"),
             Value::List(
-                vec![Value::Int(1), Value::Int(2), Value::Int(3)].into()
+                vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+                    .try_into()
+                    .unwrap()
             )
         );
         assert_eq!(
             eval(&env, "[1u, 2u, 3u]").expect("[1u, 2u, 3u]"),
             Value::List(
-                vec![Value::Uint(1), Value::Uint(2), Value::Uint(3)].into()
+                vec![Value::Uint(1), Value::Uint(2), Value::Uint(3)]
+                    .try_into()
+                    .unwrap()
             )
         );
         assert_eq!(
@@ -744,19 +748,26 @@ mod tests {
                     Value::Double(2.0),
                     Value::Double(3.0)
                 ]
-                .into()
+                .try_into()
+                .unwrap()
             )
         );
         assert_eq!(
             eval(&env, "[\"hello\", \"world\"]")
                 .expect("[\"hello\", \"world\"]"),
             Value::List(
-                vec!["hello".into(), Value::String("world".to_string())].into()
+                vec!["hello".into(), Value::String("world".to_string())]
+                    .try_into()
+                    .unwrap()
             )
         );
         assert_eq!(
             eval(&env, "[true, false]").expect("[true, false]"),
-            Value::List(vec![Value::Bool(true), Value::Bool(false)].into())
+            Value::List(
+                vec![Value::Bool(true), Value::Bool(false)]
+                    .try_into()
+                    .unwrap()
+            )
         );
 
         // list elements must have the same type
@@ -780,23 +791,23 @@ mod tests {
                 let mut map = HashMap::new();
                 map.insert(Key::Int(1), Value::Int(2));
                 map.insert(Key::Int(3), Value::Int(4));
-                Value::Map(map.into())
+                Value::Map(map.try_into().unwrap())
             }),
             ("{1u: 2u, 3u: 4u}", {
                 let mut map = HashMap::new();
                 map.insert(Key::Uint(1), Value::Uint(2));
                 map.insert(Key::Uint(3), Value::Uint(4));
-                Value::Map(map.into())
+                Value::Map(map.try_into().unwrap())
             }),
             ("{\"hello\": \"world\"}", {
                 let mut map = HashMap::new();
                 map.insert(Key::from("hello"), Value::from("world"));
-                Value::Map(map.into())
+                Value::Map(map.try_into().unwrap())
             }),
             ("{true: false}", {
                 let mut map = HashMap::new();
                 map.insert(Key::Bool(true), Value::Bool(false));
-                Value::Map(map.into())
+                Value::Map(map.try_into().unwrap())
             }),
         ];
 
@@ -924,17 +935,17 @@ mod tests {
             let mut leaf = HashMap::new();
             leaf.insert(Key::from("y"), Value::Int(42));
 
-            let leaf = Value::Map(leaf.into());
+            let leaf = Value::Map(leaf.try_into().unwrap());
 
             let mut middle_level = HashMap::new();
             middle_level.insert(Key::Int(0), leaf);
 
-            let middle_level = Value::Map(middle_level.into());
+            let middle_level = Value::Map(middle_level.try_into().unwrap());
 
             let mut root = HashMap::new();
             root.insert(Key::Bool(true), middle_level);
 
-            Value::Map(root.into())
+            Value::Map(root.try_into().unwrap())
         })
         .expect("to set variable");
 
@@ -951,11 +962,11 @@ mod tests {
         env.set_variable("x", {
             let mut leaf = HashMap::new();
             leaf.insert(Key::from("z"), Value::Uint(42));
-            let leaf = Value::Map(leaf.into());
+            let leaf = Value::Map(leaf.try_into().unwrap());
 
             let mut root = HashMap::new();
             root.insert(Key::from("y"), leaf);
-            Value::Map(root.into())
+            Value::Map(root.try_into().unwrap())
         })
         .expect("to set variable");
 
@@ -1003,11 +1014,14 @@ mod tests {
             ("\"!\"", "!".into()),
             ("'\\''", "'".into()),
             ("b'ÿ'", Value::Bytes("ÿ".as_bytes().to_vec())),
-            ("[-1]", Value::List(List::from(vec![Value::Int(-1)]))),
+            (
+                "[-1]",
+                Value::List(List::try_from(vec![Value::Int(-1)]).unwrap()),
+            ),
             (r#"{"k":"v"}"#, {
                 let mut map = HashMap::new();
                 map.insert("k", "v");
-                Value::Map(map.into())
+                Value::Map(map.try_into().unwrap())
             }),
             ("true", true.into()),
             ("0x55555555", 0x55555555i64.into()),
@@ -1148,7 +1162,7 @@ mod tests {
             map.insert("h", 2);
             map.insert("i", 3);
             map.insert("j", 2);
-            Value::Map(map.into())
+            Value::Map(map.try_into().unwrap())
         })
         .expect("to set variable");
 
@@ -1256,7 +1270,7 @@ mod tests {
         env.set_variable("foo", {
             let mut map = HashMap::new();
             map.insert("bar", 7);
-            Value::Map(map.into())
+            Value::Map(map.try_into().unwrap())
         })
         .expect("to set variable");
 
@@ -1299,7 +1313,7 @@ mod tests {
         env.set_variable("foo", {
             let mut map = HashMap::new();
             map.insert("bar", 7);
-            Value::Map(map.into())
+            Value::Map(map.try_into().unwrap())
         })
         .expect("to set variable");
 
@@ -1364,15 +1378,15 @@ mod tests {
         let tt = [
             (
                 "[1, 2, 3].map(x, x * 2)",
-                Value::List(vec![2i64, 4, 6].into()),
+                Value::List(vec![2i64, 4, 6].try_into().unwrap()),
             ),
             (
                 "[5, 10, 15].map(x, x / 5)",
-                Value::List(vec![1i64, 2, 3].into()),
+                Value::List(vec![1i64, 2, 3].try_into().unwrap()),
             ),
             (
                 "[1, 2, 3, 4].map(num, num % 2 == 0, num * 2)",
-                Value::List(vec![4i64, 8].into()),
+                Value::List(vec![4i64, 8].try_into().unwrap()),
             ),
         ];
 
@@ -1406,20 +1420,20 @@ mod tests {
         let tt = [
             (
                 "[1, 2, 3].filter(x, x > 1)",
-                Value::List(vec![2i64, 3].into()),
+                Value::List(vec![2i64, 3].try_into().unwrap()),
             ),
             (
                 "['cat', 'dog', 'bird', 'fish'].filter(pet, pet.size() == 3)",
-                Value::List(vec!["cat", "dog"].into()),
+                Value::List(vec!["cat", "dog"].try_into().unwrap()),
             ),
             (
                 "[{'a': 10, 'b': 5, 'c': 20}].map(m, m.filter(key, m[key] > 10))",
                 Value::List(
                     vec![
                         Value::List (
-                            vec!["c"].into()
+                            vec!["c"].try_into().unwrap()
                         )
-                    ].into()
+                    ].try_into().unwrap()
                 ),
             ),
         ];
