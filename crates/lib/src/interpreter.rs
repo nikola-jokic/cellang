@@ -438,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_plus() {
+    fn test_eval_basic_plus() {
         let env = EnvironmentBuilder::default();
         let env = env.build();
         assert_eq!(eval(&env, "1 + 2").expect("1 + 2"), Value::Int(3));
@@ -450,6 +450,61 @@ mod tests {
         assert_eq!(
             eval(&env, "\"hello\" + \"world\"").expect("\"hello\" + \"world\""),
             "helloworld".into()
+        );
+        assert_eq!(
+            eval(&env, "[1] + [2, 3]").expect("[1] + [2, 3]"),
+            Value::List(
+                vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+                    .try_into()
+                    .unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn test_eval_dyn_plus() {
+        let env = EnvironmentBuilder::default();
+        let env = env.build();
+        assert_eq!(
+            eval(&env, "1 + dyn(2)").expect("1 + dyn(2)"),
+            Value::Int(3),
+            "1 + dyn(2)"
+        );
+        assert_eq!(
+            eval(&env, "1 + dyn(2u)").expect("1 + dyn(2u)"),
+            Value::Int(3),
+            "1 + dyn(2u)"
+        );
+        assert_eq!(
+            eval(&env, "1 + dyn(2.0)").expect("1 + dyn(2.0)"),
+            Value::Int(3),
+            "1 + dyn(2u)"
+        );
+        assert_eq!(
+            eval(&env, "1 + dyn(\"2\")").expect("1 + dyn(\"2\")"),
+            Value::Int(3),
+            "1 + dyn(\"2\")"
+        );
+        assert_eq!(
+            eval(&env, "\"1\" + dyn(2)").expect("\"1\" + dyn(2)"),
+            "12".into(),
+            "\"1\" + dyn(2)"
+        );
+        assert_eq!(
+            eval(&env, "[1] + dyn([2, 3])").expect("[1] + dyn([2, 3])"),
+            Value::List(
+                vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+                    .try_into()
+                    .unwrap()
+            )
+        );
+        assert_eq!(
+            eval(&env, "[1] + dyn([2u, 3u])").expect("[1] + dyn([2u, 3u])"),
+            Value::List(
+                vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+                    .try_into()
+                    .unwrap()
+            )
         );
     }
 

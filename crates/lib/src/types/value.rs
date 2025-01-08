@@ -1,5 +1,7 @@
 use super::dynamic::Dyn;
-use super::{deserialize_duration, serialize_duration, Key, List, Map};
+use super::{
+    deserialize_duration, serialize_duration, Key, KeyType, List, Map,
+};
 use base64::prelude::*;
 use miette::Error;
 use serde::de::DeserializeOwned;
@@ -11,17 +13,19 @@ use time::OffsetDateTime;
 
 /// ValueType is an enum that represents the different types of values that can be stored in a
 /// Value.
-#[derive(
-    Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Serialize, Deserialize,
-)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
 pub enum ValueType {
     Int,
     Uint,
     Double,
     String,
     Bool,
-    Map,
-    List,
+    MapOf {
+        key_type: Option<Box<KeyType>>,
+    },
+    ListOf {
+        element_type: Option<Box<ValueType>>,
+    },
     Bytes,
     Timestamp,
     Duration,
@@ -522,8 +526,15 @@ impl Value {
             Value::Double(_) => ValueType::Double,
             Value::String(_) => ValueType::String,
             Value::Bool(_) => ValueType::Bool,
-            Value::Map(_) => ValueType::Map,
-            Value::List(_) => ValueType::List,
+            Value::Map(ref m) => ValueType::MapOf {
+                key_type: m.key_type().map(Box::new),
+            },
+            Value::List(ref l) => ValueType::ListOf {
+                element_type: match l.element_type() {
+                    Some(e) => Some(Box::new(e)),
+                    None => None,
+                },
+            },
             Value::Bytes(_) => ValueType::Bytes,
             Value::Null => ValueType::Null,
             Value::Timestamp(_) => ValueType::Timestamp,
@@ -565,7 +576,11 @@ impl Value {
                 Ok(Value::Duration(*d1 + *d2))
             }
             (Value::Dyn(d), other) => d.plus(other),
-            (other, Value::Dyn(_)) => self.plus(other),
+            (base, Value::Dyn(d)) => {
+                // plus is not associative, so we need to try both ways
+                let other = d.try_as_type(base.type_of())?;
+                base.plus(&other)
+            }
             _ => miette::bail!(
                 "Invalid types for plus: {:?} and {:?}",
                 self,

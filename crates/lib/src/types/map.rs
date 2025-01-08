@@ -71,6 +71,17 @@ impl Map {
         }
     }
 
+    #[inline]
+    pub fn with_key_type_and_capacity(
+        key_type: KeyType,
+        capacity: usize,
+    ) -> Self {
+        Self {
+            key_type: Some(key_type),
+            inner: HashMap::with_capacity(capacity),
+        }
+    }
+
     /// Wrapper for [capacity](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.capacity)
     #[inline]
     pub fn capacity(&self) -> usize {

@@ -605,7 +605,10 @@ pub fn duration(
 
 pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
-        miette::bail!("expected 1 argument, found {}", tokens.len());
+        miette::bail!(
+            "expected 1 argument, found {}\ntokens: {tokens:?}",
+            tokens.len()
+        );
     }
 
     let v = eval_ast(env, &tokens[0])?.to_value()?;

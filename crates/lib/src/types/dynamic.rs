@@ -1,5 +1,5 @@
 use super::{
-    deserialize_duration, serialize_duration, Key, List, Value, ValueType,
+    deserialize_duration, serialize_duration, Key, List, Map, Value, ValueType,
 };
 use base64::prelude::*;
 use miette::{Error, IntoDiagnostic};
@@ -19,8 +19,8 @@ pub enum Dyn {
     Double(f64),
     String(String),
     Bool(bool),
-    Map(HashMap<Key, Value>),
-    List(Vec<Value>),
+    Map(HashMap<Key, Dyn>),
+    List(Vec<Dyn>),
     Bytes(Vec<u8>),
     Null,
     Timestamp(OffsetDateTime),
@@ -113,6 +113,33 @@ impl Dyn {
     }
 
     #[inline]
+    pub fn try_as_list_of(&self, ty: ValueType) -> Result<List, Error> {
+        match self {
+            Dyn::List(list) => match ty {
+                ValueType::ListOf { element_type } => match element_type {
+                    None => {
+                        assert!(list.is_empty());
+                        Ok(List::new())
+                    }
+                    Some(ty) => {
+                        let mut new_list = List::with_type_and_capacity(
+                            *ty.clone(),
+                            list.len(),
+                        );
+                        for item in list.iter() {
+                            new_list
+                                .push(item.clone().try_as_type(*ty.clone())?)?;
+                        }
+                        Ok(new_list)
+                    }
+                },
+                d => miette::bail!("Failed to convert to list, got: {:?}", d),
+            },
+            d => miette::bail!("Failed to convert to list, got: {:?}", d),
+        }
+    }
+
+    #[inline]
     pub fn try_as_type(&self, ty: ValueType) -> Result<Value, Error> {
         match ty {
             ValueType::Int => Ok(Value::Int(self.try_as_i64()?)),
@@ -132,12 +159,22 @@ impl Dyn {
                 Dyn::Duration(v) => Ok(Value::Duration(*v)),
                 _ => miette::bail!("Failed to convert to duration"),
             },
-            ValueType::List => match self {
-                Dyn::List(list) => Ok(Value::List(list.clone().try_into()?)),
-                _ => miette::bail!("Failed to convert to list"),
-            },
-            ValueType::Map => match self {
-                Dyn::Map(map) => Ok(Value::Map(map.clone().try_into()?)),
+            ValueType::ListOf { .. } => Ok(self.try_as_list_of(ty)?.into()),
+            ValueType::MapOf { key_type } => match self {
+                Dyn::Map(map) => match key_type {
+                    None => {
+                        assert!(map.is_empty());
+                        Ok(Value::Map(Map::new()))
+                    }
+                    Some(ty) => {
+                        let mut new_map =
+                            Map::with_key_type_and_capacity(*ty, map.len());
+                        for (k, v) in map.iter() {
+                            new_map.insert(k.clone(), v.clone().try_into()?)?;
+                        }
+                        Ok(Value::Map(new_map))
+                    }
+                },
                 _ => miette::bail!("Failed to convert to map"),
             },
             ValueType::Null => match self {
@@ -163,15 +200,9 @@ impl Dyn {
                 Ok(Value::Bytes(bytes))
             }
             Value::List(list) => {
-                let mut base = match self {
-                    Dyn::List(list) => match List::try_from(list.clone()) {
-                        Ok(list) => list,
-                        Err(e) => {
-                            miette::bail!("Failed to add list: {e:?}")
-                        }
-                    },
-                    _ => miette::bail!("Failed to add list"),
-                };
+                let mut base = self.try_as_list_of(ValueType::ListOf {
+                    element_type: list.element_type().map(Box::new),
+                })?;
 
                 base.extend(list.clone());
                 Ok(Value::List(base))
@@ -224,25 +255,6 @@ impl fmt::Display for Dyn {
     }
 }
 
-impl From<Value> for Dyn {
-    fn from(val: Value) -> Dyn {
-        match val {
-            Value::Int(n) => Dyn::Int(n),
-            Value::Uint(n) => Dyn::Uint(n),
-            Value::Double(n) => Dyn::Double(n),
-            Value::String(s) => Dyn::String(s),
-            Value::Bool(b) => Dyn::Bool(b),
-            Value::Map(map) => Dyn::Map(map.into()),
-            Value::List(list) => Dyn::List(list.into()),
-            Value::Bytes(b) => Dyn::Bytes(b),
-            Value::Null => Dyn::Null,
-            Value::Timestamp(v) => Dyn::Timestamp(v),
-            Value::Duration(v) => Dyn::Duration(v),
-            Value::Dyn(d) => d,
-        }
-    }
-}
-
 impl TryFrom<Dyn> for Value {
     type Error = Error;
 
@@ -253,13 +265,56 @@ impl TryFrom<Dyn> for Value {
             Dyn::Double(n) => Value::Double(n),
             Dyn::String(s) => Value::String(s),
             Dyn::Bool(b) => Value::Bool(b),
-            Dyn::Map(map) => Value::Map(map.try_into()?),
-            Dyn::List(list) => Value::List(list.try_into()?),
+            Dyn::Map(map) => {
+                let mut new_map = Map::with_capacity(map.len());
+                for (k, v) in map.iter() {
+                    new_map.insert(k.clone(), v.clone().try_into()?)?;
+                }
+                Value::Map(new_map.try_into()?)
+            }
+            Dyn::List(list) => {
+                let mut new_list = List::new();
+                for item in list.iter() {
+                    new_list.push(item.clone().try_into()?)?;
+                }
+                Value::List(new_list)
+            }
             Dyn::Bytes(b) => Value::Bytes(b),
             Dyn::Null => Value::Null,
             Dyn::Timestamp(v) => Value::Timestamp(v),
             Dyn::Duration(v) => Value::Duration(v),
         };
         Ok(val)
+    }
+}
+
+impl From<Value> for Dyn {
+    fn from(v: Value) -> Self {
+        match v {
+            Value::Int(n) => Dyn::Int(n),
+            Value::Uint(n) => Dyn::Uint(n),
+            Value::Double(n) => Dyn::Double(n),
+            Value::String(s) => Dyn::String(s),
+            Value::Bool(b) => Dyn::Bool(b),
+            Value::Map(map) => {
+                let mut new_map = HashMap::new();
+                for (k, v) in map.iter() {
+                    new_map.insert(k.clone(), v.clone().into());
+                }
+                Dyn::Map(new_map)
+            }
+            Value::List(list) => {
+                let mut new_list = Vec::new();
+                for item in list.iter() {
+                    new_list.push(item.clone().into());
+                }
+                Dyn::List(new_list)
+            }
+            Value::Bytes(b) => Dyn::Bytes(b),
+            Value::Null => Dyn::Null,
+            Value::Timestamp(v) => Dyn::Timestamp(v),
+            Value::Duration(v) => Dyn::Duration(v),
+            Value::Dyn(d) => d,
+        }
     }
 }
