@@ -1,5 +1,6 @@
 use super::{
-    deserialize_duration, serialize_duration, Key, List, Map, Value, ValueType,
+    deserialize_duration, serialize_duration, Key, KeyType, List, Map, Value,
+    ValueType,
 };
 use base64::prelude::*;
 use miette::{Error, IntoDiagnostic};
@@ -140,6 +141,49 @@ impl Dyn {
     }
 
     #[inline]
+    pub fn try_as_map_of(&self, ty: ValueType) -> Result<Map, Error> {
+        match self {
+            Dyn::Map(map) => match ty {
+                ValueType::MapOf { key_type } => match key_type {
+                    None => {
+                        assert!(map.is_empty());
+                        Ok(Map::new())
+                    }
+                    Some(ty) => {
+                        let mut new_map = Map::with_key_type_and_capacity(
+                            *ty.clone(),
+                            map.len(),
+                        );
+                        for (k, v) in map.iter() {
+                            let k_value: Dyn = k.clone().into();
+                            new_map.insert(
+                                k_value.try_as_key_type(*ty.clone())?,
+                                v.clone().try_into()?,
+                            )?;
+                        }
+                        Ok(new_map)
+                    }
+                },
+                d => miette::bail!("Failed to convert to map, got: {:?}", d),
+            },
+            d => miette::bail!("Failed to convert to map, got: {:?}", d),
+        }
+    }
+
+    #[inline]
+    pub fn try_as_key_type(&self, ty: KeyType) -> Result<Key, Error> {
+        match ty {
+            KeyType::Int => Ok(Key::Int(self.try_as_i64()?)),
+            KeyType::Uint => Ok(Key::Uint(self.try_as_uint()?)),
+            KeyType::String => Ok(Key::String(self.try_as_string()?)),
+            KeyType::Bool => match self {
+                Dyn::Bool(b) => Ok(Key::Bool(*b)),
+                _ => miette::bail!("Failed to convert to bool"),
+            },
+        }
+    }
+
+    #[inline]
     pub fn try_as_type(&self, ty: ValueType) -> Result<Value, Error> {
         match ty {
             ValueType::Int => Ok(Value::Int(self.try_as_i64()?)),
@@ -160,23 +204,7 @@ impl Dyn {
                 _ => miette::bail!("Failed to convert to duration"),
             },
             ValueType::ListOf { .. } => Ok(self.try_as_list_of(ty)?.into()),
-            ValueType::MapOf { key_type } => match self {
-                Dyn::Map(map) => match key_type {
-                    None => {
-                        assert!(map.is_empty());
-                        Ok(Value::Map(Map::new()))
-                    }
-                    Some(ty) => {
-                        let mut new_map =
-                            Map::with_key_type_and_capacity(*ty, map.len());
-                        for (k, v) in map.iter() {
-                            new_map.insert(k.clone(), v.clone().try_into()?)?;
-                        }
-                        Ok(Value::Map(new_map))
-                    }
-                },
-                _ => miette::bail!("Failed to convert to map"),
-            },
+            ValueType::MapOf { .. } => Ok(self.try_as_map_of(ty)?.into()),
             ValueType::Null => match self {
                 Dyn::Null => Ok(Value::Null),
                 _ => miette::bail!("Failed to convert to null"),
@@ -315,6 +343,28 @@ impl From<Value> for Dyn {
             Value::Timestamp(v) => Dyn::Timestamp(v),
             Value::Duration(v) => Dyn::Duration(v),
             Value::Dyn(d) => d,
+        }
+    }
+}
+
+impl From<Key> for Dyn {
+    fn from(k: Key) -> Self {
+        match k {
+            Key::String(s) => Dyn::String(s),
+            Key::Int(n) => Dyn::Int(n),
+            Key::Uint(n) => Dyn::Uint(n),
+            Key::Bool(b) => Dyn::Bool(b),
+        }
+    }
+}
+
+impl From<&Key> for Dyn {
+    fn from(k: &Key) -> Self {
+        match k {
+            Key::String(s) => Dyn::String(s.clone()),
+            Key::Int(n) => Dyn::Int(*n),
+            Key::Uint(n) => Dyn::Uint(*n),
+            Key::Bool(b) => Dyn::Bool(*b),
         }
     }
 }

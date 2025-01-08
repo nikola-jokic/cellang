@@ -506,6 +506,14 @@ mod tests {
                     .unwrap()
             )
         );
+        assert_eq!(
+            eval(&env, "dyn([2u, 3u]) + [1]").expect("dyn([2u, 3u]) + [1]"),
+            Value::List(
+                vec![Value::Int(2), Value::Int(3), Value::Int(1)]
+                    .try_into()
+                    .unwrap()
+            )
+        );
     }
 
     #[test]
