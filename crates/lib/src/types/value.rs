@@ -94,166 +94,40 @@ impl FromStr for Value {
     }
 }
 
-impl From<i8> for Value {
-    fn from(value: i8) -> Self {
-        Value::Int(value as i64)
-    }
+macro_rules! simple_conv {
+    ($($($t:ty)* => $p:path as $as:ty)*) => {
+        $(
+            $(
+                impl From<$t> for Value {
+                    fn from(value: $t) -> Self {
+                        $p(value as $as)
+                    }
+                }
+
+                impl From<Value> for $t {
+                    fn from(value: Value) -> Self {
+                        match value {
+                            $p(n) => n as $t,
+                            _ => panic!("Cannot convert {:?} to {}", value, stringify!($t)),
+                        }
+                    }
+                }
+            )*
+        )*
+    };
 }
 
-impl From<Value> for i8 {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Int(n) => n as i8,
-            _ => panic!("Cannot convert {:?} to i8", value),
-        }
-    }
-}
-
-impl From<i16> for Value {
-    fn from(value: i16) -> Self {
-        Value::Int(value as i64)
-    }
-}
-
-impl From<Value> for i16 {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Int(n) => n as i16,
-            _ => panic!("Cannot convert {:?} to i16", value),
-        }
-    }
-}
-
-impl From<i32> for Value {
-    fn from(value: i32) -> Self {
-        Value::Uint(value as u64)
-    }
-}
-
-impl From<Value> for i32 {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Int(n) => n as i32,
-            _ => panic!("Cannot convert {:?} to i32", value),
-        }
-    }
-}
-
-impl From<i64> for Value {
-    fn from(value: i64) -> Self {
-        Value::Int(value)
-    }
-}
-
-impl From<isize> for Value {
-    fn from(value: isize) -> Self {
-        Value::Int(value as i64)
-    }
-}
-
-impl From<Value> for isize {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Int(n) => n as isize,
-            _ => panic!("Cannot convert {:?} to isize", value),
-        }
-    }
-}
-
-impl From<Value> for i64 {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Int(n) => n,
-            _ => panic!("Cannot convert {:?} to i64", value),
-        }
-    }
-}
-
-impl From<u8> for Value {
-    fn from(value: u8) -> Self {
-        Value::Uint(value as u64)
-    }
-}
-
-impl From<Value> for u8 {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Uint(n) => n as u8,
-            _ => panic!("Cannot convert {:?} to u8", value),
-        }
-    }
-}
-
-impl From<u16> for Value {
-    fn from(value: u16) -> Self {
-        Value::Uint(value as u64)
-    }
-}
-
-impl From<Value> for u16 {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Uint(n) => n as u16,
-            _ => panic!("Cannot convert {:?} to u16", value),
-        }
-    }
-}
-
-impl From<u32> for Value {
-    fn from(value: u32) -> Self {
-        Value::Uint(value as u64)
-    }
-}
-
-impl From<Value> for u32 {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Uint(n) => n as u32,
-            _ => panic!("Cannot convert {:?} to u32", value),
-        }
-    }
-}
-
-impl From<u64> for Value {
-    fn from(value: u64) -> Self {
-        Value::Uint(value)
-    }
-}
-
-impl From<usize> for Value {
-    fn from(value: usize) -> Self {
-        Value::Uint(value as u64)
-    }
-}
-
-impl From<Value> for u64 {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Uint(n) => n,
-            _ => panic!("Cannot convert {:?} to u64", value),
-        }
-    }
-}
-
-impl From<f64> for Value {
-    fn from(value: f64) -> Self {
-        Value::Double(value)
-    }
-}
-
-impl From<Value> for f64 {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Double(n) => n,
-            _ => panic!("Cannot convert {:?} to f64", value),
-        }
-    }
-}
-
-impl From<String> for Value {
-    fn from(value: String) -> Self {
-        Value::String(value)
-    }
+simple_conv! {
+    i8 i16 i32 i64 isize => Value::Int as i64
+    u8 u16 u32 u64 usize => Value::Uint as u64
+    f32 f64 => Value::Double as f64
+    bool => Value::Bool as bool
+    String => Value::String as String
+    Map => Value::Map as Map
+    List => Value::List as List
+    Vec<u8> => Value::Bytes as Vec<u8>
+    OffsetDateTime => Value::Timestamp as OffsetDateTime
+    time::Duration => Value::Duration as time::Duration
 }
 
 impl From<&String> for Value {
@@ -268,36 +142,6 @@ impl From<&str> for Value {
     }
 }
 
-impl From<Value> for String {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::String(s) => s,
-            _ => panic!("Cannot convert {:?} to String", value),
-        }
-    }
-}
-
-impl From<bool> for Value {
-    fn from(value: bool) -> Self {
-        Value::Bool(value)
-    }
-}
-
-impl From<Value> for bool {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Bool(b) => b,
-            _ => panic!("Cannot convert {:?} to bool", value),
-        }
-    }
-}
-
-impl From<Map> for Value {
-    fn from(value: Map) -> Self {
-        Value::Map(value)
-    }
-}
-
 impl<K, V> TryFrom<HashMap<K, V>> for Value
 where
     K: Into<Key>,
@@ -309,193 +153,43 @@ where
     }
 }
 
-impl<K, V> FromIterator<(K, V)> for Value
-where
-    K: Into<Key>,
-    V: TryIntoValue,
-{
-    fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = (K, V)>,
-    {
-        let mut map = Map::new();
-        for (k, v) in iter {
-            map.insert(k.into(), v.try_into_value().unwrap()).unwrap();
-        }
-        Value::Map(map)
-    }
-}
-
-impl From<List> for Value {
-    fn from(value: List) -> Self {
-        Value::List(value)
-    }
-}
-
 impl From<Vec<Value>> for Value {
     fn from(value: Vec<Value>) -> Self {
         Value::List(value.try_into().unwrap())
     }
 }
 
+macro_rules! vec_conv {
+    ($($($t:ty)* => $p:path as $as:ty)*) => {
+        $(
+            $(
+                impl From<Vec<$t>> for Value {
+                    fn from(value: Vec<$t>) -> Self {
+                        Value::List(value.into_iter().map(|v| $p(v as $as)).collect())
+                    }
+                }
+            )*
+        )*
+    };
+}
+
+vec_conv! {
+    i8 i16 i32 i64 isize => Value::Int as i64
+    u16 u32 u64 usize => Value::Uint as u64
+    f32 f64 => Value::Double as f64
+    bool => Value::Bool as bool
+    String => Value::String as String
+}
+
 impl From<Vec<&Value>> for Value {
     fn from(value: Vec<&Value>) -> Self {
-        Value::List(value.iter().cloned().cloned().collect())
-    }
-}
-
-impl From<Vec<i8>> for Value {
-    fn from(value: Vec<i8>) -> Self {
-        Value::List(
-            value
-                .iter()
-                .map(|v| Value::Int(*v as i64))
-                .collect::<Vec<Value>>()
-                .try_into()
-                .unwrap(),
-        )
-    }
-}
-
-impl From<Vec<isize>> for Value {
-    fn from(value: Vec<isize>) -> Self {
-        Value::List(
-            value
-                .iter()
-                .map(|v| Value::Int(*v as i64))
-                .collect::<Vec<Value>>()
-                .try_into()
-                .unwrap(),
-        )
-    }
-}
-
-impl From<Vec<i16>> for Value {
-    fn from(value: Vec<i16>) -> Self {
-        Value::List(
-            value
-                .iter()
-                .map(|v| Value::Int(*v as i64))
-                .collect::<Vec<Value>>()
-                .try_into()
-                .unwrap(),
-        )
-    }
-}
-
-impl From<Vec<i32>> for Value {
-    fn from(value: Vec<i32>) -> Self {
-        Value::List(
-            value
-                .iter()
-                .map(|v| Value::Int(*v as i64))
-                .collect::<Vec<Value>>()
-                .try_into()
-                .unwrap(),
-        )
-    }
-}
-
-impl From<Vec<i64>> for Value {
-    fn from(value: Vec<i64>) -> Self {
-        Value::List(
-            value
-                .iter()
-                .map(|v| Value::Int(*v))
-                .collect::<Vec<Value>>()
-                .try_into()
-                .unwrap(),
-        )
-    }
-}
-
-impl From<Vec<u16>> for Value {
-    fn from(value: Vec<u16>) -> Self {
-        Value::List(
-            value
-                .iter()
-                .map(|v| Value::Uint(*v as u64))
-                .collect::<Vec<Value>>()
-                .try_into()
-                .unwrap(),
-        )
-    }
-}
-
-impl From<Vec<u32>> for Value {
-    fn from(value: Vec<u32>) -> Self {
-        Value::List(
-            value
-                .iter()
-                .map(|v| Value::Uint(*v as u64))
-                .collect::<Vec<Value>>()
-                .try_into()
-                .unwrap(),
-        )
-    }
-}
-
-impl From<Vec<u64>> for Value {
-    fn from(value: Vec<u64>) -> Self {
-        Value::List(
-            value
-                .iter()
-                .map(|v| Value::Uint(*v))
-                .collect::<Vec<Value>>()
-                .try_into()
-                .unwrap(),
-        )
-    }
-}
-
-impl From<Vec<u8>> for Value {
-    fn from(value: Vec<u8>) -> Self {
-        Value::Bytes(value)
-    }
-}
-
-impl From<Value> for Vec<u8> {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Bytes(b) => b,
-            _ => panic!("Cannot convert {:?} to Vec<u8>", value),
-        }
+        Value::List(value.into_iter().cloned().collect())
     }
 }
 
 impl From<&[u8]> for Value {
     fn from(value: &[u8]) -> Self {
         Value::Bytes(value.to_vec())
-    }
-}
-
-impl From<OffsetDateTime> for Value {
-    fn from(value: OffsetDateTime) -> Self {
-        Value::Timestamp(value)
-    }
-}
-
-impl From<Value> for OffsetDateTime {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Timestamp(t) => t,
-            _ => panic!("Cannot convert {:?} to OffsetDateTime", value),
-        }
-    }
-}
-
-impl From<time::Duration> for Value {
-    fn from(value: time::Duration) -> Self {
-        Value::Duration(value)
-    }
-}
-
-impl From<Value> for time::Duration {
-    fn from(value: Value) -> Self {
-        match value {
-            Value::Duration(d) => d,
-            _ => panic!("Cannot convert {:?} to Duration", value),
-        }
     }
 }
 
