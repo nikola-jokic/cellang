@@ -336,7 +336,7 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     for item in list.iter() {
         variables
             .insert(key.clone(), item.clone())
-            .wrap_err("Invalid item insert, key={key:?}, value={item:?}")?;
+            .wrap_err("Invalid item insert, key={key}, value={item}")?;
         let mut env = env.child();
         env.set_variables(&variables);
         new_list.push(eval_ast(&env, lambda)?.to_value()?)?;
