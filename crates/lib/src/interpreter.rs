@@ -24,7 +24,7 @@ pub fn eval_ast<'a>(
     match root {
         TokenTree::Atom(atom) => eval_atom(env, atom),
         TokenTree::Cons(op, tokens) => eval_cons(env, op, tokens),
-        TokenTree::Call { func, args } => {
+        TokenTree::Call { func, args, .. } => {
             let lhs = eval_ast(env, func)?;
             let f = lhs.try_function()?;
             Ok(Resolver::new(env, Object::Value(f(env, args.as_ref())?)))
@@ -105,7 +105,7 @@ pub fn eval_cons<'a>(
                     }
                     Value::Dyn(Dyn::List(list))
                 }
-                TokenTree::Call { func, args } => {
+                TokenTree::Call { func, args, .. } => {
                     let lhs = eval_ast(env, func)?;
                     let f = lhs.try_function()?;
                     let value = f(env, args.as_ref())?;
