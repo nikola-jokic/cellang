@@ -1162,6 +1162,11 @@ mod tests {
             eval(&env, "dyn({'a': 'b', 2: 3})['a']")
                 .expect("dyn({'a': 'b', 2: 3})['a']"),
             Value::from("b")
+        );
+        assert_eq!(
+            eval(&env, "dyn({'a': 'b', 2: 3})[2]")
+                .expect("dyn({'a': 'b', 2: 3})[2]"),
+            Value::Int(3)
         )
     }
 

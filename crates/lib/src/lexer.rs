@@ -1432,6 +1432,19 @@ mod tests {
     }
 
     #[test]
+    fn test_dyn() {
+        let mut lexer = Lexer::new("dyn(1u)");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.ty, TokenType::Dyn);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.ty, TokenType::LeftParen);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.ty, TokenType::Uint(1));
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.ty, TokenType::RightParen);
+    }
+
+    #[test]
     fn test_scan_str() {
         let tripple_delim = [r#"""""#, "'''"];
         let single_delim = ['"', '\''];
