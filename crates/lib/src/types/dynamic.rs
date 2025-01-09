@@ -202,7 +202,7 @@ impl Dyn {
                             let k_value: Dyn = k.into();
                             new_map.insert(
                                 k_value.try_into_key_type(*ty.clone())?,
-                                v.clone().try_into()?,
+                                v.clone().try_literal_value()?,
                             )?;
                         }
                         Ok(new_map)
@@ -232,6 +232,83 @@ impl Dyn {
     #[inline]
     pub fn try_to_map_of(&self, ty: ValueType) -> Result<Map, Error> {
         self.clone().try_into_map_of(ty)
+    }
+
+    /// Tries to convert self into key
+    #[inline]
+    pub fn try_into_key_of_type(self, ty: KeyType) -> Result<Key, Error> {
+        match ty {
+            KeyType::Int => Ok(Key::Int(self.try_into_i64()?)),
+            KeyType::Uint => Ok(Key::Uint(self.try_into_u64()?)),
+            KeyType::String => Ok(Key::String(self.try_into_string()?)),
+            KeyType::Bool => match self {
+                Dyn::Bool(b) => Ok(Key::Bool(b)),
+                _ => miette::bail!("Failed to convert to bool"),
+            },
+        }
+    }
+
+    /// Tries to convert the self into the value where the type
+    /// is the literal type passed to it. For example, if you try
+    /// `dyn(2u) == dyn(3)`, both values are dynamic and one must
+    /// dictate the type. In this case, the left-hand side should
+    /// unwrap to `Value::Uint(2)`, which would dictate the type
+    /// for the right-hand side (dyn(3)).
+    #[inline]
+    pub fn try_literal_value(self) -> Result<Value, Error> {
+        match self {
+            Dyn::Int(n) => Ok(Value::Int(n)),
+            Dyn::Uint(n) => Ok(Value::Uint(n)),
+            Dyn::Double(n) => Ok(Value::Double(n)),
+            Dyn::String(s) => Ok(Value::String(s)),
+            Dyn::Bool(b) => Ok(Value::Bool(b)),
+            Dyn::Map(map) => {
+                let mut new_map = Map::with_capacity(map.len());
+                for (k, v) in map.into_iter() {
+                    new_map.insert(k, v.try_literal_value()?)?;
+                }
+                Ok(Value::Map(new_map))
+            }
+            Dyn::List(list) => {
+                let mut new_list = List::new();
+                for item in list.into_iter() {
+                    new_list.push(item.try_literal_value()?)?;
+                }
+                Ok(Value::List(new_list))
+            }
+            Dyn::Bytes(b) => Ok(Value::Bytes(b)),
+            Dyn::Null => Ok(Value::Null),
+            Dyn::Timestamp(v) => Ok(Value::Timestamp(v)),
+            Dyn::Duration(v) => Ok(Value::Duration(v)),
+        }
+    }
+
+    /// Tries to convert &self to key of key type
+    #[inline]
+    pub fn try_to_key_of_type(&self, ty: KeyType) -> Result<Key, Error> {
+        self.clone().try_into_key_of_type(ty)
+    }
+
+    /// Tries to convert self into timestamp
+    #[inline]
+    pub fn try_into_timestamp(self) -> Result<OffsetDateTime, Error> {
+        match self {
+            Dyn::Timestamp(v) => Ok(v),
+            d => {
+                let s = d.try_into_string()?;
+                let t = match OffsetDateTime::parse(&s, &Rfc3339) {
+                    Ok(t) => t,
+                    Err(e) => miette::bail!("Invalid timestamp: {:?}", e),
+                };
+                Ok(t)
+            }
+        }
+    }
+
+    /// Tries to convert &self to timestamp
+    #[inline]
+    pub fn try_to_timestamp(&self) -> Result<OffsetDateTime, Error> {
+        self.clone().try_into_timestamp()
     }
 
     /// Tries to convert self into value
@@ -305,14 +382,14 @@ impl TryFrom<Dyn> for Value {
             Dyn::Map(map) => {
                 let mut new_map = Map::with_capacity(map.len());
                 for (k, v) in map.into_iter() {
-                    new_map.insert(k, v.try_into()?)?;
+                    new_map.insert(k, v.try_literal_value()?)?;
                 }
                 Value::Map(new_map.try_into()?)
             }
             Dyn::List(list) => {
                 let mut new_list = List::new();
                 for item in list.into_iter() {
-                    new_list.push(item.try_into()?)?;
+                    new_list.push(item.try_literal_value()?)?;
                 }
                 Value::List(new_list)
             }
