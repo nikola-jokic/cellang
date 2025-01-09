@@ -520,7 +520,7 @@ pub fn int(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             Err(_) => miette::bail!("Invalid type for int: {:?}", tokens[0]),
         },
         Value::Timestamp(t) => Value::Int(t.unix_timestamp()),
-        Value::Dyn(d) => d.try_as_i64()?.into(),
+        Value::Dyn(d) => d.try_into_i64()?.into(),
         _ => miette::bail!("Invalid type for int: {:?}", tokens[0]),
     };
 

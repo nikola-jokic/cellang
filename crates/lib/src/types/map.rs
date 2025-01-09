@@ -60,7 +60,7 @@ impl Map {
 
     #[inline]
     pub fn key_type(&self) -> Option<KeyType> {
-        self.key_type.clone()
+        self.key_type
     }
 
     #[inline]
@@ -456,7 +456,7 @@ impl<'de> Deserialize<'de> for Map {
         D: Deserializer<'de>,
     {
         let inner = HashMap::<Key, Value>::deserialize(deserializer)?;
-        Ok(Map::try_from(inner).map_err(serde::de::Error::custom)?)
+        Map::try_from(inner).map_err(serde::de::Error::custom)
     }
 }
 

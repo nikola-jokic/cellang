@@ -534,7 +534,7 @@ impl<'de> Deserialize<'de> for List {
         D: Deserializer<'de>,
     {
         let inner: Vec<Value> = Vec::deserialize(deserializer)?;
-        Ok(List::try_from(inner).map_err(serde::de::Error::custom)?)
+        List::try_from(inner).map_err(serde::de::Error::custom)
     }
 }
 

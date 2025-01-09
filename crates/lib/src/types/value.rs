@@ -589,16 +589,16 @@ impl Value {
             }
             (Value::Dyn(d1), Value::Dyn(d2)) => {
                 let v1: Value = d1.clone().try_into()?;
-                let v2 = d2.try_as_type(v1.type_of())?;
+                let v2 = d2.try_to_type(v1.type_of())?;
                 v1.plus(&v2)
             }
             (Value::Dyn(d), other) => {
-                let v = d.try_as_type(other.type_of())?;
+                let v = d.try_to_type(other.type_of())?;
                 v.plus(other)
             }
             (base, Value::Dyn(d)) => {
                 // plus is not associative, so we need to try both ways
-                let other = d.try_as_type(base.type_of())?;
+                let other = d.try_to_type(base.type_of())?;
                 base.plus(&other)
             }
             _ => miette::bail!(
@@ -626,16 +626,16 @@ impl Value {
             }
             (Value::Dyn(d1), Value::Dyn(d2)) => {
                 let v1: Value = d1.clone().try_into()?;
-                let v2 = d2.try_as_type(v1.type_of())?;
+                let v2 = d2.try_to_type(v1.type_of())?;
                 v1.minus(&v2)
             }
             (Value::Dyn(d), other) => {
-                let v = d.try_as_type(other.type_of())?;
+                let v = d.try_to_type(other.type_of())?;
                 v.minus(other)
             }
             (base, Value::Dyn(d)) => {
                 // minus is not associative, so we need to try both ways
-                let other = d.try_as_type(base.type_of())?;
+                let other = d.try_to_type(base.type_of())?;
                 base.minus(&other)
             }
             _ => miette::bail!(
@@ -654,16 +654,16 @@ impl Value {
         match (self, other) {
             (Value::Dyn(d1), Value::Dyn(d2)) => {
                 let v1: Value = d1.clone().try_into()?;
-                let v2 = d2.try_as_type(v1.type_of())?;
+                let v2 = d2.try_to_type(v1.type_of())?;
                 v1.equal(&v2)
             }
             (Value::Dyn(d), other) => {
-                let v = d.try_as_type(other.type_of())?;
+                let v = d.try_to_type(other.type_of())?;
                 v.equal(other)
             }
             (base, Value::Dyn(d)) => {
                 // equal is not associative, so we need to try both ways
-                let other = d.try_as_type(base.type_of())?;
+                let other = d.try_to_type(base.type_of())?;
                 base.equal(&other)
             }
             (lhs, rhs) => {
@@ -703,16 +703,16 @@ impl Value {
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 > d2),
             (Value::Dyn(d1), Value::Dyn(d2)) => {
                 let v1: Value = d1.clone().try_into()?;
-                let v2 = d2.try_as_type(v1.type_of())?;
+                let v2 = d2.try_to_type(v1.type_of())?;
                 v1.greater(&v2)?
             }
             (Value::Dyn(d), other) => {
-                let v = d.try_as_type(other.type_of())?;
+                let v = d.try_to_type(other.type_of())?;
                 v.greater(other)?
             }
             (base, Value::Dyn(d)) => {
                 // greater is not associative, so we need to try both ways
-                let other = d.try_as_type(base.type_of())?;
+                let other = d.try_to_type(base.type_of())?;
                 base.greater(&other)?
             }
             (left, right) => {
@@ -737,15 +737,15 @@ impl Value {
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 >= d2),
             (Value::Dyn(d1), Value::Dyn(d2)) => {
                 let v1: Value = d1.clone().try_into()?;
-                let v2 = d2.try_as_type(v1.type_of())?;
+                let v2 = d2.try_to_type(v1.type_of())?;
                 v1.greater_equal(&v2)?
             }
             (Value::Dyn(d), other) => {
-                let v = d.try_as_type(other.type_of())?;
+                let v = d.try_to_type(other.type_of())?;
                 v.greater_equal(other)?
             }
             (base, Value::Dyn(d)) => {
-                let other = d.try_as_type(base.type_of())?;
+                let other = d.try_to_type(base.type_of())?;
                 base.greater_equal(&other)?
             }
             _ => miette::bail!("Failed to compare {self:?} >= {other:?}"),
@@ -768,15 +768,15 @@ impl Value {
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 < d2),
             (Value::Dyn(d1), Value::Dyn(d2)) => {
                 let v1: Value = d1.clone().try_into()?;
-                let v2 = d2.try_as_type(v1.type_of())?;
+                let v2 = d2.try_to_type(v1.type_of())?;
                 v1.less(&v2)?
             }
             (Value::Dyn(d), other) => {
-                let v = d.try_as_type(other.type_of())?;
+                let v = d.try_to_type(other.type_of())?;
                 v.less(other)?
             }
             (base, Value::Dyn(d)) => {
-                let other = d.try_as_type(base.type_of())?;
+                let other = d.try_to_type(base.type_of())?;
                 base.less(&other)?
             }
             _ => miette::bail!("Failed to compare {self:?} < {other:?}"),
@@ -799,15 +799,15 @@ impl Value {
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 <= d2),
             (Value::Dyn(d1), Value::Dyn(d2)) => {
                 let v1: Value = d1.clone().try_into()?;
-                let v2 = d2.try_as_type(v1.type_of())?;
+                let v2 = d2.try_to_type(v1.type_of())?;
                 v1.less_equal(&v2)?
             }
             (Value::Dyn(d), other) => {
-                let v = d.try_as_type(other.type_of())?;
+                let v = d.try_to_type(other.type_of())?;
                 v.less_equal(other)?
             }
             (base, Value::Dyn(d)) => {
-                let other = d.try_as_type(base.type_of())?;
+                let other = d.try_to_type(base.type_of())?;
                 base.less_equal(&other)?
             }
             _ => miette::bail!("Failed to compare {self:?} <= {other:?}"),
@@ -825,15 +825,15 @@ impl Value {
             }
             (Value::Dyn(d1), Value::Dyn(d2)) => {
                 let v1: Value = d1.clone().try_into()?;
-                let v2 = d2.try_as_type(v1.type_of())?;
+                let v2 = d2.try_to_type(v1.type_of())?;
                 v1.multiply(&v2)?
             }
             (Value::Dyn(d), other) => {
-                let v = d.try_as_type(other.type_of())?;
+                let v = d.try_to_type(other.type_of())?;
                 v.multiply(other)?
             }
             (base, Value::Dyn(d)) => {
-                let other = d.try_as_type(base.type_of())?;
+                let other = d.try_to_type(base.type_of())?;
                 base.multiply(&other)?
             }
             _ => miette::bail!("Failed to multiply {self:?} * {other:?}"),
@@ -851,15 +851,15 @@ impl Value {
             }
             (Value::Dyn(d1), Value::Dyn(d2)) => {
                 let v1: Value = d1.clone().try_into()?;
-                let v2 = d2.try_as_type(v1.type_of())?;
+                let v2 = d2.try_to_type(v1.type_of())?;
                 v1.devide(&v2)?
             }
             (Value::Dyn(d), other) => {
-                let v = d.try_as_type(other.type_of())?;
+                let v = d.try_to_type(other.type_of())?;
                 v.devide(other)?
             }
             (base, Value::Dyn(d)) => {
-                let other = d.try_as_type(base.type_of())?;
+                let other = d.try_to_type(base.type_of())?;
                 base.devide(&other)?
             }
             _ => miette::bail!("Failed to devide {self:?} / {other:?}"),
@@ -874,15 +874,15 @@ impl Value {
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
             (Value::Dyn(d1), Value::Dyn(d2)) => {
                 let v1: Value = d1.clone().try_into()?;
-                let v2 = d2.try_as_type(v1.type_of())?;
+                let v2 = d2.try_to_type(v1.type_of())?;
                 v1.reminder(&v2)?
             }
             (Value::Dyn(d), other) => {
-                let v = d.try_as_type(other.type_of())?;
+                let v = d.try_to_type(other.type_of())?;
                 v.reminder(other)?
             }
             (base, Value::Dyn(d)) => {
-                let other = d.try_as_type(base.type_of())?;
+                let other = d.try_to_type(base.type_of())?;
                 base.reminder(&other)?
             }
             _ => miette::bail!("Failed to get reminder {self:?} % {other:?}"),
@@ -900,7 +900,7 @@ impl Value {
                 }
             }
             (Value::List(list), Value::Dyn(d)) => {
-                let index = d.try_as_i64()?;
+                let index = d.try_to_i64()?;
                 match list.get(index as usize) {
                     Some(v) => Ok(v.clone()),
                     None => miette::bail!("Index out of range: {:?}", index),
@@ -922,7 +922,7 @@ impl Value {
                 Dyn::List(list) => {
                     let index = match index {
                         Value::Int(n) => *n,
-                        Value::Dyn(d) => d.try_as_i64()?,
+                        Value::Dyn(d) => d.try_to_i64()?,
                         _ => miette::bail!("Cannot index into {:?}", index),
                     };
                     match list.get(index as usize) {

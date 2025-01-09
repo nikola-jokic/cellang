@@ -10,8 +10,8 @@ use std::fmt;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
-/// Value is a primitive value for each ValueType. Resolution for a value could be a constant,
-/// for example, an Int(1), or a resolved value from a variable.
+/// Represents dynamic value that is type checked or converted
+/// during evaluation time. It is associated with `dyn(<type>)` expression.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Dyn {
@@ -33,25 +33,33 @@ pub enum Dyn {
 }
 
 impl Dyn {
+    /// Tries to convert self into i64
     #[inline]
-    pub fn try_as_i64(&self) -> Result<i64, Error> {
+    pub fn try_into_i64(self) -> Result<i64, Error> {
         match self {
-            Dyn::Int(n) => Ok(*n),
-            Dyn::Uint(n) => Ok(i64::try_from(*n).into_diagnostic()?),
+            Dyn::Int(n) => Ok(n),
+            Dyn::Uint(n) => Ok(i64::try_from(n).into_diagnostic()?),
             Dyn::Double(n) => Ok(n.round() as i64),
             Dyn::String(s) => match s.parse::<i64>() {
                 Ok(n) => Ok(n),
                 Err(e) => miette::bail!("Failed to convert to int: {e:?}"),
             },
+            Dyn::Timestamp(t) => Ok(t.unix_timestamp()),
             _ => miette::bail!("Failed to convert to int"),
         }
     }
 
     #[inline]
-    pub fn try_as_u64(&self) -> Result<u64, Error> {
+    pub fn try_to_i64(&self) -> Result<i64, Error> {
+        self.clone().try_into_i64()
+    }
+
+    /// Tries to convert self into u64
+    #[inline]
+    pub fn try_into_u64(self) -> Result<u64, Error> {
         match self {
-            Dyn::Int(n) => Ok(u64::try_from(*n).into_diagnostic()?),
-            Dyn::Uint(n) => Ok(*n),
+            Dyn::Int(n) => Ok(u64::try_from(n).into_diagnostic()?),
+            Dyn::Uint(n) => Ok(n),
             Dyn::Double(n) => Ok(n.round() as u64),
             Dyn::String(s) => match s.parse::<u64>() {
                 Ok(n) => Ok(n),
@@ -61,24 +69,25 @@ impl Dyn {
         }
     }
 
+    /// Tries to convert self into f64
     #[inline]
-    pub fn try_as_f64(&self) -> Result<f64, Error> {
+    pub fn try_into_f64(self) -> Result<f64, Error> {
         match self {
             Dyn::Int(n) => {
-                if *n > f64::MAX as i64 || *n < f64::MIN as i64 {
+                if n > f64::MAX as i64 || n < f64::MIN as i64 {
                     miette::bail!("Failed to convert to double: out of range")
                 } else {
-                    Ok(*n as f64)
+                    Ok(n as f64)
                 }
             }
             Dyn::Uint(n) => {
-                if *n > f64::MAX as u64 {
+                if n > f64::MAX as u64 {
                     miette::bail!("Failed to convert to double: out of range")
                 } else {
-                    Ok(*n as f64)
+                    Ok(n as f64)
                 }
             }
-            Dyn::Double(n) => Ok(*n),
+            Dyn::Double(n) => Ok(n),
             Dyn::String(s) => match s.parse::<f64>() {
                 Ok(n) => Ok(n),
                 Err(e) => miette::bail!("Failed to convert to double: {e:?}"),
@@ -88,14 +97,20 @@ impl Dyn {
     }
 
     #[inline]
-    pub fn try_as_string(&self) -> Result<String, Error> {
+    pub fn try_to_f64(&self) -> Result<f64, Error> {
+        self.clone().try_into_f64()
+    }
+
+    /// Tries to convert self into bool
+    #[inline]
+    pub fn try_into_string(self) -> Result<String, Error> {
         match self {
             Dyn::Int(n) => Ok(n.to_string()),
             Dyn::Uint(n) => Ok(n.to_string()),
             Dyn::Double(n) => Ok(n.to_string()),
             Dyn::String(s) => Ok(s.clone()),
             Dyn::Bool(b) => Ok(b.to_string()),
-            Dyn::Bytes(s) => Ok(String::from_utf8_lossy(s).to_string()),
+            Dyn::Bytes(s) => Ok(String::from_utf8_lossy(&s).to_string()),
             Dyn::Null => Ok("null".to_string()),
             Dyn::Timestamp(v) => Ok(v.format(&Rfc3339).unwrap()),
             Dyn::Duration(v) => Ok(v.to_string()),
@@ -104,16 +119,28 @@ impl Dyn {
     }
 
     #[inline]
-    pub fn try_as_bytes(&self) -> Result<Vec<u8>, Error> {
+    pub fn try_to_string(&self) -> Result<String, Error> {
+        self.clone().try_into_string()
+    }
+
+    /// Tries to convert self into bytes
+    #[inline]
+    pub fn try_into_bytes(self) -> Result<Vec<u8>, Error> {
         match self {
-            Dyn::Bytes(b) => Ok(b.clone()),
+            Dyn::Bytes(b) => Ok(b),
             Dyn::String(s) => Ok(s.as_bytes().to_vec()),
             _ => miette::bail!("Failed to convert to bytes"),
         }
     }
 
     #[inline]
-    pub fn try_as_list_of(&self, ty: ValueType) -> Result<List, Error> {
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
+        self.clone().try_into_bytes()
+    }
+
+    /// Tries to convert self into list
+    #[inline]
+    pub fn try_into_list_of(self, ty: ValueType) -> Result<List, Error> {
         match self {
             Dyn::List(list) => match ty {
                 ValueType::ListOf { element_type } => match element_type {
@@ -127,8 +154,9 @@ impl Dyn {
                             list.len(),
                         );
                         for item in list.iter() {
-                            new_list
-                                .push(item.clone().try_as_type(*ty.clone())?)?;
+                            new_list.push(
+                                item.clone().try_into_type(*ty.clone())?,
+                            )?;
                         }
                         Ok(new_list)
                     }
@@ -140,7 +168,13 @@ impl Dyn {
     }
 
     #[inline]
-    pub fn try_as_map_of(&self, ty: ValueType) -> Result<Map, Error> {
+    pub fn try_to_list_of(&self, ty: ValueType) -> Result<List, Error> {
+        self.clone().try_into_list_of(ty)
+    }
+
+    /// Tries to convert self into map
+    #[inline]
+    pub fn try_into_map_of(self, ty: ValueType) -> Result<Map, Error> {
         match self {
             Dyn::Map(map) => match ty {
                 ValueType::MapOf { key_type } => match key_type {
@@ -154,9 +188,9 @@ impl Dyn {
                             map.len(),
                         );
                         for (k, v) in map.iter() {
-                            let k_value: Dyn = k.clone().into();
+                            let k_value: Dyn = k.into();
                             new_map.insert(
-                                k_value.try_as_key_type(*ty.clone())?,
+                                k_value.try_into_key_type(*ty.clone())?,
                                 v.clone().try_into()?,
                             )?;
                         }
@@ -169,47 +203,59 @@ impl Dyn {
         }
     }
 
+    /// Tries to convert self into key
     #[inline]
-    pub fn try_as_key_type(&self, ty: KeyType) -> Result<Key, Error> {
+    pub fn try_into_key_type(self, ty: KeyType) -> Result<Key, Error> {
         match ty {
-            KeyType::Int => Ok(Key::Int(self.try_as_i64()?)),
-            KeyType::Uint => Ok(Key::Uint(self.try_as_u64()?)),
-            KeyType::String => Ok(Key::String(self.try_as_string()?)),
+            KeyType::Int => Ok(Key::Int(self.try_into_i64()?)),
+            KeyType::Uint => Ok(Key::Uint(self.try_into_u64()?)),
+            KeyType::String => Ok(Key::String(self.try_into_string()?)),
             KeyType::Bool => match self {
-                Dyn::Bool(b) => Ok(Key::Bool(*b)),
+                Dyn::Bool(b) => Ok(Key::Bool(b)),
                 _ => miette::bail!("Failed to convert to bool"),
             },
         }
     }
 
     #[inline]
-    pub fn try_as_type(&self, ty: ValueType) -> Result<Value, Error> {
+    pub fn try_to_map_of(&self, ty: ValueType) -> Result<Map, Error> {
+        self.clone().try_into_map_of(ty)
+    }
+
+    /// Tries to convert self into value
+    #[inline]
+    pub fn try_into_type(self, ty: ValueType) -> Result<Value, Error> {
         match ty {
-            ValueType::Int => Ok(Value::Int(self.try_as_i64()?)),
-            ValueType::Uint => Ok(Value::Uint(self.try_as_u64()?)),
-            ValueType::Double => Ok(Value::Double(self.try_as_f64()?)),
-            ValueType::String => Ok(Value::String(self.try_as_string()?)),
+            ValueType::Int => Ok(Value::Int(self.try_into_i64()?)),
+            ValueType::Uint => Ok(Value::Uint(self.try_into_u64()?)),
+            ValueType::Double => Ok(Value::Double(self.try_into_f64()?)),
+            ValueType::String => Ok(Value::String(self.try_into_string()?)),
             ValueType::Bool => match self {
-                Dyn::Bool(b) => Ok(Value::Bool(*b)),
+                Dyn::Bool(b) => Ok(Value::Bool(b)),
                 _ => miette::bail!("Failed to convert to bool"),
             },
-            ValueType::Bytes => Ok(Value::Bytes(self.try_as_bytes()?)),
+            ValueType::Bytes => Ok(Value::Bytes(self.try_into_bytes()?)),
             ValueType::Timestamp => match self {
-                Dyn::Timestamp(v) => Ok(Value::Timestamp(*v)),
+                Dyn::Timestamp(v) => Ok(Value::Timestamp(v)),
                 _ => miette::bail!("Failed to convert to timestamp"),
             },
             ValueType::Duration => match self {
-                Dyn::Duration(v) => Ok(Value::Duration(*v)),
+                Dyn::Duration(v) => Ok(Value::Duration(v)),
                 _ => miette::bail!("Failed to convert to duration"),
             },
-            ValueType::ListOf { .. } => Ok(self.try_as_list_of(ty)?.into()),
-            ValueType::MapOf { .. } => Ok(self.try_as_map_of(ty)?.into()),
+            ValueType::ListOf { .. } => Ok(self.try_into_list_of(ty)?.into()),
+            ValueType::MapOf { .. } => Ok(self.try_into_map_of(ty)?.into()),
             ValueType::Null => match self {
                 Dyn::Null => Ok(Value::Null),
                 _ => miette::bail!("Failed to convert to null"),
             },
             ValueType::Dyn => miette::bail!("Failed to convert to dyn"),
         }
+    }
+
+    #[inline]
+    pub fn try_to_type(&self, ty: ValueType) -> Result<Value, Error> {
+        self.clone().try_into_type(ty)
     }
 }
 
@@ -245,15 +291,15 @@ impl TryFrom<Dyn> for Value {
             Dyn::Bool(b) => Value::Bool(b),
             Dyn::Map(map) => {
                 let mut new_map = Map::with_capacity(map.len());
-                for (k, v) in map.iter() {
-                    new_map.insert(k.clone(), v.clone().try_into()?)?;
+                for (k, v) in map.into_iter() {
+                    new_map.insert(k, v.try_into()?)?;
                 }
                 Value::Map(new_map.try_into()?)
             }
             Dyn::List(list) => {
                 let mut new_list = List::new();
-                for item in list.iter() {
-                    new_list.push(item.clone().try_into()?)?;
+                for item in list.into_iter() {
+                    new_list.push(item.try_into()?)?;
                 }
                 Value::List(new_list)
             }
@@ -276,15 +322,15 @@ impl From<Value> for Dyn {
             Value::Bool(b) => Dyn::Bool(b),
             Value::Map(map) => {
                 let mut new_map = HashMap::new();
-                for (k, v) in map.iter() {
-                    new_map.insert(k.clone(), v.clone().into());
+                for (k, v) in map.into_iter() {
+                    new_map.insert(k, v.into());
                 }
                 Dyn::Map(new_map)
             }
             Value::List(list) => {
                 let mut new_list = Vec::new();
-                for item in list.iter() {
-                    new_list.push(item.clone().into());
+                for item in list.into_iter() {
+                    new_list.push(item.into());
                 }
                 Dyn::List(new_list)
             }

@@ -1067,6 +1067,26 @@ mod tests {
 
     #[test]
     fn test_inline_function_call() {
+        let input = "1 + size(2u)";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Plus,
+                vec![
+                    TokenTree::Atom(Atom::Int(1)),
+                    TokenTree::Call {
+                        func: Box::new(TokenTree::Atom(Atom::Ident("size"))),
+                        args: vec![TokenTree::Atom(Atom::Uint(2))],
+                    },
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_inline_dyn_call() {
         let input = "1 + dyn(2u)";
         let mut parser = Parser::new(input);
         let tree = parser.parse().unwrap();
