@@ -1,4 +1,5 @@
 use crate::{
+    dynamic::Dyn,
     environment::Environment,
     parser::{Atom, Op, TokenTree},
     types::{Key, KeyType, Map, Value},
@@ -63,6 +64,59 @@ pub fn eval_cons<'a>(
     tokens: &'a [TokenTree],
 ) -> Result<Resolver<'a>, Error> {
     let value: Value = match op {
+        Op::Dyn => {
+            assert!(tokens.len() == 1);
+            match &tokens[0] {
+                TokenTree::Atom(atom) => {
+                    let val = match atom {
+                        Atom::Int(n) => Dyn::Int(*n),
+                        Atom::Uint(n) => Dyn::Uint(*n),
+                        Atom::Double(n) => Dyn::Double(*n),
+                        Atom::String(s) => Dyn::String(s.to_string()),
+                        Atom::Bool(b) => Dyn::Bool(*b),
+                        Atom::Null => Dyn::Null,
+                        Atom::Bytes(b) => Dyn::Bytes(b.clone().to_vec()),
+                        Atom::Ident(ident) => miette::bail!(
+                            "Expected type after dyn, found ident '{ident}'",
+                        ),
+                    };
+                    Value::Dyn(val)
+                }
+                TokenTree::Cons(Op::Map, tokens) => {
+                    let mut map = HashMap::new();
+
+                    let mut iter = tokens.iter();
+                    while let (Some(key), Some(value)) =
+                        (iter.next(), iter.next())
+                    {
+                        let key =
+                            Key::try_from(eval_ast(env, key)?.to_value()?)?;
+                        let value = eval_ast(env, value)?.to_value()?;
+                        map.insert(key, value.into());
+                    }
+
+                    Value::Dyn(Dyn::Map(map))
+                }
+                TokenTree::Cons(Op::List, tokens) => {
+                    let mut list = Vec::with_capacity(tokens.len());
+                    for token in tokens {
+                        let value = eval_ast(env, token)?.to_value()?;
+                        list.push(value.into());
+                    }
+                    Value::Dyn(Dyn::List(list))
+                }
+                TokenTree::Call { func, args } => {
+                    let lhs = eval_ast(env, func)?;
+                    let f = lhs.try_function()?;
+                    let value = f(env, args.as_ref())?;
+                    Value::Dyn(value.into())
+                }
+                _ => miette::bail!(
+                    "Expected atom or list, found {:?}",
+                    tokens[0]
+                ),
+            }
+        }
         Op::Call => panic!("Call should be handled in eval_ast"),
         Op::Field => {
             assert!(tokens.len() == 2);
@@ -80,37 +134,12 @@ pub fn eval_cons<'a>(
         }
         Op::Index => {
             assert!(tokens.len() == 2);
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.try_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.try_value()?;
 
-            match eval_ast(env, &tokens[0])?.try_value()? {
-                Value::List(list) => {
-                    let i = match eval_ast(env, &tokens[1])?.try_value()? {
-                        Value::Int(n) => *n,
-                        _ => miette::bail!(
-                            "Expected int index, found {:?}",
-                            tokens[1]
-                        ),
-                    };
-
-                    if i < 0 || i >= list.len() as i64 {
-                        miette::bail!("Index out of bounds: {}", i);
-                    }
-
-                    list.get(i as usize).unwrap().clone()
-                }
-                Value::Map(map) => {
-                    let key =
-                        Key::try_from(eval_ast(env, &tokens[1])?.to_value()?)?;
-                    if let Some(val) = map.get(&key)? {
-                        val.clone()
-                    } else {
-                        miette::bail!("Key not found: {}", key);
-                    }
-                }
-                _ => miette::bail!(
-                    "Expected reference to a list or map, found {:?}",
-                    tokens[0]
-                ),
-            }
+            lhs.index(rhs)?
         }
         Op::Not => {
             let lhs = eval_ast(env, &tokens[0])?;
@@ -274,7 +303,7 @@ pub fn eval_cons<'a>(
                 list.push(value);
             }
 
-            Value::List(list.into())
+            Value::List(list.try_into()?)
         }
         Op::Map => {
             if tokens.is_empty() {
@@ -306,7 +335,7 @@ pub fn eval_cons<'a>(
                 map.insert(Key::try_from(key)?, value);
             }
 
-            Value::Map(map.into())
+            Value::Map(map.try_into().unwrap())
         }
         Op::IfTernary => {
             let lhs = match eval_ast(env, &tokens[0])?.try_value()? {
@@ -428,8 +457,7 @@ mod tests {
 
     #[test]
     fn test_eval_primitives() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+        let env = Environment::root();
         assert_eq!(eval(&env, "42").expect("42"), Value::Int(42));
         assert_eq!(eval(&env, "true").expect("true"), Value::Bool(true));
         assert_eq!(eval(&env, "false").expect("false"), Value::Bool(false));
@@ -438,9 +466,8 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_plus() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+    fn test_eval_basic_plus() {
+        let env = Environment::root();
         assert_eq!(eval(&env, "1 + 2").expect("1 + 2"), Value::Int(3));
         assert_eq!(eval(&env, "1u + 2u").expect("1u + 2u"), Value::Uint(3));
         assert_eq!(
@@ -451,12 +478,77 @@ mod tests {
             eval(&env, "\"hello\" + \"world\"").expect("\"hello\" + \"world\""),
             "helloworld".into()
         );
+        assert_eq!(
+            eval(&env, "[1] + [2, 3]").expect("[1] + [2, 3]"),
+            Value::List(
+                vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+                    .try_into()
+                    .unwrap()
+            )
+        );
     }
 
     #[test]
-    fn test_eval_minus() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+    fn test_eval_dyn_plus() {
+        let env = Environment::root();
+        assert_eq!(
+            eval(&env, "1 + dyn(2)").expect("1 + dyn(2)"),
+            Value::Int(3),
+            "1 + dyn(2)"
+        );
+        assert_eq!(
+            eval(&env, "1 + dyn(2u)").expect("1 + dyn(2u)"),
+            Value::Int(3),
+            "1 + dyn(2u)"
+        );
+        assert_eq!(
+            eval(&env, "1 + dyn(2.0)").expect("1 + dyn(2.0)"),
+            Value::Int(3),
+            "1 + dyn(2u)"
+        );
+        assert_eq!(
+            eval(&env, "1 + dyn(\"2\")").expect("1 + dyn(\"2\")"),
+            Value::Int(3),
+            "1 + dyn(\"2\")"
+        );
+        assert_eq!(
+            eval(&env, "\"1\" + dyn(2)").expect("\"1\" + dyn(2)"),
+            "12".into(),
+            "\"1\" + dyn(2)"
+        );
+        assert_eq!(
+            eval(&env, "[1] + dyn([2, 3])").expect("[1] + dyn([2, 3])"),
+            Value::List(
+                vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+                    .try_into()
+                    .unwrap()
+            )
+        );
+        assert_eq!(
+            eval(&env, "[1] + dyn([2u, 3u])").expect("[1] + dyn([2u, 3u])"),
+            Value::List(
+                vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+                    .try_into()
+                    .unwrap()
+            )
+        );
+        assert_eq!(
+            eval(&env, "dyn([2u, 3u]) + [1]").expect("dyn([2u, 3u]) + [1]"),
+            Value::List(
+                vec![Value::Int(2), Value::Int(3), Value::Int(1)]
+                    .try_into()
+                    .unwrap()
+            )
+        );
+        assert_eq!(
+            eval(&env, "dyn(1u) + dyn(2u)").expect("dyn(1u) + dyn(2u)"),
+            Value::Uint(3)
+        );
+    }
+
+    #[test]
+    fn test_eval_basic_minus() {
+        let env = Environment::root();
         assert_eq!(eval(&env, "1 - 2").expect("1 - 2"), Value::Int(-1));
         assert_eq!(eval(&env, "2u - 1u").expect("2u - 1u"), Value::Uint(1));
         assert_eq!(
@@ -466,9 +558,41 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_dyn_minus() {
+        let env = Environment::root();
+        assert_eq!(
+            eval(&env, "1 - dyn(2)").expect("1 - dyn(2)"),
+            Value::Int(-1),
+            "1 - dyn(2)"
+        );
+
+        assert_eq!(
+            eval(&env, "1 - dyn(2u)").expect("1 - dyn(2u)"),
+            Value::Int(-1),
+            "1 - dyn(2u)"
+        );
+        assert_eq!(
+            eval(&env, "dyn(1u) - 2").expect("dyn(1u) - 2"),
+            Value::Int(-1),
+            "dyn(1u) - 2"
+        );
+
+        assert_eq!(
+            eval(&env, "1 - dyn(2.0)").expect("1 - dyn(2.0)"),
+            Value::Int(-1),
+            "1 - dyn(2u)"
+        );
+
+        assert_eq!(
+            eval(&env, "1 - dyn(\"2\")").expect("1 - dyn(\"2\")"),
+            Value::Int(-1),
+            "1 - dyn(\"2\")"
+        );
+    }
+
+    #[test]
     fn test_eval_multiply() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+        let env = Environment::root();
         assert_eq!(eval(&env, "2 * 3").expect("2 * 3"), Value::Int(6));
         assert_eq!(eval(&env, "2u * 3u").expect("2u * 3u"), Value::Uint(6));
         assert_eq!(
@@ -479,8 +603,7 @@ mod tests {
 
     #[test]
     fn test_eval_devide() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+        let env = Environment::root();
         assert_eq!(eval(&env, "6 / 3").expect("6 / 3"), Value::Int(2));
         assert_eq!(eval(&env, "6u / 3u").expect("6u / 3u"), Value::Uint(2));
         assert_eq!(
@@ -491,8 +614,7 @@ mod tests {
 
     #[test]
     fn test_eval_and() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+        let env = Environment::root();
         assert_eq!(
             eval(&env, "true && false").expect("true && false"),
             Value::Bool(false)
@@ -505,8 +627,7 @@ mod tests {
 
     #[test]
     fn test_eval_or() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+        let env = Environment::root();
         assert_eq!(
             eval(&env, "false || true").expect("false || true"),
             Value::Bool(true)
@@ -519,8 +640,7 @@ mod tests {
 
     #[test]
     fn test_eval_equal_equal() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+        let env = Environment::root();
         assert_eq!(eval(&env, "1 == 1").expect("1 == 1"), Value::Bool(true));
         assert_eq!(eval(&env, "1 == 2").expect("1 == 2"), Value::Bool(false));
         assert_eq!(
@@ -561,8 +681,7 @@ mod tests {
 
     #[test]
     fn test_not_equal() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+        let env = Environment::root();
         assert_eq!(eval(&env, "1 != 1").expect("1 != 1"), Value::Bool(false));
         assert_eq!(eval(&env, "1 != 2").expect("1 != 2"), Value::Bool(true));
         assert_eq!(
@@ -602,9 +721,8 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_greater() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+    fn test_eval_basic_greater() {
+        let env = Environment::root();
         assert_eq!(eval(&env, "2 > 1").expect("2 > 1"), Value::Bool(true));
         assert_eq!(eval(&env, "1 > 2").expect("1 > 2"), Value::Bool(false));
         assert_eq!(eval(&env, "2u > 1u").expect("2u > 1u"), Value::Bool(true));
@@ -620,9 +738,25 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_greater_equal() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+    fn test_eval_dyn_greater() {
+        let env = Environment::root();
+        assert_eq!(
+            eval(&env, "dyn(2) > 1").expect("dyn(2) > 1"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval(&env, "2 > dyn(1u)").expect("2 > dyn(1u)"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval(&env, "dyn(2u) > dyn(1u)").expect("dyn(2u) > dyn(1u)"),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_eval_basic_greater_equal() {
+        let env = Environment::root();
         assert_eq!(eval(&env, "2 >= 1").expect("2 >= 1"), Value::Bool(true));
         assert_eq!(eval(&env, "1 >= 2").expect("1 >= 2"), Value::Bool(false));
         assert_eq!(eval(&env, "1 >= 1").expect("1 >= 1"), Value::Bool(true));
@@ -653,9 +787,25 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_less() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+    fn test_eval_dyn_greater_equal() {
+        let env = Environment::root();
+        assert_eq!(
+            eval(&env, "dyn(2u) >= 1").expect("dyn(2u) >= 1"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval(&env, "2 >= dyn(1u)").expect("2 >= dyn(1u)"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval(&env, "dyn(2u) >= dyn(1u)").expect("dyn(2u) >= dyn(1u)"),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_eval_basic_less() {
+        let env = Environment::root();
         assert_eq!(eval(&env, "1 < 2").expect("1 < 2"), Value::Bool(true));
         assert_eq!(eval(&env, "2 < 1").expect("2 < 1"), Value::Bool(false));
         assert_eq!(eval(&env, "1u < 2u").expect("1u < 2u"), Value::Bool(true));
@@ -671,9 +821,25 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_less_equal() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+    fn test_eval_dyn_less() {
+        let env = Environment::root();
+        assert_eq!(
+            eval(&env, "dyn(1u) < 2").expect("dyn(1u) < 2"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval(&env, "1 < dyn(2u)").expect("1 < dyn(2u)"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval(&env, "dyn(1u) < dyn(2u)").expect("dyn(1u) < dyn(2u)"),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_eval_basic_less_equal() {
+        let env = Environment::root();
         assert_eq!(eval(&env, "1 <= 2").expect("1 <= 2"), Value::Bool(true));
         assert_eq!(eval(&env, "2 <= 1").expect("2 <= 1"), Value::Bool(false));
         assert_eq!(eval(&env, "1 <= 1").expect("1 <= 1"), Value::Bool(true));
@@ -704,36 +870,74 @@ mod tests {
     }
 
     #[test]
-    fn test_eval_mod() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+    fn test_eval_dyn_less_equal() {
+        let env = Environment::root();
+        assert_eq!(
+            eval(&env, "dyn(1u) <= 2").expect("dyn(1u) <= 2"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval(&env, "1 <= dyn(2u)").expect("1 <= dyn(2u)"),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval(&env, "dyn(1u) <= dyn(2u)").expect("dyn(1u) <= dyn(2u)"),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_eval_basic_mod() {
+        let env = Environment::root();
         assert_eq!(eval(&env, "5 % 2").expect("5 % 2"), Value::Int(1));
         assert_eq!(eval(&env, "5u % 2u").expect("5u % 2u"), Value::Uint(1));
     }
 
     #[test]
+    fn test_eval_dyn_mod() {
+        let env = Environment::root();
+        assert_eq!(
+            eval(&env, "5 % dyn(2)").expect("5 % dyn(2)"),
+            Value::Int(1),
+            "5 % dyn(2)"
+        );
+        assert_eq!(
+            eval(&env, "5u % dyn(2u)").expect("5u % dyn(2u)"),
+            Value::Uint(1),
+            "5u % dyn(2u)"
+        );
+        assert_eq!(
+            eval(&env, "dyn(5) % 2").expect("dyn(5) % 2"),
+            Value::Int(1),
+            "dyn(5) % 2"
+        );
+    }
+
+    #[test]
     fn test_eval_not() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+        let env = Environment::root();
         assert_eq!(eval(&env, "!true").expect("!true"), Value::Bool(false));
         assert_eq!(eval(&env, "!false").expect("!false"), Value::Bool(true));
     }
 
     #[test]
     fn test_list() {
-        let env = EnvironmentBuilder::default();
-        let env = env.build();
+        let env = Environment::root();
         assert_eq!(eval(&env, "[]").expect("[]"), Value::List(List::new()));
         assert_eq!(
             eval(&env, "[1, 2, 3]").expect("[1, 2, 3]"),
             Value::List(
-                vec![Value::Int(1), Value::Int(2), Value::Int(3)].into()
+                vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+                    .try_into()
+                    .unwrap()
             )
         );
         assert_eq!(
             eval(&env, "[1u, 2u, 3u]").expect("[1u, 2u, 3u]"),
             Value::List(
-                vec![Value::Uint(1), Value::Uint(2), Value::Uint(3)].into()
+                vec![Value::Uint(1), Value::Uint(2), Value::Uint(3)]
+                    .try_into()
+                    .unwrap()
             )
         );
         assert_eq!(
@@ -744,19 +948,26 @@ mod tests {
                     Value::Double(2.0),
                     Value::Double(3.0)
                 ]
-                .into()
+                .try_into()
+                .unwrap()
             )
         );
         assert_eq!(
             eval(&env, "[\"hello\", \"world\"]")
                 .expect("[\"hello\", \"world\"]"),
             Value::List(
-                vec!["hello".into(), Value::String("world".to_string())].into()
+                vec!["hello".into(), Value::String("world".to_string())]
+                    .try_into()
+                    .unwrap()
             )
         );
         assert_eq!(
             eval(&env, "[true, false]").expect("[true, false]"),
-            Value::List(vec![Value::Bool(true), Value::Bool(false)].into())
+            Value::List(
+                vec![Value::Bool(true), Value::Bool(false)]
+                    .try_into()
+                    .unwrap()
+            )
         );
 
         // list elements must have the same type
@@ -780,23 +991,23 @@ mod tests {
                 let mut map = HashMap::new();
                 map.insert(Key::Int(1), Value::Int(2));
                 map.insert(Key::Int(3), Value::Int(4));
-                Value::Map(map.into())
+                Value::Map(map.try_into().unwrap())
             }),
             ("{1u: 2u, 3u: 4u}", {
                 let mut map = HashMap::new();
                 map.insert(Key::Uint(1), Value::Uint(2));
                 map.insert(Key::Uint(3), Value::Uint(4));
-                Value::Map(map.into())
+                Value::Map(map.try_into().unwrap())
             }),
             ("{\"hello\": \"world\"}", {
                 let mut map = HashMap::new();
                 map.insert(Key::from("hello"), Value::from("world"));
-                Value::Map(map.into())
+                Value::Map(map.try_into().unwrap())
             }),
             ("{true: false}", {
                 let mut map = HashMap::new();
                 map.insert(Key::Bool(true), Value::Bool(false));
-                Value::Map(map.into())
+                Value::Map(map.try_into().unwrap())
             }),
         ];
 
@@ -924,17 +1135,17 @@ mod tests {
             let mut leaf = HashMap::new();
             leaf.insert(Key::from("y"), Value::Int(42));
 
-            let leaf = Value::Map(leaf.into());
+            let leaf = Value::Map(leaf.try_into().unwrap());
 
             let mut middle_level = HashMap::new();
             middle_level.insert(Key::Int(0), leaf);
 
-            let middle_level = Value::Map(middle_level.into());
+            let middle_level = Value::Map(middle_level.try_into().unwrap());
 
             let mut root = HashMap::new();
             root.insert(Key::Bool(true), middle_level);
 
-            Value::Map(root.into())
+            Value::Map(root.try_into().unwrap())
         })
         .expect("to set variable");
 
@@ -943,6 +1154,26 @@ mod tests {
             eval(&env, "x[true][0][\"y\"]").expect("x[true][0][\"y\"]"),
             Value::Int(42)
         );
+        assert_eq!(
+            eval(&env, "{'a': {'b': {'c': 42}}}['a']['b']['c']")
+                .expect("{'a': {'b': {'c': 42}}}['a']['b']['c']"),
+            Value::Int(42)
+        )
+    }
+
+    #[test]
+    fn test_dyn_map_index_access() {
+        let env = Environment::root();
+        assert_eq!(
+            eval(&env, "dyn({'a': 'b', 2: 3})['a']")
+                .expect("dyn({'a': 'b', 2: 3})['a']"),
+            Value::from("b")
+        );
+        assert_eq!(
+            eval(&env, "dyn({'a': 'b', 2: 3})[2]")
+                .expect("dyn({'a': 'b', 2: 3})[2]"),
+            Value::Int(3)
+        )
     }
 
     #[test]
@@ -951,11 +1182,11 @@ mod tests {
         env.set_variable("x", {
             let mut leaf = HashMap::new();
             leaf.insert(Key::from("z"), Value::Uint(42));
-            let leaf = Value::Map(leaf.into());
+            let leaf = Value::Map(leaf.try_into().unwrap());
 
             let mut root = HashMap::new();
             root.insert(Key::from("y"), leaf);
-            Value::Map(root.into())
+            Value::Map(root.try_into().unwrap())
         })
         .expect("to set variable");
 
@@ -1003,11 +1234,14 @@ mod tests {
             ("\"!\"", "!".into()),
             ("'\\''", "'".into()),
             ("b'ÿ'", Value::Bytes("ÿ".as_bytes().to_vec())),
-            ("[-1]", Value::List(List::from(vec![Value::Int(-1)]))),
+            (
+                "[-1]",
+                Value::List(List::try_from(vec![Value::Int(-1)]).unwrap()),
+            ),
             (r#"{"k":"v"}"#, {
                 let mut map = HashMap::new();
                 map.insert("k", "v");
-                Value::Map(map.into())
+                Value::Map(map.try_into().unwrap())
             }),
             ("true", true.into()),
             ("0x55555555", 0x55555555i64.into()),
@@ -1148,7 +1382,7 @@ mod tests {
             map.insert("h", 2);
             map.insert("i", 3);
             map.insert("j", 2);
-            Value::Map(map.into())
+            Value::Map(map.try_into().unwrap())
         })
         .expect("to set variable");
 
@@ -1256,7 +1490,7 @@ mod tests {
         env.set_variable("foo", {
             let mut map = HashMap::new();
             map.insert("bar", 7);
-            Value::Map(map.into())
+            Value::Map(map.try_into().unwrap())
         })
         .expect("to set variable");
 
@@ -1299,7 +1533,7 @@ mod tests {
         env.set_variable("foo", {
             let mut map = HashMap::new();
             map.insert("bar", 7);
-            Value::Map(map.into())
+            Value::Map(map.try_into().unwrap())
         })
         .expect("to set variable");
 
@@ -1364,15 +1598,15 @@ mod tests {
         let tt = [
             (
                 "[1, 2, 3].map(x, x * 2)",
-                Value::List(vec![2i64, 4, 6].into()),
+                Value::List(vec![2i64, 4, 6].try_into().unwrap()),
             ),
             (
                 "[5, 10, 15].map(x, x / 5)",
-                Value::List(vec![1i64, 2, 3].into()),
+                Value::List(vec![1i64, 2, 3].try_into().unwrap()),
             ),
             (
                 "[1, 2, 3, 4].map(num, num % 2 == 0, num * 2)",
-                Value::List(vec![4i64, 8].into()),
+                Value::List(vec![4i64, 8].try_into().unwrap()),
             ),
         ];
 
@@ -1406,20 +1640,20 @@ mod tests {
         let tt = [
             (
                 "[1, 2, 3].filter(x, x > 1)",
-                Value::List(vec![2i64, 3].into()),
+                Value::List(vec![2i64, 3].try_into().unwrap()),
             ),
             (
                 "['cat', 'dog', 'bird', 'fish'].filter(pet, pet.size() == 3)",
-                Value::List(vec!["cat", "dog"].into()),
+                Value::List(vec!["cat", "dog"].try_into().unwrap()),
             ),
             (
                 "[{'a': 10, 'b': 5, 'c': 20}].map(m, m.filter(key, m[key] > 10))",
                 Value::List(
                     vec![
                         Value::List (
-                            vec!["c"].into()
+                            vec!["c"].try_into().unwrap()
                         )
-                    ].into()
+                    ].try_into().unwrap()
                 ),
             ),
         ];

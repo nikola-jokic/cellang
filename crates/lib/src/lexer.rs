@@ -93,6 +93,7 @@ pub enum TokenType {
     Namespace,
     Void,
     While,
+    Dyn,
 }
 
 impl fmt::Display for TokenType {
@@ -151,6 +152,7 @@ impl fmt::Display for TokenType {
             TokenType::Var => write!(f, "'var'"),
             TokenType::Void => write!(f, "'void'"),
             TokenType::While => write!(f, "'while'"),
+            TokenType::Dyn => write!(f, "'dyn'"),
         }
     }
 }
@@ -237,6 +239,7 @@ impl fmt::Display for Token<'_> {
             TokenType::Plus => write!(f, "PLUS {origin} nil"),
             TokenType::Minus => write!(f, "MINUS {origin} nil"),
             TokenType::Semicolon => write!(f, "SEMICOLON {origin} nil"),
+            TokenType::Dyn => write!(f, "DYN {origin} nil"),
             TokenType::String => {
                 write!(f, "STRING {origin} {}", Token::unescape(origin))
             }
@@ -612,12 +615,21 @@ impl<'src> Iterator for Lexer<'src> {
                         None => TokenType::Ident,
                     };
 
-                    Some(Ok(Token {
-                        ty,
-                        line: self.line,
-                        offset: c_at,
-                        origin: literal,
-                    }))
+                    if literal == "dyn" {
+                        Some(Ok(Token {
+                            ty: TokenType::Dyn,
+                            line: self.line,
+                            offset: c_at,
+                            origin: literal,
+                        }))
+                    } else {
+                        Some(Ok(Token {
+                            ty,
+                            line: self.line,
+                            offset: c_at,
+                            origin: literal,
+                        }))
+                    }
                 }
                 Started::DecimalNumber => {
                     enum State {
@@ -1417,6 +1429,19 @@ mod tests {
             let token = lexer.next().unwrap().unwrap();
             assert_eq!(token.ty, e);
         }
+    }
+
+    #[test]
+    fn test_dyn() {
+        let mut lexer = Lexer::new("dyn(1u)");
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.ty, TokenType::Dyn);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.ty, TokenType::LeftParen);
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.ty, TokenType::Uint(1));
+        let token = lexer.next().unwrap().unwrap();
+        assert_eq!(token.ty, TokenType::RightParen);
     }
 
     #[test]

@@ -46,7 +46,7 @@ fn split(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         .collect::<Vec<Value>>();
 
     // Now, return the type List of strings
-    Ok(Value::List(result.into()))
+    Ok(Value::List(result.try_into().unwrap()))
 }
 
 fn main() {
@@ -61,7 +61,10 @@ fn main() {
 
     // Evaluate a simple expression
     let value = cellang::eval(&env, "'a,b,c'.split(',')").unwrap();
-    assert_eq!(value, Value::List(List::from(vec!["a", "b", "c",])));
+    assert_eq!(
+        value,
+        Value::List(List::try_from(vec!["a", "b", "c",]).unwrap())
+    );
 
     // Evaluate a simple expression with variables
     let mut variables = Map::new();
@@ -69,5 +72,8 @@ fn main() {
     let mut env = env.child();
     env.set_variables(&variables);
     let value = cellang::eval(&env, "x.split(',')").unwrap();
-    assert_eq!(value, Value::List(List::from(vec!["a", "b", "c",])));
+    assert_eq!(
+        value,
+        Value::List(List::try_from(vec!["a", "b", "c",]).unwrap())
+    );
 }

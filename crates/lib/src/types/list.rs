@@ -480,19 +480,27 @@ impl FromIterator<Value> for List {
     }
 }
 
-impl<T> From<Vec<T>> for List
+impl<T> TryFrom<Vec<T>> for List
 where
     T: Into<Value>,
 {
-    fn from(values: Vec<T>) -> Self {
+    type Error = Error;
+    fn try_from(values: Vec<T>) -> Result<Self, Error> {
         if values.is_empty() {
-            Self::new()
+            Ok(Self::new())
         } else {
             let mut list = List::with_capacity(values.len());
-            list.inner = values.into_iter().map(Into::into).collect();
-            list.elem_type = list.inner.first().map(Value::type_of);
-            list
+            for value in values {
+                list.push(value.into())?;
+            }
+            Ok(list)
         }
+    }
+}
+
+impl From<List> for Vec<Value> {
+    fn from(list: List) -> Self {
+        list.inner
     }
 }
 
@@ -526,7 +534,7 @@ impl<'de> Deserialize<'de> for List {
         D: Deserializer<'de>,
     {
         let inner: Vec<Value> = Vec::deserialize(deserializer)?;
-        Ok(List::from(inner))
+        List::try_from(inner).map_err(serde::de::Error::custom)
     }
 }
 

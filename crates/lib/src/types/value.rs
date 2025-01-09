@@ -1,4 +1,7 @@
-use super::{deserialize_duration, serialize_duration, Key, List, Map};
+use super::dynamic::Dyn;
+use super::{
+    deserialize_duration, serialize_duration, Key, KeyType, List, Map,
+};
 use base64::prelude::*;
 use miette::Error;
 use serde::de::DeserializeOwned;
@@ -10,21 +13,24 @@ use time::OffsetDateTime;
 
 /// ValueType is an enum that represents the different types of values that can be stored in a
 /// Value.
-#[derive(
-    Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord, Serialize, Deserialize,
-)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, PartialOrd, Ord)]
 pub enum ValueType {
     Int,
     Uint,
     Double,
     String,
     Bool,
-    Map,
-    List,
+    MapOf {
+        key_type: Option<Box<KeyType>>,
+    },
+    ListOf {
+        element_type: Option<Box<ValueType>>,
+    },
     Bytes,
     Timestamp,
     Duration,
     Null,
+    Dyn,
 }
 
 pub trait TryIntoValue {
@@ -77,6 +83,7 @@ pub enum Value {
         deserialize_with = "deserialize_duration"
     )]
     Duration(time::Duration),
+    Dyn(Dyn),
 }
 
 impl FromStr for Value {
@@ -291,13 +298,14 @@ impl From<Map> for Value {
     }
 }
 
-impl<K, V> From<HashMap<K, V>> for Value
+impl<K, V> TryFrom<HashMap<K, V>> for Value
 where
     K: Into<Key>,
     V: TryIntoValue,
 {
-    fn from(value: HashMap<K, V>) -> Self {
-        Value::Map(value.into())
+    type Error = Error;
+    fn try_from(value: HashMap<K, V>) -> Result<Self, Error> {
+        Ok(Value::Map(value.try_into()?))
     }
 }
 
@@ -326,7 +334,7 @@ impl From<List> for Value {
 
 impl From<Vec<Value>> for Value {
     fn from(value: Vec<Value>) -> Self {
-        Value::List(value.into())
+        Value::List(value.try_into().unwrap())
     }
 }
 
@@ -343,7 +351,8 @@ impl From<Vec<i8>> for Value {
                 .iter()
                 .map(|v| Value::Int(*v as i64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -355,7 +364,8 @@ impl From<Vec<isize>> for Value {
                 .iter()
                 .map(|v| Value::Int(*v as i64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -367,7 +377,8 @@ impl From<Vec<i16>> for Value {
                 .iter()
                 .map(|v| Value::Int(*v as i64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -379,7 +390,8 @@ impl From<Vec<i32>> for Value {
                 .iter()
                 .map(|v| Value::Int(*v as i64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -391,7 +403,8 @@ impl From<Vec<i64>> for Value {
                 .iter()
                 .map(|v| Value::Int(*v))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -403,7 +416,8 @@ impl From<Vec<u16>> for Value {
                 .iter()
                 .map(|v| Value::Uint(*v as u64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -415,7 +429,8 @@ impl From<Vec<u32>> for Value {
                 .iter()
                 .map(|v| Value::Uint(*v as u64))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -427,7 +442,8 @@ impl From<Vec<u64>> for Value {
                 .iter()
                 .map(|v| Value::Uint(*v))
                 .collect::<Vec<Value>>()
-                .into(),
+                .try_into()
+                .unwrap(),
         )
     }
 }
@@ -497,6 +513,7 @@ impl fmt::Display for Value {
             Value::Null => write!(f, "null"),
             Value::Timestamp(v) => write!(f, "{}", v.format(&Rfc3339).unwrap()),
             Value::Duration(v) => write!(f, "{v:?}"),
+            Value::Dyn(v) => write!(f, "{v}"),
         }
     }
 }
@@ -509,12 +526,17 @@ impl Value {
             Value::Double(_) => ValueType::Double,
             Value::String(_) => ValueType::String,
             Value::Bool(_) => ValueType::Bool,
-            Value::Map(_) => ValueType::Map,
-            Value::List(_) => ValueType::List,
+            Value::Map(ref m) => ValueType::MapOf {
+                key_type: m.key_type().map(Box::new),
+            },
+            Value::List(ref l) => ValueType::ListOf {
+                element_type: l.element_type().map(Box::new),
+            },
             Value::Bytes(_) => ValueType::Bytes,
             Value::Null => ValueType::Null,
             Value::Timestamp(_) => ValueType::Timestamp,
             Value::Duration(_) => ValueType::Duration,
+            Value::Dyn(_) => ValueType::Dyn,
         }
     }
 
@@ -525,6 +547,21 @@ impl Value {
         crate::try_from_value(self)
     }
 
+    pub fn try_as_key_of_type(&self, key_type: KeyType) -> Result<Key, Error> {
+        match (self, key_type) {
+            (Value::Int(n), KeyType::Int) => Ok(Key::Int(*n)),
+            (Value::Uint(n), KeyType::Uint) => Ok(Key::Uint(*n)),
+            (Value::String(s), KeyType::String) => Ok(Key::String(s.clone())),
+            (Value::Bool(b), KeyType::Bool) => Ok(Key::Bool(*b)),
+            (Value::Dyn(d), _) => {
+                let v: Value = d.clone().try_into()?;
+                v.try_as_key_of_type(key_type)
+            }
+            _ => miette::bail!("Cannot convert {:?} to Key", self),
+        }
+    }
+
+    #[inline]
     pub fn plus(&self, other: &Value) -> Result<Value, Error> {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
@@ -550,7 +587,20 @@ impl Value {
             (Value::Duration(d1), Value::Duration(d2)) => {
                 Ok(Value::Duration(*d1 + *d2))
             }
-
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_to_type(v1.type_of())?;
+                v1.plus(&v2)
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_to_type(other.type_of())?;
+                v.plus(other)
+            }
+            (base, Value::Dyn(d)) => {
+                // plus is not associative, so we need to try both ways
+                let other = d.try_to_type(base.type_of())?;
+                base.plus(&other)
+            }
             _ => miette::bail!(
                 "Invalid types for plus: {:?} and {:?}",
                 self,
@@ -559,6 +609,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn minus(&self, other: &Value) -> Result<Value, Error> {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
@@ -573,6 +624,20 @@ impl Value {
             (Value::Duration(d1), Value::Duration(d2)) => {
                 Ok(Value::Duration(*d1 - *d2))
             }
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_to_type(v1.type_of())?;
+                v1.minus(&v2)
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_to_type(other.type_of())?;
+                v.minus(other)
+            }
+            (base, Value::Dyn(d)) => {
+                // minus is not associative, so we need to try both ways
+                let other = d.try_to_type(base.type_of())?;
+                base.minus(&other)
+            }
             _ => miette::bail!(
                 "Invalid types for minus: {:?} and {:?}",
                 self,
@@ -582,14 +647,35 @@ impl Value {
     }
 
     /// The equal method compares two values and returns a boolean value.
-    /// Values MUST be of the same type. If they are not, an error is returned.
+    /// Values MUST be of the same type except for dyn.
+    /// If they are not, an error is returned.
+    #[inline]
     pub fn equal(&self, other: &Value) -> Result<Value, Error> {
-        if self.type_of() != other.type_of() {
-            miette::bail!("Cannot compare {:?} and {:?}", self, other);
+        match (self, other) {
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_to_type(v1.type_of())?;
+                v1.equal(&v2)
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_to_type(other.type_of())?;
+                v.equal(other)
+            }
+            (base, Value::Dyn(d)) => {
+                // equal is not associative, so we need to try both ways
+                let other = d.try_to_type(base.type_of())?;
+                base.equal(&other)
+            }
+            (lhs, rhs) => {
+                if lhs.type_of() != rhs.type_of() {
+                    miette::bail!("Cannot compare {:?} and {:?}", self, other);
+                }
+                Ok(Value::Bool(self == other))
+            }
         }
-        Ok(Value::Bool(self == other))
     }
 
+    #[inline]
     pub fn not_equal(&self, other: &Value) -> Result<Value, Error> {
         match self.equal(other) {
             Ok(Value::Bool(b)) => Ok(Value::Bool(!b)),
@@ -602,6 +688,7 @@ impl Value {
         }
     }
 
+    #[inline]
     pub fn greater(&self, other: &Value) -> Result<Value, Error> {
         let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Bool(lhs > rhs),
@@ -614,6 +701,20 @@ impl Value {
                 Value::Bool(t1 > t2)
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 > d2),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_to_type(v1.type_of())?;
+                v1.greater(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_to_type(other.type_of())?;
+                v.greater(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                // greater is not associative, so we need to try both ways
+                let other = d.try_to_type(base.type_of())?;
+                base.greater(&other)?
+            }
             (left, right) => {
                 miette::bail!("Cannot compare {:?} and {:?}", left, right)
             }
@@ -634,6 +735,19 @@ impl Value {
                 Value::Bool(t1 >= t2)
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 >= d2),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_to_type(v1.type_of())?;
+                v1.greater_equal(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_to_type(other.type_of())?;
+                v.greater_equal(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_to_type(base.type_of())?;
+                base.greater_equal(&other)?
+            }
             _ => miette::bail!("Failed to compare {self:?} >= {other:?}"),
         };
 
@@ -652,6 +766,19 @@ impl Value {
                 Value::Bool(t1 < t2)
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 < d2),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_to_type(v1.type_of())?;
+                v1.less(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_to_type(other.type_of())?;
+                v.less(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_to_type(base.type_of())?;
+                base.less(&other)?
+            }
             _ => miette::bail!("Failed to compare {self:?} < {other:?}"),
         };
 
@@ -670,6 +797,19 @@ impl Value {
                 Value::Bool(t1 <= t2)
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 <= d2),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_to_type(v1.type_of())?;
+                v1.less_equal(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_to_type(other.type_of())?;
+                v.less_equal(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_to_type(base.type_of())?;
+                base.less_equal(&other)?
+            }
             _ => miette::bail!("Failed to compare {self:?} <= {other:?}"),
         };
 
@@ -682,6 +822,19 @@ impl Value {
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs * rhs),
             (Value::Double(lhs), Value::Double(rhs)) => {
                 Value::Double(lhs * rhs)
+            }
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_to_type(v1.type_of())?;
+                v1.multiply(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_to_type(other.type_of())?;
+                v.multiply(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_to_type(base.type_of())?;
+                base.multiply(&other)?
             }
             _ => miette::bail!("Failed to multiply {self:?} * {other:?}"),
         };
@@ -696,6 +849,19 @@ impl Value {
             (Value::Double(lhs), Value::Double(rhs)) => {
                 Value::Double(lhs / rhs)
             }
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_to_type(v1.type_of())?;
+                v1.devide(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_to_type(other.type_of())?;
+                v.devide(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_to_type(base.type_of())?;
+                base.devide(&other)?
+            }
             _ => miette::bail!("Failed to devide {self:?} / {other:?}"),
         };
 
@@ -706,10 +872,78 @@ impl Value {
         let v = match (self, other) {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
+            (Value::Dyn(d1), Value::Dyn(d2)) => {
+                let v1: Value = d1.clone().try_into()?;
+                let v2 = d2.try_to_type(v1.type_of())?;
+                v1.reminder(&v2)?
+            }
+            (Value::Dyn(d), other) => {
+                let v = d.try_to_type(other.type_of())?;
+                v.reminder(other)?
+            }
+            (base, Value::Dyn(d)) => {
+                let other = d.try_to_type(base.type_of())?;
+                base.reminder(&other)?
+            }
             _ => miette::bail!("Failed to get reminder {self:?} % {other:?}"),
         };
 
         Ok(v)
+    }
+
+    pub fn index(&self, other: &Value) -> Result<Value, Error> {
+        match (self, other) {
+            (Value::List(list), Value::Int(index)) => {
+                match list.get(*index as usize) {
+                    Some(v) => Ok(v.clone()),
+                    None => miette::bail!("Index out of range: {:?}", index),
+                }
+            }
+            (Value::List(list), Value::Dyn(d)) => {
+                let index = d.try_to_i64()?;
+                match list.get(index as usize) {
+                    Some(v) => Ok(v.clone()),
+                    None => miette::bail!("Index out of range: {:?}", index),
+                }
+            }
+            (Value::Map(list), index) => {
+                if list.is_empty() {
+                    miette::bail!("Cannot index into an empty map");
+                }
+
+                let key = index.try_as_key_of_type(list.key_type().unwrap())?;
+
+                match list.get(&key)? {
+                    Some(v) => Ok(v.clone()),
+                    None => miette::bail!("Key not found: {:?}", key),
+                }
+            }
+            (Value::Dyn(d), index) => match d {
+                Dyn::List(list) => {
+                    let index = match index {
+                        Value::Int(n) => *n,
+                        Value::Dyn(d) => d.try_to_i64()?,
+                        _ => miette::bail!("Cannot index into {:?}", index),
+                    };
+                    match list.get(index as usize) {
+                        Some(v) => Ok(v.clone().try_into()?),
+                        None => {
+                            miette::bail!("Index out of range: {:?}", index)
+                        }
+                    }
+                }
+                Dyn::Map(map) => {
+                    // the key must be of key type and not dynamic
+                    let key = Key::try_from(index)?;
+                    match map.get(&key) {
+                        Some(d) => Ok(d.clone().try_into()?),
+                        None => miette::bail!("Key not found: {:?}", key),
+                    }
+                }
+                _ => miette::bail!("Cannot index into {:?}", d),
+            },
+            _ => miette::bail!("Cannot index into {:?} with {:?}", self, other),
+        }
     }
 }
 
@@ -729,7 +963,8 @@ mod test_serialize {
                 Value::Int(4),
                 Value::Int(5),
             ]
-            .into(),
+            .try_into()
+            .unwrap(),
         );
         assert_eq!(value, expected);
     }
@@ -741,7 +976,7 @@ mod test_serialize {
         map.insert("b", 2);
         map.insert("c", 3);
 
-        let value: Value = map.into();
+        let value: Value = map.try_into().unwrap();
         let expected = Value::Map(
             vec![
                 (Key::from("a"), Value::Int(1)),
@@ -750,7 +985,8 @@ mod test_serialize {
             ]
             .into_iter()
             .collect::<HashMap<Key, Value>>()
-            .into(),
+            .try_into()
+            .unwrap(),
         );
 
         assert_eq!(value, expected);
@@ -781,7 +1017,8 @@ mod test_serialize {
             ]
             .into_iter()
             .collect::<HashMap<Key, Value>>()
-            .into(),
+            .try_into()
+            .unwrap(),
         );
 
         assert_eq!(value, expected);

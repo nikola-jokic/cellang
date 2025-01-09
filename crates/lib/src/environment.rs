@@ -128,7 +128,6 @@ fn default_functions() -> &'static HashMap<String, Function> {
             "timestamp".to_string(),
             Arc::new(functions::timestamp) as Function,
         );
-        m.insert("dyn".to_string(), Arc::new(functions::dyn_fn) as Function);
         m.insert(
             "duration".to_string(),
             Arc::new(functions::duration) as Function,

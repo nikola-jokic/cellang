@@ -1,5 +1,6 @@
 mod de;
 pub mod duration;
+pub mod dynamic;
 pub mod list;
 pub mod map;
 mod ser;

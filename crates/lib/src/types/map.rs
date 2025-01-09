@@ -60,7 +60,7 @@ impl Map {
 
     #[inline]
     pub fn key_type(&self) -> Option<KeyType> {
-        self.key_type.clone()
+        self.key_type
     }
 
     #[inline]
@@ -68,6 +68,17 @@ impl Map {
         Self {
             key_type: Some(key_type),
             inner: HashMap::new(),
+        }
+    }
+
+    #[inline]
+    pub fn with_key_type_and_capacity(
+        key_type: KeyType,
+        capacity: usize,
+    ) -> Self {
+        Self {
+            key_type: Some(key_type),
+            inner: HashMap::with_capacity(capacity),
         }
     }
 
@@ -380,21 +391,34 @@ impl Map {
     }
 }
 
-impl<K, V> From<HashMap<K, V>> for Map
+impl<K, V> TryFrom<HashMap<K, V>> for Map
 where
     K: Into<Key>,
     V: TryIntoValue,
 {
-    fn from(inner: HashMap<K, V>) -> Self {
+    type Error = Error;
+    fn try_from(inner: HashMap<K, V>) -> Result<Self, Error> {
         if inner.is_empty() {
-            Self::new()
+            Ok(Self::new())
         } else {
             let mut map = Map::new();
             for (k, v) in inner {
-                map.insert(k.into(), v.try_into_value().unwrap()).unwrap();
+                map.insert(
+                    k.into(),
+                    v.try_into_value().map_err(|err| {
+                        miette::miette!("Failed to convert to value: {err:?}")
+                    })?,
+                )
+                .unwrap();
             }
-            map
+            Ok(map)
         }
+    }
+}
+
+impl From<Map> for HashMap<Key, Value> {
+    fn from(map: Map) -> Self {
+        map.inner
     }
 }
 
@@ -432,12 +456,12 @@ impl<'de> Deserialize<'de> for Map {
         D: Deserializer<'de>,
     {
         let inner = HashMap::<Key, Value>::deserialize(deserializer)?;
-        Ok(Map::from(inner))
+        Map::try_from(inner).map_err(serde::de::Error::custom)
     }
 }
 
 /// KeyType represents the type of the key.
-#[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
+#[derive(Copy, Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
 pub enum KeyType {
     Int,
     Uint,

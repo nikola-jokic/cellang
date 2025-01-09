@@ -32,7 +32,12 @@ impl serde::ser::SerializeSeq for SerializeSeq {
     }
 
     fn end(self) -> Result<Value, SerializeError> {
-        Ok(Value::List(List::from(self.inner)))
+        Ok(Value::List(match List::try_from(self.inner) {
+            Ok(list) => list,
+            Err(err) => {
+                return Err(SerializeError::InvalidKey(err.to_string()))
+            }
+        }))
     }
 }
 

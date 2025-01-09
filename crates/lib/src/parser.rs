@@ -85,6 +85,22 @@ impl<'src> Parser<'src> {
                 ..
             } => TokenTree::Atom(Atom::Bool(false)),
 
+            // dyn
+            Token {
+                ty: TokenType::Dyn, ..
+            } => {
+                self.lexer.expect(
+                    TokenType::LeftParen,
+                    "Expected opening parenthesis after dyn",
+                )?;
+                let expr = self.parse_expr(0)?;
+                self.lexer.expect(
+                    TokenType::RightParen,
+                    "Expected closing parenthesis after dyn",
+                )?;
+                TokenTree::Cons(Op::Dyn, vec![expr])
+            }
+
             // groups
             Token {
                 ty: TokenType::LeftParen,
@@ -288,9 +304,7 @@ impl<'src> Parser<'src> {
                         let rhs = self.parse_expr(r_bp)?;
                         TokenTree::Cons(op, vec![lhs, mhs, rhs])
                     }
-                    _ => {
-                        // If this is a method call, turn it into a function call with lhs as the
-                        // first argument.
+                    Op::Field => {
                         match self.parse_expr(r_bp).wrap_err_with(|| {
                             format!("on the right-hand side of {lhs} {op}")
                         })? {
@@ -303,6 +317,10 @@ impl<'src> Parser<'src> {
                             },
                             rhs => TokenTree::Cons(op, vec![lhs, rhs]),
                         }
+                    }
+                    _ => {
+                        let rhs = self.parse_expr(r_bp)?;
+                        TokenTree::Cons(op, vec![lhs, rhs])
                     }
                 };
 
@@ -488,6 +506,7 @@ pub enum Op {
     Group,
     Map,
     List,
+    Dyn,
 }
 
 impl fmt::Display for Op {
@@ -518,6 +537,7 @@ impl fmt::Display for Op {
             Op::Map => "{map}",
             Op::List => "[list]",
             Op::Mod => "%",
+            Op::Dyn => "dyn",
         };
         write!(f, "{}", s)
     }
@@ -1040,6 +1060,46 @@ mod tests {
                         args: vec![TokenTree::Atom(Atom::Ident("foo"))],
                     },
                     TokenTree::Atom(Atom::Int(4)),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_inline_function_call() {
+        let input = "1 + size(2u)";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Plus,
+                vec![
+                    TokenTree::Atom(Atom::Int(1)),
+                    TokenTree::Call {
+                        func: Box::new(TokenTree::Atom(Atom::Ident("size"))),
+                        args: vec![TokenTree::Atom(Atom::Uint(2))],
+                    },
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_inline_dyn_call() {
+        let input = "1 + dyn(2u)";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        assert_eq!(
+            tree,
+            TokenTree::Cons(
+                Op::Plus,
+                vec![
+                    TokenTree::Atom(Atom::Int(1)),
+                    TokenTree::Cons(
+                        Op::Dyn,
+                        vec![TokenTree::Atom(Atom::Uint(2))],
+                    ),
                 ]
             )
         );

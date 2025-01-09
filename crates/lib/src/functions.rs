@@ -1,4 +1,5 @@
 use crate::{
+    dynamic::Dyn,
     eval_ast,
     parser::{Atom, Op, TokenTree},
     types::{Duration, List, Map},
@@ -24,6 +25,13 @@ pub fn size(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         Value::String(s) => Value::Int(s.len() as i64),
         Value::List(list) => Value::Int(list.len() as i64),
         Value::Map(map) => Value::Int(map.len() as i64),
+        Value::Dyn(d) => match d {
+            Dyn::Bytes(b) => Value::Int(b.len() as i64),
+            Dyn::String(s) => Value::Int(s.len() as i64),
+            Dyn::List(list) => Value::Int(list.len() as i64),
+            Dyn::Map(map) => Value::Int(map.len() as i64),
+            _ => miette::bail!("Invalid type for size: {:?}", tokens[0]),
+        },
         _ => miette::bail!("Invalid type for size: {:?}", tokens[0]),
     };
 
@@ -52,6 +60,19 @@ pub fn type_fn(
         Value::Null => "null".into(),
         Value::Timestamp(_) => "timestamp".into(),
         Value::Duration(_) => "duration".into(),
+        Value::Dyn(ref v) => match v {
+            Dyn::Int(_) => "dyn(int)".into(),
+            Dyn::Uint(_) => "dyn(uint)".into(),
+            Dyn::Double(_) => "dyn(double)".into(),
+            Dyn::String(_) => "dyn(string)".into(),
+            Dyn::Bool(_) => "dyn(bool)".into(),
+            Dyn::Map(_) => "dyn(map)".into(),
+            Dyn::List(_) => "dyn(list)".into(),
+            Dyn::Bytes(_) => "dyn(bytes)".into(),
+            Dyn::Null => "dyn(null)".into(),
+            Dyn::Timestamp(_) => "dyn(timestamp)".into(),
+            Dyn::Duration(_) => "dyn(duration)".into(),
+        },
     };
 
     Ok(v)
@@ -473,10 +494,7 @@ pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     let v = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::Int(i) => Value::Uint(u64::try_from(i).into_diagnostic()?),
         Value::Uint(u) => Value::Uint(u),
-        Value::Double(d) => {
-            let i = d as i64;
-            Value::Uint(u64::try_from(i).into_diagnostic()?)
-        }
+        Value::Double(d) => Value::Uint(d.round() as u64),
         Value::String(s) => match s.parse::<u64>() {
             Ok(u) => Value::Uint(u),
             Err(_) => miette::bail!("Invalid type for uint: {:?}", tokens[0]),
@@ -502,6 +520,7 @@ pub fn int(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             Err(_) => miette::bail!("Invalid type for int: {:?}", tokens[0]),
         },
         Value::Timestamp(t) => Value::Int(t.unix_timestamp()),
+        Value::Dyn(d) => d.try_into_i64()?.into(),
         _ => miette::bail!("Invalid type for int: {:?}", tokens[0]),
     };
 
@@ -591,16 +610,6 @@ pub fn duration(
     Ok(v)
 }
 
-pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
-    if tokens.len() != 1 {
-        miette::bail!("expected 1 argument, found {}", tokens.len());
-    }
-
-    let v = eval_ast(env, &tokens[0])?.to_value()?;
-
-    Ok(v)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -625,7 +634,6 @@ mod tests {
         is_function(Arc::new(uint));
         is_function(Arc::new(int));
         is_function(Arc::new(string));
-        is_function(Arc::new(dyn_fn));
         is_function(Arc::new(duration));
         is_function(Arc::new(timestamp));
     }
