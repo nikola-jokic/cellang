@@ -105,6 +105,12 @@ pub fn eval_cons<'a>(
                     }
                     Value::Dyn(Dyn::List(list))
                 }
+                TokenTree::Call { func, args } => {
+                    let lhs = eval_ast(env, func)?;
+                    let f = lhs.try_function()?;
+                    let value = f(env, args.as_ref())?;
+                    Value::Dyn(value.into())
+                }
                 _ => miette::bail!(
                     "Expected atom or list, found {:?}",
                     tokens[0]

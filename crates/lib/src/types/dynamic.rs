@@ -49,6 +49,7 @@ impl Dyn {
         }
     }
 
+    /// Tries to convert &self to i64
     #[inline]
     pub fn try_to_i64(&self) -> Result<i64, Error> {
         self.clone().try_into_i64()
@@ -67,6 +68,12 @@ impl Dyn {
             },
             _ => miette::bail!("Failed to convert to uint"),
         }
+    }
+
+    /// Tries to convert &self to u64
+    #[inline]
+    pub fn try_to_u64(&self) -> Result<u64, Error> {
+        self.clone().try_into_u64()
     }
 
     /// Tries to convert self into f64
@@ -96,6 +103,7 @@ impl Dyn {
         }
     }
 
+    /// Tries to convert &self into f64
     #[inline]
     pub fn try_to_f64(&self) -> Result<f64, Error> {
         self.clone().try_into_f64()
@@ -118,6 +126,7 @@ impl Dyn {
         }
     }
 
+    /// Tries to convert &self to string
     #[inline]
     pub fn try_to_string(&self) -> Result<String, Error> {
         self.clone().try_into_string()
@@ -133,6 +142,7 @@ impl Dyn {
         }
     }
 
+    /// Tries to convert &self to bytes
     #[inline]
     pub fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         self.clone().try_into_bytes()
@@ -167,6 +177,7 @@ impl Dyn {
         }
     }
 
+    /// Tries to convert &self to list
     #[inline]
     pub fn try_to_list_of(&self, ty: ValueType) -> Result<List, Error> {
         self.clone().try_into_list_of(ty)
@@ -217,6 +228,7 @@ impl Dyn {
         }
     }
 
+    /// Tries to convert &self to map
     #[inline]
     pub fn try_to_map_of(&self, ty: ValueType) -> Result<Map, Error> {
         self.clone().try_into_map_of(ty)
@@ -253,6 +265,7 @@ impl Dyn {
         }
     }
 
+    /// Tries to convert &self to value of type
     #[inline]
     pub fn try_to_type(&self, ty: ValueType) -> Result<Value, Error> {
         self.clone().try_into_type(ty)
