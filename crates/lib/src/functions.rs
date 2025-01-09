@@ -120,9 +120,15 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
     // expect first parameter to be a list
     let lhs = eval_ast(env, &tokens[0])?;
-    let host = match lhs.try_value()? {
-        v if matches!(v, Value::List(_)) => v,
-        Value::Map(map) => &Value::List(map.keys().map(Value::from).collect()),
+    let list: &Vec<Value> = match lhs.try_value()? {
+        Value::List(list) => list.inner(),
+        Value::Map(map) => &map.keys().map(Value::from).collect(),
+        Value::Dyn(Dyn::List(list)) => {
+            &list.iter().map(|v| Value::Dyn(v.clone())).collect()
+        }
+        Value::Dyn(Dyn::Map(map)) => {
+            &map.keys().map(|k| Value::Dyn(k.into())).collect()
+        }
         _ => miette::bail!("Invalid host type for all: {:?}", tokens[0]),
     };
 
@@ -139,27 +145,19 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
     let mut all = true;
 
-    match host {
-        Value::List(list) => {
-            for item in list.iter() {
-                variables.insert(key.clone(), item.clone())?;
-                let mut env = env.child();
-                env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.try_value()? {
-                    Value::Bool(b) => {
-                        if !b {
-                            all = false;
-                            break;
-                        }
-                    }
-                    _ => miette::bail!(
-                        "Invalid predicate type for all: {:?}",
-                        lambda
-                    ),
+    for item in list.iter() {
+        variables.insert(key.clone(), item.clone())?;
+        let mut env = env.child();
+        env.set_variables(&variables);
+        match eval_ast(&env, lambda)?.try_value()? {
+            Value::Bool(b) => {
+                if !b {
+                    all = false;
+                    break;
                 }
             }
+            _ => miette::bail!("Invalid predicate type for all: {:?}", lambda),
         }
-        _ => unreachable!(),
     }
 
     Ok(Value::Bool(all))
@@ -173,9 +171,15 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
     // expect first parameter to be a list
     let lhs = eval_ast(env, &tokens[0])?;
-    let host = match lhs.try_value()? {
-        v if matches!(v, Value::List(_)) => v,
-        Value::Map(map) => &Value::List(map.keys().map(Value::from).collect()),
+    let list = match lhs.try_value()? {
+        Value::List(list) => list.inner(),
+        Value::Map(map) => &map.keys().map(Value::from).collect(),
+        Value::Dyn(Dyn::List(list)) => {
+            &list.iter().map(|v| Value::Dyn(v.clone())).collect()
+        }
+        Value::Dyn(Dyn::Map(map)) => {
+            &map.keys().map(|k| Value::Dyn(k.into())).collect()
+        }
         _ => miette::bail!("Invalid type for exists: {:?}", tokens[0]),
     };
 
@@ -191,24 +195,19 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
     let mut exists = false;
-    match host {
-        Value::List(list) => {
-            for item in list.iter() {
-                variables.insert(key.clone(), item.clone())?;
-                let mut env = env.child();
-                env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.try_value()? {
-                    Value::Bool(b) => {
-                        if *b {
-                            exists = true;
-                            break;
-                        }
-                    }
-                    _ => miette::bail!("Invalid type for exists: {:?}", lambda),
+    for item in list.iter() {
+        variables.insert(key.clone(), item.clone())?;
+        let mut env = env.child();
+        env.set_variables(&variables);
+        match eval_ast(&env, lambda)?.try_value()? {
+            Value::Bool(b) => {
+                if *b {
+                    exists = true;
+                    break;
                 }
             }
+            _ => miette::bail!("Invalid type for exists: {:?}", lambda),
         }
-        _ => unreachable!(),
     }
 
     Ok(Value::Bool(exists))
@@ -225,10 +224,16 @@ pub fn exists_one(
 
     // expect first parameter to be a list
     let lhs = eval_ast(env, &tokens[0])?;
-    let host = match lhs.try_value()? {
-        v if matches!(v, Value::List(_)) => v,
-        Value::Map(map) => &Value::List(map.keys().map(Value::from).collect()),
-        _ => miette::bail!("Invalid type for exists_one: {:?}", tokens[0]),
+    let list = match lhs.try_value()? {
+        Value::List(list) => list.inner(),
+        Value::Map(map) => &map.keys().map(Value::from).collect(),
+        Value::Dyn(Dyn::List(list)) => {
+            &list.iter().map(|v| Value::Dyn(v.clone())).collect()
+        }
+        Value::Dyn(Dyn::Map(map)) => {
+            &map.keys().map(|k| Value::Dyn(k.into())).collect()
+        }
+        _ => miette::bail!("Invalid type for exists: {:?}", tokens[0]),
     };
 
     // expect second parameter to be an identifier
@@ -243,30 +248,22 @@ pub fn exists_one(
     let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
     let mut found = false;
-    match host {
-        Value::List(list) => {
-            for item in list.iter() {
-                variables.insert(key.clone(), item.clone())?;
-                let mut env = env.child();
-                env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.try_value()? {
-                    Value::Bool(b) => {
-                        if *b {
-                            if found {
-                                found = false;
-                                break;
-                            }
-                            found = true;
-                        }
+    for item in list.iter() {
+        variables.insert(key.clone(), item.clone())?;
+        let mut env = env.child();
+        env.set_variables(&variables);
+        match eval_ast(&env, lambda)?.try_value()? {
+            Value::Bool(b) => {
+                if *b {
+                    if found {
+                        found = false;
+                        break;
                     }
-                    _ => miette::bail!(
-                        "Invalid type for exists_one: {:?}",
-                        lambda
-                    ),
+                    found = true;
                 }
             }
+            _ => miette::bail!("Invalid type for exists_one: {:?}", lambda),
         }
-        _ => unreachable!(),
     }
 
     Ok(Value::Bool(found))
@@ -286,18 +283,38 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     // Host the value reference
     let lhs;
 
+    // Keep the filtered list ownership so that it is not dropped
+    let _filtered_list;
+
     // If there are 3 arguments, no filtering is needed
-    let this = if tokens.len() == 3 {
+    let list = if tokens.len() == 3 {
         lhs = eval_ast(env, &tokens[0])?;
         match lhs.try_value()? {
-            v if matches!(v, Value::List(_)) => v,
-            Value::Map(map) => {
-                &Value::List(map.keys().map(Value::from).collect())
+            Value::List(list) => list.inner(),
+            Value::Map(map) => &map.keys().map(Value::from).collect(),
+            Value::Dyn(Dyn::List(list)) => {
+                &list.iter().map(|v| Value::Dyn(v.clone())).collect()
             }
-            _ => miette::bail!("Invalid type for map: {:?}", tokens[0]),
+            Value::Dyn(Dyn::Map(map)) => {
+                &map.keys().map(|k| Value::Dyn(k.into())).collect()
+            }
+            _ => miette::bail!("Invalid type for exists: {:?}", tokens[0]),
         }
     } else {
-        &filter(env, &tokens[0..3])?
+        match filter(env, &tokens[0..3])? {
+            Value::List(list) => {
+                _filtered_list = list;
+                _filtered_list.inner()
+            }
+            Value::Map(map) => &map.keys().map(Value::from).collect(),
+            Value::Dyn(Dyn::List(list)) => {
+                &list.iter().map(|v| Value::Dyn(v.clone())).collect()
+            }
+            Value::Dyn(Dyn::Map(map)) => {
+                &map.keys().map(|k| Value::Dyn(k.into())).collect()
+            }
+            _ => miette::bail!("Invalid type for exists: {:?}", tokens[0]),
+        }
     };
 
     let key = match &tokens[1] {
@@ -311,25 +328,20 @@ pub fn map(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
         &tokens[3]
     };
 
-    match this {
-        Value::List(list) => {
-            if list.is_empty() {
-                return Ok(Value::List(list.clone())); // preserve type if set
-            }
-            let mut new_list = List::with_capacity(list.len());
-            let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
-            for item in list.iter() {
-                variables.insert(key.clone(), item.clone()).wrap_err(
-                    "Invalid item insert, key={key:?}, value={item:?}",
-                )?;
-                let mut env = env.child();
-                env.set_variables(&variables);
-                new_list.push(eval_ast(&env, lambda)?.to_value()?)?;
-            }
-            Ok(Value::List(new_list))
-        }
-        _ => unreachable!(),
+    if list.is_empty() {
+        return Ok(list.clone().into());
     }
+    let mut new_list = List::with_capacity(list.len());
+    let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
+    for item in list.iter() {
+        variables
+            .insert(key.clone(), item.clone())
+            .wrap_err("Invalid item insert, key={key}, value={item}")?;
+        let mut env = env.child();
+        env.set_variables(&variables);
+        new_list.push(eval_ast(&env, lambda)?.to_value()?)?;
+    }
+    Ok(Value::List(new_list))
 }
 
 /// Returns a list containing only the elements from the input list that satisfy the given predicate.
@@ -340,10 +352,16 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 
     let lhs = eval_ast(env, &tokens[0])?;
-    let host = match lhs.try_value()? {
-        v if matches!(v, Value::List(_)) => v,
-        Value::Map(map) => &Value::List(map.keys().map(Value::from).collect()),
-        _ => miette::bail!("Invalid type for filter: {:?}", tokens[0]),
+    let list = match lhs.try_value()? {
+        Value::List(list) => list.inner(),
+        Value::Map(map) => &map.keys().map(Value::from).collect(),
+        Value::Dyn(Dyn::List(list)) => {
+            &list.iter().map(|v| Value::Dyn(v.clone())).collect()
+        }
+        Value::Dyn(Dyn::Map(map)) => {
+            &map.keys().map(|k| Value::Dyn(k.into())).collect()
+        }
+        _ => miette::bail!("Invalid type for exists: {:?}", tokens[0]),
     };
 
     // expect second parameter to be an identifier
@@ -357,29 +375,21 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
 
     let mut variables = Map::with_type_and_capacity(KeyType::String, 1);
 
-    match host {
-        Value::List(list) => {
-            let mut new_list = List::with_type_and_capacity(
-                list.element_type().unwrap(),
-                list.len(),
-            );
-            for item in list.iter() {
-                variables.insert(key.clone(), item.clone())?;
-                let mut env = env.child();
-                env.set_variables(&variables);
-                match eval_ast(&env, lambda)?.try_value()? {
-                    Value::Bool(b) => {
-                        if *b {
-                            new_list.push(item.clone())?;
-                        }
-                    }
-                    _ => miette::bail!("Invalid type for filter: {:?}", lambda),
+    let mut new_list = List::with_capacity(list.len());
+    for item in list.iter() {
+        variables.insert(key.clone(), item.clone())?;
+        let mut env = env.child();
+        env.set_variables(&variables);
+        match eval_ast(&env, lambda)?.try_value()? {
+            Value::Bool(b) => {
+                if *b {
+                    new_list.push(item.clone())?;
                 }
             }
-            Ok(Value::List(new_list))
+            _ => miette::bail!("Invalid type for filter: {:?}", lambda),
         }
-        _ => unreachable!(),
     }
+    Ok(Value::List(new_list))
 }
 
 /// Tests whether the string operand contains the substring. Time complexity is proportional to the product of the sizes of the arguments.
@@ -394,12 +404,14 @@ pub fn contains(
     let s = eval_ast(env, &tokens[0])?;
     let s = match s.try_value()? {
         Value::String(s) => s,
+        Value::Dyn(d) => &d.try_to_string()?,
         _ => miette::bail!("Invalid type for contains: {:?}", tokens[0]),
     };
 
     let value = eval_ast(env, &tokens[1])?;
     let value = match value.try_value()? {
         Value::String(s) => s,
+        Value::Dyn(d) => &d.try_to_string()?,
         _ => miette::bail!("Invalid type for contains: {:?}", tokens[1]),
     };
 
@@ -442,12 +454,14 @@ pub fn ends_with(
     let s = eval_ast(env, &tokens[0])?;
     let s = match s.try_value()? {
         Value::String(s) => s,
+        Value::Dyn(d) => &d.try_to_string()?,
         _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[0]),
     };
 
     let value = eval_ast(env, &tokens[1])?;
     let value = match value.try_value()? {
         Value::String(s) => s,
+        Value::Dyn(d) => &d.try_to_string()?,
         _ => miette::bail!("Invalid type for starts_with: {:?}", tokens[1]),
     };
 
@@ -468,12 +482,14 @@ pub fn matches(
     let s = eval_ast(env, &tokens[0])?;
     let s = match s.try_value()? {
         Value::String(s) => s,
+        Value::Dyn(d) => &d.try_to_string()?,
         _ => miette::bail!("Invalid type for matches: {:?}", tokens[0]),
     };
 
     let value = eval_ast(env, &tokens[1])?;
     let value = match value.try_value()? {
         Value::String(s) => s,
+        Value::Dyn(d) => &d.try_to_string()?,
         _ => miette::bail!("Invalid type for matches: {:?}", tokens[1]),
     };
 
@@ -499,6 +515,7 @@ pub fn uint(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
             Ok(u) => Value::Uint(u),
             Err(_) => miette::bail!("Invalid type for uint: {:?}", tokens[0]),
         },
+        Value::Dyn(d) => d.try_into_u64()?.into(),
         _ => miette::bail!("Invalid type for uint: {:?}", tokens[0]),
     };
 
@@ -557,6 +574,7 @@ pub fn string(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
                 + (d.subsec_milliseconds() as f64 / 1000f64);
             format!("{}s", total_seconds).into()
         }
+        Value::Dyn(d) => d.try_to_string()?.into(),
         _ => miette::bail!("Invalid type for string: {:?}", tokens[0]),
     };
 
@@ -582,6 +600,7 @@ pub fn timestamp(
 
             Value::Timestamp(t)
         }
+        Value::Dyn(d) => d.try_to_timestamp()?.into(),
         _ => miette::bail!("Invalid type for timestamp: {:?}", tokens[0]),
     };
 
@@ -602,6 +621,11 @@ pub fn duration(
     let v = match eval_ast(env, &tokens[0])?.to_value()? {
         Value::String(s) => {
             let d = s.parse::<Duration>()?;
+            Value::Duration(d.0)
+        }
+        Value::Dyn(d) => {
+            let d = d.try_to_string()?;
+            let d = d.parse::<Duration>()?;
             Value::Duration(d.0)
         }
         _ => miette::bail!("Invalid type for duration: {:?}", tokens[0]),
@@ -646,6 +670,7 @@ mod tests {
         for tt in [
             ("b'hello'", Value::Int(5)),
             ("'hello'", Value::Int(5)),
+            ("dyn('hello')", Value::Int(5)),
             ("[1, 2, 3]", Value::Int(3)),
             ("{'a': 1, 'b': 2}", Value::Int(2)),
         ] {
@@ -680,6 +705,7 @@ mod tests {
         for tt in [
             ("1", "int".into()),
             ("1u", "uint".into()),
+            ("dyn(1u)", "dyn(uint)".into()),
             ("1.0", "double".into()),
             ("true", "bool".into()),
             ("'hello'", "string".into()),

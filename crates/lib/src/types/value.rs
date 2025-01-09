@@ -241,16 +241,13 @@ impl Value {
         crate::try_from_value(self)
     }
 
-    pub fn try_as_key_of_type(&self, key_type: KeyType) -> Result<Key, Error> {
+    pub fn try_to_key_of_type(&self, key_type: KeyType) -> Result<Key, Error> {
         match (self, key_type) {
             (Value::Int(n), KeyType::Int) => Ok(Key::Int(*n)),
             (Value::Uint(n), KeyType::Uint) => Ok(Key::Uint(*n)),
             (Value::String(s), KeyType::String) => Ok(Key::String(s.clone())),
             (Value::Bool(b), KeyType::Bool) => Ok(Key::Bool(*b)),
-            (Value::Dyn(d), _) => {
-                let v: Value = d.clone().try_into()?;
-                v.try_as_key_of_type(key_type)
-            }
+            (Value::Dyn(d), _) => d.clone().try_to_key_of_type(key_type),
             _ => miette::bail!("Cannot convert {:?} to Key", self),
         }
     }
@@ -282,7 +279,7 @@ impl Value {
                 Ok(Value::Duration(*d1 + *d2))
             }
             (Value::Dyn(d1), Value::Dyn(d2)) => {
-                let v1: Value = d1.clone().try_into()?;
+                let v1: Value = d1.clone().try_literal_value()?;
                 let v2 = d2.try_to_type(v1.type_of())?;
                 v1.plus(&v2)
             }
@@ -319,7 +316,7 @@ impl Value {
                 Ok(Value::Duration(*d1 - *d2))
             }
             (Value::Dyn(d1), Value::Dyn(d2)) => {
-                let v1: Value = d1.clone().try_into()?;
+                let v1: Value = d1.clone().try_literal_value()?;
                 let v2 = d2.try_to_type(v1.type_of())?;
                 v1.minus(&v2)
             }
@@ -347,7 +344,7 @@ impl Value {
     pub fn equal(&self, other: &Value) -> Result<Value, Error> {
         match (self, other) {
             (Value::Dyn(d1), Value::Dyn(d2)) => {
-                let v1: Value = d1.clone().try_into()?;
+                let v1: Value = d1.clone().try_literal_value()?;
                 let v2 = d2.try_to_type(v1.type_of())?;
                 v1.equal(&v2)
             }
@@ -396,7 +393,7 @@ impl Value {
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 > d2),
             (Value::Dyn(d1), Value::Dyn(d2)) => {
-                let v1: Value = d1.clone().try_into()?;
+                let v1: Value = d1.clone().try_literal_value()?;
                 let v2 = d2.try_to_type(v1.type_of())?;
                 v1.greater(&v2)?
             }
@@ -430,7 +427,7 @@ impl Value {
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 >= d2),
             (Value::Dyn(d1), Value::Dyn(d2)) => {
-                let v1: Value = d1.clone().try_into()?;
+                let v1: Value = d1.clone().try_literal_value()?;
                 let v2 = d2.try_to_type(v1.type_of())?;
                 v1.greater_equal(&v2)?
             }
@@ -461,7 +458,7 @@ impl Value {
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 < d2),
             (Value::Dyn(d1), Value::Dyn(d2)) => {
-                let v1: Value = d1.clone().try_into()?;
+                let v1: Value = d1.clone().try_literal_value()?;
                 let v2 = d2.try_to_type(v1.type_of())?;
                 v1.less(&v2)?
             }
@@ -492,7 +489,7 @@ impl Value {
             }
             (Value::Duration(d1), Value::Duration(d2)) => Value::Bool(d1 <= d2),
             (Value::Dyn(d1), Value::Dyn(d2)) => {
-                let v1: Value = d1.clone().try_into()?;
+                let v1: Value = d1.clone().try_literal_value()?;
                 let v2 = d2.try_to_type(v1.type_of())?;
                 v1.less_equal(&v2)?
             }
@@ -518,7 +515,7 @@ impl Value {
                 Value::Double(lhs * rhs)
             }
             (Value::Dyn(d1), Value::Dyn(d2)) => {
-                let v1: Value = d1.clone().try_into()?;
+                let v1: Value = d1.clone().try_literal_value()?;
                 let v2 = d2.try_to_type(v1.type_of())?;
                 v1.multiply(&v2)?
             }
@@ -544,7 +541,7 @@ impl Value {
                 Value::Double(lhs / rhs)
             }
             (Value::Dyn(d1), Value::Dyn(d2)) => {
-                let v1: Value = d1.clone().try_into()?;
+                let v1: Value = d1.clone().try_literal_value()?;
                 let v2 = d2.try_to_type(v1.type_of())?;
                 v1.devide(&v2)?
             }
@@ -567,7 +564,7 @@ impl Value {
             (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
             (Value::Uint(lhs), Value::Uint(rhs)) => Value::Uint(lhs % rhs),
             (Value::Dyn(d1), Value::Dyn(d2)) => {
-                let v1: Value = d1.clone().try_into()?;
+                let v1: Value = d1.clone().try_literal_value()?;
                 let v2 = d2.try_to_type(v1.type_of())?;
                 v1.reminder(&v2)?
             }
@@ -605,7 +602,7 @@ impl Value {
                     miette::bail!("Cannot index into an empty map");
                 }
 
-                let key = index.try_as_key_of_type(list.key_type().unwrap())?;
+                let key = index.try_to_key_of_type(list.key_type().unwrap())?;
 
                 match list.get(&key)? {
                     Some(v) => Ok(v.clone()),
