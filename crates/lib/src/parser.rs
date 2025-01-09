@@ -272,6 +272,7 @@ impl<'src> Parser<'src> {
                         args: self
                             .parse_fn_call_args()
                             .wrap_err("in function call arguments")?,
+                        is_method: false,
                     },
                     Op::Index => {
                         let index = self
@@ -305,16 +306,38 @@ impl<'src> Parser<'src> {
                         TokenTree::Cons(op, vec![lhs, mhs, rhs])
                     }
                     Op::Field => {
-                        match self.parse_expr(r_bp).wrap_err_with(|| {
-                            format!("on the right-hand side of {lhs} {op}")
-                        })? {
-                            TokenTree::Call { func, args } => TokenTree::Call {
+                        let rhs = self.parse_expr(r_bp)?;
+                        match rhs {
+                            TokenTree::Call {
                                 func,
-                                args: vec![lhs]
-                                    .into_iter()
-                                    .chain(args)
-                                    .collect(),
-                            },
+                                mut args,
+                                is_method,
+                            } => {
+                                if !is_method {
+                                    TokenTree::Call {
+                                        func,
+                                        args: vec![lhs]
+                                            .into_iter()
+                                            .chain(args)
+                                            .collect(),
+                                        is_method: true,
+                                    }
+                                } else {
+                                    let access = args.remove(0);
+                                    args.insert(
+                                        0,
+                                        TokenTree::Cons(
+                                            Op::Field,
+                                            vec![lhs, access],
+                                        ),
+                                    );
+                                    TokenTree::Call {
+                                        func,
+                                        args,
+                                        is_method,
+                                    }
+                                }
+                            }
                             rhs => TokenTree::Cons(op, vec![lhs, rhs]),
                         }
                     }
@@ -551,6 +574,7 @@ pub enum TokenTree<'src> {
     Call {
         func: Box<TokenTree<'src>>,
         args: Vec<TokenTree<'src>>,
+        is_method: bool,
     },
 }
 
@@ -565,12 +589,34 @@ impl fmt::Display for TokenTree<'_> {
                 }
                 Ok(())
             }
-            TokenTree::Call { func, args } => {
-                write!(f, "{}(", func)?;
-                for arg in args {
-                    write!(f, ", {}", arg)?;
+            TokenTree::Call {
+                func,
+                args,
+                is_method,
+            } => {
+                if *is_method {
+                    write!(
+                        f,
+                        "{}.{}({})",
+                        args[0],
+                        func,
+                        args[1..]
+                            .iter()
+                            .map(|arg| arg.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                } else {
+                    write!(
+                        f,
+                        "{}({})",
+                        func,
+                        args.iter()
+                            .map(|arg| arg.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
                 }
-                write!(f, ")")
             }
         }
     }
@@ -713,7 +759,8 @@ mod tests {
                 args: vec![
                     TokenTree::Atom(Atom::Ident("bar")),
                     TokenTree::Atom(Atom::Ident("baz")),
-                ]
+                ],
+                is_method: false,
             }
         );
 
@@ -724,7 +771,8 @@ mod tests {
             tree,
             TokenTree::Call {
                 func: Box::new(TokenTree::Atom(Atom::Ident("foo"))),
-                args: vec![TokenTree::Cons(Op::List, vec![])]
+                args: vec![TokenTree::Cons(Op::List, vec![])],
+                is_method: false,
             }
         );
 
@@ -735,7 +783,8 @@ mod tests {
             tree,
             TokenTree::Call {
                 func: Box::new(TokenTree::Atom(Atom::Ident("foo"))),
-                args: vec![TokenTree::Cons(Op::Map, vec![])]
+                args: vec![TokenTree::Cons(Op::Map, vec![])],
+                is_method: false,
             }
         );
     }
@@ -752,7 +801,8 @@ mod tests {
                 args: vec![
                     TokenTree::Atom(Atom::Ident("foo")),
                     TokenTree::Atom(Atom::Ident("baz")),
-                ]
+                ],
+                is_method: true,
             }
         );
     }
@@ -775,11 +825,13 @@ mod tests {
                                 "size",
                             ))),
                             args: vec![TokenTree::Atom(Atom::Ident("test"))],
+                            is_method: true,
                         },
                         TokenTree::Atom(Atom::Int(4)),
                     ],
                 ),
             ],
+            is_method: true,
         };
         assert_eq!(tree, want, "expected {want:?}, got {tree:?}");
     }
@@ -1058,6 +1110,7 @@ mod tests {
                     TokenTree::Call {
                         func: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
                         args: vec![TokenTree::Atom(Atom::Ident("foo"))],
+                        is_method: true,
                     },
                     TokenTree::Atom(Atom::Int(4)),
                 ]
@@ -1079,6 +1132,7 @@ mod tests {
                     TokenTree::Call {
                         func: Box::new(TokenTree::Atom(Atom::Ident("size"))),
                         args: vec![TokenTree::Atom(Atom::Uint(2))],
+                        is_method: false,
                     },
                 ]
             )
@@ -1159,6 +1213,57 @@ mod tests {
                     ],
                 ),
             ],
+            is_method: true,
+        };
+
+        assert_eq!(tree, want);
+    }
+
+    #[test]
+    fn test_nested_fields() {
+        let input = "foo.bar.baz";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+
+        let want = TokenTree::Cons(
+            Op::Field,
+            vec![
+                TokenTree::Atom(Atom::Ident("foo")),
+                TokenTree::Cons(
+                    Op::Field,
+                    vec![
+                        TokenTree::Atom(Atom::Ident("bar")),
+                        TokenTree::Atom(Atom::Ident("baz")),
+                    ],
+                ),
+            ],
+        );
+
+        assert_eq!(tree, want);
+    }
+
+    #[test]
+    fn test_nested_fields_method_call() {
+        let input = "foo.bar.foo.baz()";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+
+        let want = TokenTree::Call {
+            func: Box::new(TokenTree::Atom(Atom::Ident("baz"))),
+            args: vec![TokenTree::Cons(
+                Op::Field,
+                vec![
+                    TokenTree::Atom(Atom::Ident("foo")),
+                    TokenTree::Cons(
+                        Op::Field,
+                        vec![
+                            TokenTree::Atom(Atom::Ident("bar")),
+                            TokenTree::Atom(Atom::Ident("foo")),
+                        ],
+                    ),
+                ],
+            )],
+            is_method: true,
         };
 
         assert_eq!(tree, want);
