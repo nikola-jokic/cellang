@@ -461,7 +461,7 @@ impl<'de> Deserialize<'de> for Map {
 }
 
 /// KeyType represents the type of the key.
-#[derive(Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
+#[derive(Copy, Debug, PartialEq, Clone, Hash, Eq, PartialOrd, Ord)]
 pub enum KeyType {
     Int,
     Uint,

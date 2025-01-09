@@ -1,4 +1,5 @@
 use crate::{
+    dynamic::Dyn,
     environment::Environment,
     parser::{Atom, Op, TokenTree},
     types::{Key, KeyType, Map, Value},
@@ -63,6 +64,53 @@ pub fn eval_cons<'a>(
     tokens: &'a [TokenTree],
 ) -> Result<Resolver<'a>, Error> {
     let value: Value = match op {
+        Op::Dyn => {
+            assert!(tokens.len() == 1);
+            match &tokens[0] {
+                TokenTree::Atom(atom) => {
+                    let val = match atom {
+                        Atom::Int(n) => Dyn::Int(*n),
+                        Atom::Uint(n) => Dyn::Uint(*n),
+                        Atom::Double(n) => Dyn::Double(*n),
+                        Atom::String(s) => Dyn::String(s.to_string()),
+                        Atom::Bool(b) => Dyn::Bool(*b),
+                        Atom::Null => Dyn::Null,
+                        Atom::Bytes(b) => Dyn::Bytes(b.clone().to_vec()),
+                        Atom::Ident(ident) => miette::bail!(
+                            "Expected type after dyn, found ident '{ident}'",
+                        ),
+                    };
+                    Value::Dyn(val)
+                }
+                TokenTree::Cons(Op::Map, tokens) => {
+                    let mut map = HashMap::new();
+
+                    let mut iter = tokens.iter();
+                    while let (Some(key), Some(value)) =
+                        (iter.next(), iter.next())
+                    {
+                        let key =
+                            Key::try_from(eval_ast(env, key)?.to_value()?)?;
+                        let value = eval_ast(env, value)?.to_value()?;
+                        map.insert(key, value.into());
+                    }
+
+                    Value::Dyn(Dyn::Map(map))
+                }
+                TokenTree::Cons(Op::List, tokens) => {
+                    let mut list = Vec::with_capacity(tokens.len());
+                    for token in tokens {
+                        let value = eval_ast(env, token)?.to_value()?;
+                        list.push(value.into());
+                    }
+                    Value::Dyn(Dyn::List(list))
+                }
+                _ => miette::bail!(
+                    "Expected atom or list, found {:?}",
+                    tokens[0]
+                ),
+            }
+        }
         Op::Call => panic!("Call should be handled in eval_ast"),
         Op::Field => {
             assert!(tokens.len() == 2);
@@ -80,37 +128,12 @@ pub fn eval_cons<'a>(
         }
         Op::Index => {
             assert!(tokens.len() == 2);
+            let lhs = eval_ast(env, &tokens[0])?;
+            let lhs = lhs.try_value()?;
+            let rhs = eval_ast(env, &tokens[1])?;
+            let rhs = rhs.try_value()?;
 
-            match eval_ast(env, &tokens[0])?.try_value()? {
-                Value::List(list) => {
-                    let i = match eval_ast(env, &tokens[1])?.try_value()? {
-                        Value::Int(n) => *n,
-                        _ => miette::bail!(
-                            "Expected int index, found {:?}",
-                            tokens[1]
-                        ),
-                    };
-
-                    if i < 0 || i >= list.len() as i64 {
-                        miette::bail!("Index out of bounds: {}", i);
-                    }
-
-                    list.get(i as usize).unwrap().clone()
-                }
-                Value::Map(map) => {
-                    let key =
-                        Key::try_from(eval_ast(env, &tokens[1])?.to_value()?)?;
-                    if let Some(val) = map.get(&key)? {
-                        val.clone()
-                    } else {
-                        miette::bail!("Key not found: {}", key);
-                    }
-                }
-                _ => miette::bail!(
-                    "Expected reference to a list or map, found {:?}",
-                    tokens[0]
-                ),
-            }
+            lhs.index(rhs)?
         }
         Op::Not => {
             let lhs = eval_ast(env, &tokens[0])?;
@@ -1125,6 +1148,21 @@ mod tests {
             eval(&env, "x[true][0][\"y\"]").expect("x[true][0][\"y\"]"),
             Value::Int(42)
         );
+        assert_eq!(
+            eval(&env, "{'a': {'b': {'c': 42}}}['a']['b']['c']")
+                .expect("{'a': {'b': {'c': 42}}}['a']['b']['c']"),
+            Value::Int(42)
+        )
+    }
+
+    #[test]
+    fn test_dyn_map_index_access() {
+        let env = Environment::root();
+        assert_eq!(
+            eval(&env, "dyn({'a': 'b', 2: 3})['a']")
+                .expect("dyn({'a': 'b', 2: 3})['a']"),
+            Value::from("b")
+        )
     }
 
     #[test]

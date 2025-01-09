@@ -85,6 +85,22 @@ impl<'src> Parser<'src> {
                 ..
             } => TokenTree::Atom(Atom::Bool(false)),
 
+            // dyn
+            Token {
+                ty: TokenType::Dyn, ..
+            } => {
+                self.lexer.expect(
+                    TokenType::LeftParen,
+                    "Expected opening parenthesis after dyn",
+                )?;
+                let expr = self.parse_expr(0)?;
+                self.lexer.expect(
+                    TokenType::RightParen,
+                    "Expected closing parenthesis after dyn",
+                )?;
+                TokenTree::Cons(Op::Dyn, vec![expr])
+            }
+
             // groups
             Token {
                 ty: TokenType::LeftParen,
@@ -490,6 +506,7 @@ pub enum Op {
     Group,
     Map,
     List,
+    Dyn,
 }
 
 impl fmt::Display for Op {
@@ -520,6 +537,7 @@ impl fmt::Display for Op {
             Op::Map => "{map}",
             Op::List => "[list]",
             Op::Mod => "%",
+            Op::Dyn => "dyn",
         };
         write!(f, "{}", s)
     }
@@ -1058,10 +1076,10 @@ mod tests {
                 Op::Plus,
                 vec![
                     TokenTree::Atom(Atom::Int(1)),
-                    TokenTree::Call {
-                        func: Box::new(TokenTree::Atom(Atom::Ident("dyn"))),
-                        args: vec![TokenTree::Atom(Atom::Uint(2))],
-                    },
+                    TokenTree::Cons(
+                        Op::Dyn,
+                        vec![TokenTree::Atom(Atom::Uint(2))],
+                    ),
                 ]
             )
         );

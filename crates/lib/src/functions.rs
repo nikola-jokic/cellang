@@ -610,19 +610,6 @@ pub fn duration(
     Ok(v)
 }
 
-pub fn dyn_fn(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
-    if tokens.len() != 1 {
-        miette::bail!(
-            "expected 1 argument, found {}\ntokens: {tokens:?}",
-            tokens.len()
-        );
-    }
-
-    let v = eval_ast(env, &tokens[0])?.to_value()?;
-
-    Ok(Value::Dyn(v.into()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -647,7 +634,6 @@ mod tests {
         is_function(Arc::new(uint));
         is_function(Arc::new(int));
         is_function(Arc::new(string));
-        is_function(Arc::new(dyn_fn));
         is_function(Arc::new(duration));
         is_function(Arc::new(timestamp));
     }

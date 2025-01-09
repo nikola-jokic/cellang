@@ -547,6 +547,20 @@ impl Value {
         crate::try_from_value(self)
     }
 
+    pub fn try_as_key_of_type(&self, key_type: KeyType) -> Result<Key, Error> {
+        match (self, key_type) {
+            (Value::Int(n), KeyType::Int) => Ok(Key::Int(*n)),
+            (Value::Uint(n), KeyType::Uint) => Ok(Key::Uint(*n)),
+            (Value::String(s), KeyType::String) => Ok(Key::String(s.clone())),
+            (Value::Bool(b), KeyType::Bool) => Ok(Key::Bool(*b)),
+            (Value::Dyn(d), _) => {
+                let v: Value = d.clone().try_into()?;
+                v.try_as_key_of_type(key_type)
+            }
+            _ => miette::bail!("Cannot convert {:?} to Key", self),
+        }
+    }
+
     #[inline]
     pub fn plus(&self, other: &Value) -> Result<Value, Error> {
         match (self, other) {
@@ -875,6 +889,61 @@ impl Value {
         };
 
         Ok(v)
+    }
+
+    pub fn index(&self, other: &Value) -> Result<Value, Error> {
+        match (self, other) {
+            (Value::List(list), Value::Int(index)) => {
+                match list.get(*index as usize) {
+                    Some(v) => Ok(v.clone()),
+                    None => miette::bail!("Index out of range: {:?}", index),
+                }
+            }
+            (Value::List(list), Value::Dyn(d)) => {
+                let index = d.try_as_i64()?;
+                match list.get(index as usize) {
+                    Some(v) => Ok(v.clone()),
+                    None => miette::bail!("Index out of range: {:?}", index),
+                }
+            }
+            (Value::Map(list), index) => {
+                if list.is_empty() {
+                    miette::bail!("Cannot index into an empty map");
+                }
+
+                let key = index.try_as_key_of_type(list.key_type().unwrap())?;
+
+                match list.get(&key)? {
+                    Some(v) => Ok(v.clone()),
+                    None => miette::bail!("Key not found: {:?}", key),
+                }
+            }
+            (Value::Dyn(d), index) => match d {
+                Dyn::List(list) => {
+                    let index = match index {
+                        Value::Int(n) => *n,
+                        Value::Dyn(d) => d.try_as_i64()?,
+                        _ => miette::bail!("Cannot index into {:?}", index),
+                    };
+                    match list.get(index as usize) {
+                        Some(v) => Ok(v.clone().try_into()?),
+                        None => {
+                            miette::bail!("Index out of range: {:?}", index)
+                        }
+                    }
+                }
+                Dyn::Map(map) => {
+                    // the key must be of key type and not dynamic
+                    let key = Key::try_from(index)?;
+                    match map.get(&key) {
+                        Some(d) => Ok(d.clone().try_into()?),
+                        None => miette::bail!("Key not found: {:?}", key),
+                    }
+                }
+                _ => miette::bail!("Cannot index into {:?}", d),
+            },
+            _ => miette::bail!("Cannot index into {:?} with {:?}", self, other),
+        }
     }
 }
 
