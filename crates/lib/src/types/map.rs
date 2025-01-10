@@ -505,28 +505,40 @@ impl From<&str> for Key {
     }
 }
 
-impl From<String> for Key {
-    fn from(value: String) -> Self {
-        Key::String(value)
+impl From<&String> for Key {
+    fn from(value: &String) -> Self {
+        Key::String(value.to_string())
     }
 }
 
-impl From<i64> for Key {
-    fn from(value: i64) -> Self {
-        Key::Int(value)
-    }
+macro_rules! simple_conv {
+    ($($($t:ty)* => $p:path as $as:ty)*) => {
+        $(
+            $(
+                impl From<$t> for Key {
+                    fn from(key: $t) -> Self {
+                        $p(key as $as)
+                    }
+                }
+
+                impl From<Key> for $t {
+                    fn from(key: Key) -> Self {
+                        match key {
+                            $p(n) => n as $t,
+                            _ => panic!("Cannot convert {:?} to {}", key, stringify!($t)),
+                        }
+                    }
+                }
+            )*
+        )*
+    };
 }
 
-impl From<u64> for Key {
-    fn from(value: u64) -> Self {
-        Key::Uint(value)
-    }
-}
-
-impl From<bool> for Key {
-    fn from(value: bool) -> Self {
-        Key::Bool(value)
-    }
+simple_conv! {
+    i8 i16 i32 i64 isize => Key::Int as i64
+    u8 u16 u32 u64 usize => Key::Uint as u64
+    bool => Key::Bool as bool
+    String => Key::String as String
 }
 
 impl TryFrom<Value> for Key {
