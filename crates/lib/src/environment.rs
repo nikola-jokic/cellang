@@ -3,6 +3,7 @@ use crate::{functions, TryIntoValue};
 use crate::{Function, Map};
 use miette::Error;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{Arc, OnceLock};
 
 /// The environment is a collection of variables and functions.
@@ -10,10 +11,27 @@ use std::sync::{Arc, OnceLock};
 /// When looking up a variable or function, the environment will first look in its own variables
 /// and functions. If the variable or function is not found, it will look in the parent
 /// environment.
+#[derive(Clone)]
 pub struct Environment<'a> {
     variables: Option<&'a Map>,
     functions: Option<&'a HashMap<String, Function>>,
     parent: Option<&'a Environment<'a>>,
+}
+
+impl fmt::Debug for Environment<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Environment")
+            .field("variables", &self.variables)
+            .field(
+                "functions",
+                &self
+                    .functions
+                    .as_ref()
+                    .map(|v| v.keys().collect::<Vec<_>>()),
+            )
+            .field("parent", &self.parent)
+            .finish()
+    }
 }
 
 impl<'a> Environment<'a> {
@@ -145,6 +163,22 @@ pub struct EnvironmentBuilder<'a> {
     /// default functions.
     functions: Option<HashMap<String, Function>>,
     parent: Option<&'a Environment<'a>>,
+}
+
+impl fmt::Debug for EnvironmentBuilder<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EnvironmentBuilder")
+            .field("variables", &self.variables)
+            .field(
+                "functions",
+                &self
+                    .functions
+                    .as_ref()
+                    .map(|v| v.keys().collect::<Vec<_>>()),
+            )
+            .field("parent", &self.parent)
+            .finish()
+    }
 }
 
 impl Default for EnvironmentBuilder<'_> {
