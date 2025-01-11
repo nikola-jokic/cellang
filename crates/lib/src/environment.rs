@@ -99,7 +99,8 @@ impl Environment<'_> {
     }
 }
 
-fn default_functions() -> &'static HashMap<String, Function> {
+/// standard functions exposed by each environment, created during root environment creation
+pub fn default_functions() -> &'static HashMap<String, Function> {
     static FUNCTIONS: OnceLock<HashMap<String, Function>> = OnceLock::new();
     FUNCTIONS.get_or_init(|| {
         let mut m = HashMap::new();
