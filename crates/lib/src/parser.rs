@@ -631,7 +631,8 @@ fn prefix_binding_power(op: Op) -> ((), u8) {
 
 fn postfix_binding_power(op: Op) -> Option<(u8, ())> {
     match op {
-        Op::Call | Op::Index => Some((15, ())),
+        Op::Index => Some((15, ())),
+        Op::Call => Some((17, ())),
         _ => None,
     }
 }
@@ -663,7 +664,7 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
         | Op::GreaterEqual => (7, 8),
         Op::Plus | Op::Minus => (9, 10),
         Op::Multiply | Op::Devide | Op::Mod => (11, 12),
-        Op::Field | Op::Call => (16, 15),
+        Op::Field | Op::Call => (18, 17),
         _ => return None,
     };
     Some(res)
@@ -718,7 +719,7 @@ mod tests {
             )
         );
 
-        let input = "foo.check['bar'].baz";
+        let input = "foo.check[0].baz";
         let mut parser = Parser::new(input);
         let tree = parser.parse().unwrap();
         assert_eq!(
@@ -726,22 +727,20 @@ mod tests {
             TokenTree::Cons(
                 Op::Field,
                 vec![
-                    TokenTree::Atom(Atom::Ident("foo")),
                     TokenTree::Cons(
-                        Op::Field,
+                        Op::Index,
                         vec![
                             TokenTree::Cons(
-                                Op::Index,
+                                Op::Field,
                                 vec![
+                                    TokenTree::Atom(Atom::Ident("foo")),
                                     TokenTree::Atom(Atom::Ident("check")),
-                                    TokenTree::Atom(Atom::String(
-                                        Cow::Borrowed("bar")
-                                    )),
-                                ]
+                                ],
                             ),
-                            TokenTree::Atom(Atom::Ident("baz")),
+                            TokenTree::Atom(Atom::Int(0)),
                         ]
-                    )
+                    ),
+                    TokenTree::Atom(Atom::Ident("baz")),
                 ]
             )
         );
@@ -1265,6 +1264,51 @@ mod tests {
             )],
             is_method: true,
         };
+
+        assert_eq!(tree, want);
+    }
+
+    #[test]
+    fn test_nested_method_call_with_indexing() {
+        let input = "foo.bar.filter(x, x > 10)[0].id";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+
+        let want = TokenTree::Cons(
+            Op::Field,
+            vec![
+                TokenTree::Cons(
+                    Op::Index,
+                    vec![
+                        TokenTree::Call {
+                            func: Box::new(TokenTree::Atom(Atom::Ident(
+                                "filter",
+                            ))),
+                            args: vec![
+                                TokenTree::Cons(
+                                    Op::Field,
+                                    vec![
+                                        TokenTree::Atom(Atom::Ident("foo")),
+                                        TokenTree::Atom(Atom::Ident("bar")),
+                                    ],
+                                ),
+                                TokenTree::Atom(Atom::Ident("x")),
+                                TokenTree::Cons(
+                                    Op::Greater,
+                                    vec![
+                                        TokenTree::Atom(Atom::Ident("x")),
+                                        TokenTree::Atom(Atom::Int(10)),
+                                    ],
+                                ),
+                            ],
+                            is_method: true,
+                        },
+                        TokenTree::Atom(Atom::Int(0)),
+                    ],
+                ),
+                TokenTree::Atom(Atom::Ident("id")),
+            ],
+        );
 
         assert_eq!(tree, want);
     }
