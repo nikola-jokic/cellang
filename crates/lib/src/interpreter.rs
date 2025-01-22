@@ -451,6 +451,8 @@ enum Object<'a> {
 mod tests {
     use super::*;
     use crate::environment::EnvironmentBuilder;
+    use serde::{Deserialize, Serialize};
+    use std::collections::BTreeMap;
     use std::sync::Arc;
     use time::ext::NumericalDuration;
     use time::macros::datetime;
@@ -1928,5 +1930,42 @@ mod tests {
             let result = eval(&env, input);
             assert!(result.is_err(), "want err, got ok on input={input}'")
         }
+    }
+
+    #[test]
+    fn test_complex_calls() {
+        #[derive(Debug, Serialize, Deserialize, Clone)]
+        struct Object {
+            id: String,
+        }
+
+        let mut objects = BTreeMap::new();
+        objects.insert(
+            "a".to_string(),
+            vec![
+                Object {
+                    id: "1".to_string(),
+                },
+                Object {
+                    id: "2".to_string(),
+                },
+            ],
+        );
+
+        let mut env = EnvironmentBuilder::default();
+        env.set_variable("objects", objects)
+            .expect("to set variable");
+        let env = env.build();
+
+        let method = eval(&env, "objects.a.filter(o, o.id == '2')[0].id");
+        assert!(method.is_ok(), "method parsing failed: {:?}", method);
+        let method = method.unwrap();
+
+        let function = eval(&env, "filter(objects.a, o, o.id == '2')[0].id");
+        assert!(function.is_ok(), "function parsing failed: {:?}", function);
+        let function = function.unwrap();
+
+        assert_eq!(method, function);
+        assert_eq!(method, Value::String("2".to_string()));
     }
 }
