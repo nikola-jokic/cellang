@@ -1,3 +1,5 @@
+#![deny(clippy::match_same_arms)]
+
 pub mod environment;
 pub mod functions;
 pub mod interpreter;
