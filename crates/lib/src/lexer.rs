@@ -110,7 +110,7 @@ impl fmt::Display for TokenType {
             TokenType::Plus => write!(f, "'+'"),
             TokenType::Percent => write!(f, "'%'"),
             TokenType::Minus => write!(f, "'-'"),
-            TokenType::Semicolon => write!(f, "'-'"),
+            TokenType::Semicolon => write!(f, "';'"),
             TokenType::Not => write!(f, "'!'"),
             TokenType::NotEqual => write!(f, "'!='"),
             TokenType::Equal => write!(f, "'='"),
