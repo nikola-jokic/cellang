@@ -269,10 +269,8 @@ impl Value {
                 list.append(&mut b.clone())?;
                 Ok(Value::List(list))
             }
-            (Value::Timestamp(t), Value::Duration(d)) => {
-                Ok(Value::Timestamp(*t + *d))
-            }
-            (Value::Duration(d), Value::Timestamp(t)) => {
+            (Value::Timestamp(t), Value::Duration(d))
+            | (Value::Duration(d), Value::Timestamp(t)) => {
                 Ok(Value::Timestamp(*t + *d))
             }
             (Value::Duration(d1), Value::Duration(d2)) => {
@@ -306,10 +304,8 @@ impl Value {
             (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
             (Value::Uint(a), Value::Uint(b)) => Ok(Value::Uint(a - b)),
             (Value::Double(a), Value::Double(b)) => Ok(Value::Double(a - b)),
-            (Value::Timestamp(t), Value::Duration(d)) => {
-                Ok(Value::Timestamp(*t - *d))
-            }
-            (Value::Duration(d), Value::Timestamp(t)) => {
+            (Value::Timestamp(t), Value::Duration(d))
+            | (Value::Duration(d), Value::Timestamp(t)) => {
                 Ok(Value::Timestamp(*t - *d))
             }
             (Value::Duration(d1), Value::Duration(d2)) => {
