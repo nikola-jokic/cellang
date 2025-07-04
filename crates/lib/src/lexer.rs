@@ -110,7 +110,7 @@ impl fmt::Display for TokenType {
             TokenType::Plus => write!(f, "'+'"),
             TokenType::Percent => write!(f, "'%'"),
             TokenType::Minus => write!(f, "'-'"),
-            TokenType::Semicolon => write!(f, "'-'"),
+            TokenType::Semicolon => write!(f, "';'"),
             TokenType::Not => write!(f, "'!'"),
             TokenType::NotEqual => write!(f, "'!='"),
             TokenType::Equal => write!(f, "'='"),
@@ -427,8 +427,7 @@ impl<'src> Iterator for Lexer<'src> {
                 '=' => {
                     Started::OrEqual(TokenType::Equal, TokenType::EqualEqual)
                 }
-                '"' => Started::String,
-                '\'' => Started::String,
+                '"' | '\'' => Started::String,
                 '?' => return just(TokenType::QuestionMark),
                 '&' => {
                     if self.rest.starts_with('&') {
@@ -647,9 +646,8 @@ impl<'src> Iterator for Lexer<'src> {
                     let mut index = 0;
                     for c in c_onwards.chars() {
                         state = match (&state, c) {
-                            (State::Nil, '.') => State::Dot,
+                            (State::Nil | State::Int, '.') => State::Dot,
                             (State::Nil, c) if c.is_ascii_digit() => State::Int,
-                            (State::Int, '.') => State::Dot,
                             (State::Int, 'u') | (State::Int, 'U') => {
                                 State::Uint
                             }
@@ -667,9 +665,10 @@ impl<'src> Iterator for Lexer<'src> {
                             (State::Exp, '+') | (State::Exp, '-') => {
                                 State::ExpSign
                             }
-                            (State::Exp, c) if c.is_ascii_digit() => {
-                                State::ExpDigit
-                            }
+                            (
+                                State::Exp | State::ExpSign | State::ExpDigit,
+                                c,
+                            ) if c.is_ascii_digit() => State::ExpDigit,
                             (State::ExpSign, c) if c.is_ascii_digit() => {
                                 State::ExpDigit
                             }

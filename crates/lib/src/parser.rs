@@ -57,22 +57,12 @@ impl<'src> Parser<'src> {
                 ..
             } => TokenTree::Atom(Atom::Null),
             Token {
-                ty: TokenType::String,
+                ty: TokenType::String | TokenType::RawString,
                 origin,
                 ..
             } => TokenTree::Atom(Atom::String(Token::unescape(origin))),
             Token {
-                ty: TokenType::RawString,
-                origin,
-                ..
-            } => TokenTree::Atom(Atom::String(Token::unescape(origin))),
-            Token {
-                ty: TokenType::Bytes,
-                origin,
-                ..
-            } => TokenTree::Atom(Atom::Bytes(Token::unescape_bytes(origin))),
-            Token {
-                ty: TokenType::RawBytes,
+                ty: TokenType::Bytes | TokenType::RawBytes,
                 origin,
                 ..
             } => TokenTree::Atom(Atom::Bytes(Token::unescape_bytes(origin))),
@@ -166,8 +156,7 @@ impl<'src> Parser<'src> {
             }
 
             let op = match op.map(|res| res.as_ref().expect("handled Err above")) {
-                None => break,
-                Some(Token {
+                None | Some(Token {
                     ty:
                         TokenType::RightParen
                         | TokenType::RightBracket
