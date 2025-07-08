@@ -1,8 +1,8 @@
 use super::{Value, ValueType};
 use miette::Error;
 use serde::de::DeserializeOwned;
-use serde::{ser::Serializer, Serialize};
 use serde::{Deserialize, Deserializer};
+use serde::{Serialize, ser::Serializer};
 use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::slice::{Iter, IterMut};

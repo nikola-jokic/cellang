@@ -1,4 +1,4 @@
-use cellang::{eval, EnvironmentBuilder, Lexer, Map, Parser};
+use cellang::{EnvironmentBuilder, Lexer, Map, Parser, eval};
 use clap::{Parser as ClapParser, Subcommand};
 use miette::{Error, IntoDiagnostic, WrapErr};
 use std::{fs, path::PathBuf};

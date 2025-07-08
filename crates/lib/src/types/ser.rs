@@ -35,7 +35,7 @@ impl serde::ser::SerializeSeq for SerializeSeq {
         Ok(Value::List(match List::try_from(self.inner) {
             Ok(list) => list,
             Err(err) => {
-                return Err(SerializeError::InvalidKey(err.to_string()))
+                return Err(SerializeError::InvalidKey(err.to_string()));
             }
         }))
     }

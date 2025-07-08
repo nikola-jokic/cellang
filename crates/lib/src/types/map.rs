@@ -1,13 +1,13 @@
 use super::{TryIntoValue, Value, ValueType};
 use miette::Error;
-use serde::de::DeserializeOwned;
 use serde::Deserializer;
-use serde::{ser::Serializer, Deserialize, Serialize};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize, ser::Serializer};
+use std::collections::HashMap;
 use std::collections::hash_map::{
     self, Entry, IntoIter, IntoKeys, IntoValues, Iter, IterMut, Keys,
     RandomState, Values, ValuesMut,
 };
-use std::collections::HashMap;
 use std::fmt;
 
 /// Map is a wrapper around HashMap with additional type checking.

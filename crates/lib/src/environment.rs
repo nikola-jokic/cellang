@@ -1,6 +1,6 @@
 use crate::types::{Key, Value};
-use crate::{functions, TryIntoValue};
 use crate::{Function, Map};
+use crate::{TryIntoValue, functions};
 use miette::Error;
 use std::collections::HashMap;
 use std::fmt;

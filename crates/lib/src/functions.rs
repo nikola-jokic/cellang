@@ -1,13 +1,13 @@
 use crate::{
+    Environment, Key, KeyType, Value,
     dynamic::Dyn,
     eval_ast,
     parser::{Atom, Op, TokenTree},
     types::{Duration, List, Map},
-    Environment, Key, KeyType, Value,
 };
 use miette::{Context, Error, IntoDiagnostic};
 use regex::Regex;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 /// Returns the size of a value.
 /// The value type must be one of the following:

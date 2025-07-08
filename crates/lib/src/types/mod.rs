@@ -15,8 +15,8 @@ pub use self::value::*;
 
 use miette::Error;
 
-use crate::parser::TokenTree;
 use crate::Environment;
+use crate::parser::TokenTree;
 
 /// Function is a wrapper for a dynamic function that can be registered in the environment.
 pub type Function = Arc<

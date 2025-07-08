@@ -2,8 +2,8 @@ use miette::{Context, Error, LabeledSpan};
 use std::borrow::Cow;
 use std::fmt;
 
-use crate::lexer::{Token, TokenType};
 use crate::Lexer;
+use crate::lexer::{Token, TokenType};
 
 /// A parser for the language.
 /// This parser is a Pratt parser, which is a top-down operator precedence parser.
@@ -140,7 +140,7 @@ impl<'src> Parser<'src> {
                     ],
                         help = format!("Unexpected token: {:?}", token.ty),
                         "Unexpected token"
-                })
+                });
             }
         };
 
