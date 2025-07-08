@@ -1,6 +1,6 @@
 use super::dynamic::Dyn;
 use super::{
-    deserialize_duration, serialize_duration, Key, KeyType, List, Map,
+    Key, KeyType, List, Map, deserialize_duration, serialize_duration,
 };
 use base64::prelude::*;
 use miette::Error;
@@ -8,8 +8,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::{collections::HashMap, str::FromStr};
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 /// ValueType is an enum that represents the different types of values that can be stored in a
 /// Value.
@@ -220,10 +220,10 @@ impl Value {
             Value::Double(_) => ValueType::Double,
             Value::String(_) => ValueType::String,
             Value::Bool(_) => ValueType::Bool,
-            Value::Map(ref m) => ValueType::MapOf {
+            Value::Map(m) => ValueType::MapOf {
                 key_type: m.key_type().map(Box::new),
             },
-            Value::List(ref l) => ValueType::ListOf {
+            Value::List(l) => ValueType::ListOf {
                 element_type: l.element_type().map(Box::new),
             },
             Value::Bytes(_) => ValueType::Bytes,
