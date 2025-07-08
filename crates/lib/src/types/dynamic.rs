@@ -1,14 +1,14 @@
 use super::{
-    deserialize_duration, serialize_duration, Key, KeyType, List, Map, Value,
-    ValueType,
+    Key, KeyType, List, Map, Value, ValueType, deserialize_duration,
+    serialize_duration,
 };
 use base64::prelude::*;
 use miette::{Error, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 /// Represents dynamic value that is type checked or converted
 /// during evaluation time. It is associated with `dyn(<type>)` expression.

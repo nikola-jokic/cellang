@@ -158,7 +158,7 @@ impl<'de> serde::de::Deserializer<'de> for Value {
             v => {
                 return Err(DeserializeError::DeserializationError(format!(
                     "unexpected value: {v:?}"
-                )))
+                )));
             }
         };
 
@@ -426,7 +426,7 @@ impl<'de> serde::de::Deserializer<'de> for Value {
             v => {
                 return Err(DeserializeError::DeserializationError(format!(
                     "unexpected value: {v:?}",
-                )))
+                )));
             }
         };
 
@@ -457,7 +457,7 @@ impl<'de> serde::de::Deserializer<'de> for Value {
             v => {
                 return Err(DeserializeError::DeserializationError(format!(
                     "unexpected value: {v:?}"
-                )))
+                )));
             }
         };
 
@@ -486,7 +486,7 @@ impl<'de> serde::de::Deserializer<'de> for Value {
             v => {
                 return Err(DeserializeError::DeserializationError(format!(
                     "unexpected value: {v:?}",
-                )))
+                )));
             }
         };
 

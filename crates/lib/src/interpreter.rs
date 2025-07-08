@@ -1,9 +1,9 @@
 use crate::{
+    Function, List, Parser,
     dynamic::Dyn,
     environment::Environment,
     parser::{Atom, Op, TokenTree},
     types::{Key, KeyType, Map, Value},
-    Function, List, Parser,
 };
 use miette::Error;
 use std::collections::HashMap;
@@ -1564,8 +1564,14 @@ mod tests {
                 Value::Bool(false),
             ),
             ("[1u, 2u, 3u].all(x, x > 1u)", Value::Bool(false)),
-            ("{'a': 1, 'b': 2, 'c': 3}.all(key, key != 'b')", Value::Bool(false)),
-            ("{'a': 1, 'b': 2, 'c': 3}.all(key, key >= 'a')", Value::Bool(true)),
+            (
+                "{'a': 1, 'b': 2, 'c': 3}.all(key, key != 'b')",
+                Value::Bool(false),
+            ),
+            (
+                "{'a': 1, 'b': 2, 'c': 3}.all(key, key >= 'a')",
+                Value::Bool(true),
+            ),
         ];
 
         let env = Environment::root();
@@ -1651,11 +1657,9 @@ mod tests {
             (
                 "[{'a': 10, 'b': 5, 'c': 20}].map(m, m.filter(key, m[key] > 10))",
                 Value::List(
-                    vec![
-                        Value::List (
-                            vec!["c"].try_into().unwrap()
-                        )
-                    ].try_into().unwrap()
+                    vec![Value::List(vec!["c"].try_into().unwrap())]
+                        .try_into()
+                        .unwrap(),
                 ),
             ),
         ];
