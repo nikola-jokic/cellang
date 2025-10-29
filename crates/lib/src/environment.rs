@@ -75,6 +75,18 @@ impl<'a> Environment<'a> {
     pub fn set_variables(&mut self, variables: &'a Map) {
         self.variables = Some(variables);
     }
+
+    pub fn variables(&self) -> Option<&'a Map> {
+        self.variables
+    }
+
+    pub fn functions(&self) -> Option<&'a HashMap<String, Function>> {
+        self.functions
+    }
+
+    pub fn parent(&self) -> Option<&'a Environment<'a>> {
+        self.parent
+    }
 }
 
 impl Environment<'_> {
