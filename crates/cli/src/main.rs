@@ -14,15 +14,15 @@ struct Args {
 enum Commands {
     Lex {
         #[arg(short, long, required = true)]
-        filename: PathBuf,
+        filepath: PathBuf,
     },
     Parse {
         #[arg(short, long, required = true)]
-        filename: PathBuf,
+        filepath: PathBuf,
     },
     Eval {
         #[arg(short, long, required = true)]
-        filename: PathBuf,
+        filepath: PathBuf,
 
         #[arg(short, long, required = true)]
         env: PathBuf,
@@ -33,7 +33,7 @@ fn main() -> Result<(), Error> {
     let args = Args::parse();
 
     match args.command {
-        Commands::Lex { filename } => {
+        Commands::Lex { filepath: filename } => {
             let text = fs::read_to_string(filename)
                 .into_diagnostic()
                 .wrap_err("Failed to read file")?;
@@ -48,7 +48,7 @@ fn main() -> Result<(), Error> {
 
             Ok(())
         }
-        Commands::Parse { filename } => {
+        Commands::Parse { filepath: filename } => {
             let text = fs::read_to_string(filename)
                 .into_diagnostic()
                 .wrap_err("Failed to read file")?;
@@ -59,7 +59,10 @@ fn main() -> Result<(), Error> {
 
             Ok(())
         }
-        Commands::Eval { filename, env } => {
+        Commands::Eval {
+            filepath: filename,
+            env,
+        } => {
             let text = fs::read_to_string(filename)
                 .into_diagnostic()
                 .wrap_err("Failed to read file")?;

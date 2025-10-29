@@ -45,7 +45,7 @@ impl<'a> Environment<'a> {
     }
 
     /// Creates a new child environment with empty variables and functions.
-    pub fn child_builder(&self) -> EnvironmentBuilder {
+    pub fn child_builder(&'_ self) -> EnvironmentBuilder<'_> {
         EnvironmentBuilder {
             variables: None,
             functions: None,

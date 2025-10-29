@@ -146,7 +146,7 @@ impl<'src> Parser<'src> {
 
         loop {
             let op = self.lexer.peek();
-            if op.map_or(false, |op| op.is_err()) {
+            if op.is_some_and(|op| op.is_err()) {
                 return Err(self
                     .lexer
                     .next()

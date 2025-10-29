@@ -121,7 +121,10 @@ impl Map {
     /// It checks if the key type is the same as the key type.
     /// If the key type is not set (map must be empty), it sets the key type.
     #[inline]
-    pub fn entry(&mut self, key: Key) -> Result<Entry<Key, Value>, Error> {
+    pub fn entry(
+        &'_ mut self,
+        key: Key,
+    ) -> Result<Entry<'_, Key, Value>, Error> {
         if let Some(ref key_type) = self.key_type {
             if *key_type != key.type_of() {
                 miette::bail!("Invalid key type: {:?}", key.type_of());
