@@ -172,14 +172,14 @@ impl List {
     #[inline]
     pub fn append(&mut self, other: &mut List) -> Result<&mut Self, Error> {
         if let Some(ref elem_type) = self.elem_type {
-            if let Some(ref other_elem_type) = other.elem_type {
-                if *elem_type != *other_elem_type {
-                    miette::bail!(
-                        "Invalid element type: {:?} and {:?}",
-                        elem_type,
-                        other_elem_type
-                    );
-                }
+            if let Some(ref other_elem_type) = other.elem_type
+                && *elem_type != *other_elem_type
+            {
+                miette::bail!(
+                    "Invalid element type: {:?} and {:?}",
+                    elem_type,
+                    other_elem_type
+                );
             }
         } else {
             self.elem_type = other.elem_type.take();
