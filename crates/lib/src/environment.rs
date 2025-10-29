@@ -75,21 +75,11 @@ impl<'a> Environment<'a> {
     pub fn set_variables(&mut self, variables: &'a Map) {
         self.variables = Some(variables);
     }
-
-    pub fn variables(&self) -> Option<&'a Map> {
-        self.variables
-    }
-
-    pub fn functions(&self) -> Option<&'a HashMap<String, Function>> {
-        self.functions
-    }
-
-    pub fn parent(&self) -> Option<&'a Environment<'a>> {
-        self.parent
-    }
 }
 
 impl Environment<'_> {
+    /// Looks up a variable in the environment, following the parent chain if necessary.
+    /// Returns None if the variable is not found.
     pub fn lookup_variable<K>(&self, name: K) -> Option<&Value>
     where
         K: Into<Key>,
@@ -102,12 +92,26 @@ impl Environment<'_> {
             })
     }
 
+    /// Looks up a function in the environment, following the parent chain if necessary.
+    /// Returns None if the function is not found.
     pub fn lookup_function(&self, name: &str) -> Option<&Function> {
         self.functions
             .and_then(|functions| functions.get(name))
             .or_else(|| {
                 self.parent.and_then(|parent| parent.lookup_function(name))
             })
+    }
+
+    pub fn variables(&self) -> Option<&Map> {
+        self.variables
+    }
+
+    pub fn functions(&self) -> Option<&HashMap<String, Function>> {
+        self.functions
+    }
+
+    pub fn parent(&self) -> Option<&Environment<'_>> {
+        self.parent
     }
 }
 
