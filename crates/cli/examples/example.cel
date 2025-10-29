@@ -1,1 +1,0 @@
-scans.subfinder.has_diff('output.zip')
