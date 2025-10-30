@@ -293,7 +293,7 @@ mod tests {
         assert_eq!(child_env.lookup_variable("a"), Some(&Value::from(1)));
         assert_eq!(child_env.lookup_variable("b"), Some(&Value::from(2)));
     }
-    
+
     #[test]
     fn test_environment_variable_lookup_shadowing() {
         let mut root_builder = EnvironmentBuilder::root(None, None);
@@ -305,18 +305,19 @@ mod tests {
         assert_eq!(root_env.lookup_variable("a"), Some(&Value::from(1)));
         assert_eq!(child_env.lookup_variable("a"), Some(&Value::from(2))); // Should return the shadowed value
     }
-    
+
     #[test]
     fn test_environment_function_lookup() {
         let mut root_builder = EnvironmentBuilder::root(None, None);
-        root_builder.set_function("custom_func", Arc::new(|_, _| Ok(Value::from(7))));
+        root_builder
+            .set_function("custom_func", Arc::new(|_, _| Ok(Value::from(7))));
         let root_env = root_builder.build();
         let child_env = root_env.child();
         assert!(root_env.lookup_function("custom_func").is_some());
         assert!(child_env.lookup_function("custom_func").is_some());
-        assert!(root_env.lookup_function("non_existent_func").is_none());  
+        assert!(root_env.lookup_function("non_existent_func").is_none());
     }
-    
+
     #[test]
     fn test_environment_variables_variables() {
         let mut root_builder = EnvironmentBuilder::root(None, None);
@@ -326,8 +327,14 @@ mod tests {
         child_builder.set_variable("b", 2).unwrap();
         let child_env = child_builder.build();
         let vars = child_env.variables();
-        assert_eq!(vars.get(&Key::from("a")).expect("a to be present"), Some(&Value::from(1)));
-        assert_eq!(vars.get(&Key::from("b")).expect("b to be present"), Some(&Value::from(2)));
+        assert_eq!(
+            vars.get(&Key::from("a")).expect("a to be present"),
+            Some(&Value::from(1))
+        );
+        assert_eq!(
+            vars.get(&Key::from("b")).expect("b to be present"),
+            Some(&Value::from(2))
+        );
         assert_eq!(vars.len(), 2);
     }
 }
