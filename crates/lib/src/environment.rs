@@ -49,7 +49,7 @@ impl<'a> Environment<'a> {
         EnvironmentBuilder {
             variables: None,
             functions: None,
-            parent: self.parent,
+            parent: Some(self),
         }
     }
 
@@ -75,21 +75,11 @@ impl<'a> Environment<'a> {
     pub fn set_variables(&mut self, variables: &'a Map) {
         self.variables = Some(variables);
     }
-
-    pub fn variables(&self) -> Option<&'a Map> {
-        self.variables
-    }
-
-    pub fn functions(&self) -> Option<&'a HashMap<String, Function>> {
-        self.functions
-    }
-
-    pub fn parent(&self) -> Option<&'a Environment<'a>> {
-        self.parent
-    }
 }
 
 impl Environment<'_> {
+    /// Looks up a variable in the environment, following the parent chain if necessary.
+    /// Returns None if the variable is not found.
     pub fn lookup_variable<K>(&self, name: K) -> Option<&Value>
     where
         K: Into<Key>,
@@ -102,12 +92,26 @@ impl Environment<'_> {
             })
     }
 
+    /// Looks up a function in the environment, following the parent chain if necessary.
+    /// Returns None if the function is not found.
     pub fn lookup_function(&self, name: &str) -> Option<&Function> {
         self.functions
             .and_then(|functions| functions.get(name))
             .or_else(|| {
                 self.parent.and_then(|parent| parent.lookup_function(name))
             })
+    }
+
+    /// Returns all variables in the environment, including those from parent environments.
+    pub fn variables(&self) -> Map {
+        let mut map = self.variables.unwrap_or(&Map::new()).clone();
+        if let Some(parent) = self.parent {
+            let parent_vars = parent.variables();
+            for (k, v) in parent_vars.into_iter() {
+                map.entry(k).unwrap().or_insert(v);
+            }
+        }
+        map
     }
 }
 
@@ -269,5 +273,68 @@ impl<'a> EnvironmentBuilder<'a> {
             functions: self.functions.as_ref(),
             parent: self.parent,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_environment_variable_lookup() {
+        let mut root_builder = EnvironmentBuilder::root(None, None);
+        root_builder.set_variable("a", 1).unwrap();
+        let root_env = root_builder.build();
+        let mut child_builder = root_env.child_builder();
+        child_builder.set_variable("b", 2).unwrap();
+        let child_env = child_builder.build();
+        assert_eq!(root_env.lookup_variable("a"), Some(&Value::from(1)));
+        assert_eq!(root_env.lookup_variable("b"), None);
+        assert_eq!(child_env.lookup_variable("a"), Some(&Value::from(1)));
+        assert_eq!(child_env.lookup_variable("b"), Some(&Value::from(2)));
+    }
+
+    #[test]
+    fn test_environment_variable_lookup_shadowing() {
+        let mut root_builder = EnvironmentBuilder::root(None, None);
+        root_builder.set_variable("a", 1).unwrap();
+        let root_env = root_builder.build();
+        let mut child_builder = root_env.child_builder();
+        child_builder.set_variable("a", 2).unwrap(); // Shadowing variable 'a'
+        let child_env = child_builder.build();
+        assert_eq!(root_env.lookup_variable("a"), Some(&Value::from(1)));
+        assert_eq!(child_env.lookup_variable("a"), Some(&Value::from(2))); // Should return the shadowed value
+    }
+
+    #[test]
+    fn test_environment_function_lookup() {
+        let mut root_builder = EnvironmentBuilder::root(None, None);
+        root_builder
+            .set_function("custom_func", Arc::new(|_, _| Ok(Value::from(7))));
+        let root_env = root_builder.build();
+        let child_env = root_env.child();
+        assert!(root_env.lookup_function("custom_func").is_some());
+        assert!(child_env.lookup_function("custom_func").is_some());
+        assert!(root_env.lookup_function("non_existent_func").is_none());
+    }
+
+    #[test]
+    fn test_environment_variables_variables() {
+        let mut root_builder = EnvironmentBuilder::root(None, None);
+        root_builder.set_variable("a", 1).unwrap();
+        let root_env = root_builder.build();
+        let mut child_builder = root_env.child_builder();
+        child_builder.set_variable("b", 2).unwrap();
+        let child_env = child_builder.build();
+        let vars = child_env.variables();
+        assert_eq!(
+            vars.get(&Key::from("a")).expect("a to be present"),
+            Some(&Value::from(1))
+        );
+        assert_eq!(
+            vars.get(&Key::from("b")).expect("b to be present"),
+            Some(&Value::from(2))
+        );
+        assert_eq!(vars.len(), 2);
     }
 }
