@@ -1,9 +1,9 @@
-use miette::{Context, Error, LabeledSpan};
-use std::borrow::Cow;
-use std::fmt;
-
 use crate::Lexer;
 use crate::lexer::{Token, TokenType};
+use miette::{Context, Error, LabeledSpan};
+use serde::Serialize;
+use std::borrow::Cow;
+use std::fmt;
 
 /// A parser for the language.
 /// This parser is a Pratt parser, which is a top-down operator precedence parser.
@@ -475,6 +475,27 @@ pub enum Atom<'src> {
     Null,
 }
 
+impl Serialize for Atom<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Atom::Bool(b) => {
+                let s = serializer.serialize_struct("Bool", 2)?;
+                s.serialize_field("kind", "bool")?;
+            }
+            Atom::Int(i) => serializer.serialize_i64(*i),
+            Atom::Uint(u) => serializer.serialize_u64(*u),
+            Atom::Double(d) => serializer.serialize_f64(*d),
+            Atom::String(s) => serializer.serialize_str(s),
+            Atom::Bytes(b) => serializer.serialize_bytes(b),
+            Atom::Ident(i) => serializer.serialize_str(i),
+            Atom::Null => serializer.serialize_none(),
+        }
+    }
+}
+
 impl fmt::Display for Atom<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -565,6 +586,34 @@ pub enum TokenTree<'src> {
         args: Vec<TokenTree<'src>>,
         is_method: bool,
     },
+}
+
+impl Serialize for TokenTree<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            TokenTree::Atom(atom) => atom.serialize(serializer),
+            TokenTree::Cons(op, args) => {
+                let mut state = serializer.serialize_struct("Cons", 2)?;
+                state.serialize_field("op", op)?;
+                state.serialize_field("args", args)?;
+                state.end()
+            }
+            TokenTree::Call {
+                func,
+                args,
+                is_method,
+            } => {
+                let mut state = serializer.serialize_struct("Call", 3)?;
+                state.serialize_field("func", func)?;
+                state.serialize_field("args", args)?;
+                state.serialize_field("is_method", is_method)?;
+                state.end()
+            }
+        }
+    }
 }
 
 impl fmt::Display for TokenTree<'_> {
