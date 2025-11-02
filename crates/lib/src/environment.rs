@@ -113,6 +113,12 @@ impl Environment<'_> {
         }
         map
     }
+
+    /// Parent returns the parent environment, if any.
+    /// This can be useful for traversing the environment chanin when debugging
+    pub fn parent(&self) -> Option<&Environment<'_>> {
+        self.parent
+    }
 }
 
 /// standard functions exposed by each environment, created during root environment creation
@@ -336,5 +342,13 @@ mod tests {
             Some(&Value::from(2))
         );
         assert_eq!(vars.len(), 2);
+    }
+
+    #[test]
+    fn test_environment_parent() {
+        let root_env = Environment::root();
+        let child_env = root_env.child();
+        assert!(child_env.parent().is_some());
+        assert!(child_env.parent().unwrap().parent().is_none());
     }
 }
