@@ -488,13 +488,47 @@ impl Serialize for Atom<'_> {
                 s.serialize_field("value", b)?;
                 s.end()
             }
-            Atom::Int(i) => serializer.serialize_i64(*i),
-            Atom::Uint(u) => serializer.serialize_u64(*u),
-            Atom::Double(d) => serializer.serialize_f64(*d),
-            Atom::String(s) => serializer.serialize_str(s),
-            Atom::Bytes(b) => serializer.serialize_bytes(b),
-            Atom::Ident(i) => serializer.serialize_str(i),
-            Atom::Null => serializer.serialize_none(),
+            Atom::Int(i) => {
+                let mut s = serializer.serialize_struct("Int", 2)?;
+                s.serialize_field("kind", "int")?;
+                s.serialize_field("value", i)?;
+                s.end()
+            }
+            Atom::Uint(u) => {
+                let mut s = serializer.serialize_struct("Uint", 2)?;
+                s.serialize_field("kind", "uint")?;
+                s.serialize_field("value", u)?;
+                s.end()
+            }
+            Atom::Double(d) => {
+                let mut s = serializer.serialize_struct("Double", 2)?;
+                s.serialize_field("kind", "double")?;
+                s.serialize_field("value", d)?;
+                s.end()
+            }
+            Atom::String(s) => {
+                let mut srl = serializer.serialize_struct("String", 2)?;
+                srl.serialize_field("kind", "string")?;
+                srl.serialize_field("value", s)?;
+                srl.end()
+            }
+            Atom::Bytes(b) => {
+                let mut srl = serializer.serialize_struct("Bytes", 2)?;
+                srl.serialize_field("kind", "bytes")?;
+                srl.serialize_field("value", b)?;
+                srl.end()
+            }
+            Atom::Ident(i) => {
+                let mut s = serializer.serialize_struct("Ident", 2)?;
+                s.serialize_field("kind", "ident")?;
+                s.serialize_field("value", i)?;
+                s.end()
+            }
+            Atom::Null => {
+                let mut s = serializer.serialize_struct("Null", 1)?;
+                s.serialize_field("kind", "null")?;
+                s.end()
+            }
         }
     }
 }
