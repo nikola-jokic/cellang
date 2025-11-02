@@ -2,6 +2,7 @@ use crate::Lexer;
 use crate::lexer::{Token, TokenType};
 use miette::{Context, Error, LabeledSpan};
 use serde::Serialize;
+use serde::ser::SerializeStruct;
 use std::borrow::Cow;
 use std::fmt;
 
@@ -482,8 +483,10 @@ impl Serialize for Atom<'_> {
     {
         match self {
             Atom::Bool(b) => {
-                let s = serializer.serialize_struct("Bool", 2)?;
+                let mut s = serializer.serialize_struct("Bool", 2)?;
                 s.serialize_field("kind", "bool")?;
+                s.serialize_field("value", b)?;
+                s.end()
             }
             Atom::Int(i) => serializer.serialize_i64(*i),
             Atom::Uint(u) => serializer.serialize_u64(*u),
@@ -540,6 +543,17 @@ pub enum Op {
     Map,
     List,
     Dyn,
+}
+
+impl Serialize for Op {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut s = serializer.serialize_struct("Op", 1)?;
+        s.serialize_field("op", &self.to_string())?;
+        s.end()
+    }
 }
 
 impl fmt::Display for Op {
