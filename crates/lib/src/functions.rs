@@ -79,6 +79,10 @@ pub fn type_fn(
 }
 
 /// Tests whether a field is available
+///
+/// The correct usage is `has(e.f)` where:
+/// - e: an expression evaluating to a map
+/// - f: the field name to check for existence
 pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 1 {
         miette::bail!("expected 1 argument, found {}", tokens.len());
@@ -112,7 +116,14 @@ pub fn has(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     }
 }
 
-/// Tests whether all elements in the input list or all keys in a map satisfy the given predicate. The all macro behaves in a manner consistent with the Logical AND operator including in how it absorbs errors and short-circuits.
+/// Tests whether all elements in the input list or all keys in a map satisfy the given predicate.
+/// The all macro behaves in a manner consistent with the Logical AND operator including in how
+/// it absorbs errors and short-circuits.
+///
+/// Usage of the `all` expression is: `e.all(x, p)`, where:
+/// - e: evaluates to a list or a map
+/// - x: evaluates to an identifier for each iteration over the list elements or map keys
+/// - p: expression evaluating to true or false.
 pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 3 arguments, found {}", tokens.len());
@@ -163,7 +174,14 @@ pub fn all(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(Value::Bool(all))
 }
 
-/// Tests whether any value in the list or any key in the map satisfies the predicate expression. The exists macro behaves in a manner consistent with the Logical OR operator including in how it absorbs errors and short-circuits.
+/// Tests whether any value in the list or any key in the map satisfies the predicate expression.
+/// The exists macro behaves in a manner consistent with the Logical OR operator including in how
+/// it absorbs errors and short-circuits.
+///
+/// Usage of the `exists` expression is: `e.exists(x, p)`, where:
+/// - e: evaluates to a list or a map
+/// - x: evaluates to an identifier for each iteration over the list elements or map keys
+/// - p: expression evaluating to true or false.
 pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     if tokens.len() != 3 {
         miette::bail!("expected 3 arguments, found {}", tokens.len());
@@ -213,7 +231,14 @@ pub fn exists(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(Value::Bool(exists))
 }
 
-/// Tests whether exactly one list element or map key satisfies the predicate expression. This macro does not short-circuit in order to remain consistent with logical operators being the only operators which can absorb errors within CEL
+/// Tests whether exactly one list element or map key satisfies the predicate expression.
+/// This macro does not short-circuit in order to remain consistent with logical operators
+/// being the only operators which can absorb errors within CEL
+///
+/// Usage of the `exists_one` expression is: `e.exists_one(x, p)`, where:
+/// - e: evaluates to a list or a map
+/// - x: evaluates to an identifier for each iteration over the list elements or map keys
+/// - p: expression evaluating to true or false.
 pub fn exists_one(
     env: &Environment,
     tokens: &[TokenTree],
@@ -392,7 +417,11 @@ pub fn filter(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
     Ok(Value::List(new_list))
 }
 
-/// Tests whether the string operand contains the substring. Time complexity is proportional to the product of the sizes of the arguments.
+/// Tests whether the string operand contains the substring.
+/// Time complexity is proportional to the product of the sizes of the arguments.
+///
+/// The expression `s.contains(substr)` returns true if the string `s` contains the substring `substr`.
+/// Both s and substr must be of type string.
 pub fn contains(
     env: &Environment,
     tokens: &[TokenTree],
@@ -418,7 +447,12 @@ pub fn contains(
     Ok(Value::Bool(s.contains(value.as_str())))
 }
 
-/// Tests whether the string operand starts with the specified prefix. Average time complexity is linear with respect to the size of the prefix. Worst-case time complexity is proportional to the product of the sizes of the arguments.
+/// Tests whether the string operand starts with the specified prefix. Average time
+/// complexity is linear with respect to the size of the prefix.
+/// Worst-case time complexity is proportional to the product of the sizes of the arguments.
+///
+/// The expression `s.startsWith(prefix)` returns true if the string `s` starts with the substring `prefix`.
+/// Both s and prefix must be of type string.
 pub fn starts_with(
     env: &Environment,
     tokens: &[TokenTree],
@@ -442,7 +476,13 @@ pub fn starts_with(
     Ok(Value::Bool(s.starts_with(value.as_str())))
 }
 
-/// Tests whether the string operand ends with the specified suffix. Average time complexity is linear with respect to the size of the suffix string. Worst-case time complexity is proportional to the product of the sizes of the arguments.
+/// Tests whether the string operand ends with the specified suffix.
+/// Average time complexity is linear with respect to the size of the
+/// suffix string. Worst-case time complexity is proportional to the
+/// product of the sizes of the arguments.
+///
+/// The expression `s.endsWith(suffix)` returns true if the string `s` ends with the substring `suffix`.
+/// Both s and suffix must be of type string.
 pub fn ends_with(
     env: &Environment,
     tokens: &[TokenTree],
@@ -470,7 +510,10 @@ pub fn ends_with(
 
 /// Tests whether a string matches a rust regular expression. This differs from the
 /// original CEL documentation where RE2 expressions are used.
-/// If needed, RE2 implementation can be done
+/// If needed, RE2 implementation can be done.
+///
+/// Currently, syntax documented inside the [regex crate](https://docs.rs/regex/latest/regex/#syntax)
+/// is supported.
 pub fn matches(
     env: &Environment,
     tokens: &[TokenTree],
@@ -591,7 +634,7 @@ pub fn timestamp(
     }
 
     let v = match eval_ast(env, &tokens[0])?.to_value()? {
-        v if matches!(v, Value::Timestamp(_)) => v,
+        Value::Timestamp(t) => Value::Timestamp(t),
         Value::String(s) => {
             let t = match OffsetDateTime::parse(&s, &Rfc3339) {
                 Ok(t) => t,
@@ -619,6 +662,7 @@ pub fn duration(
     }
 
     let v = match eval_ast(env, &tokens[0])?.to_value()? {
+        Value::Duration(v) => Value::Duration(v),
         Value::String(s) => {
             let d = s.parse::<Duration>()?;
             Value::Duration(d.0)
