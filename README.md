@@ -10,8 +10,8 @@ If you find any issues, please report them.
 
 This repository is a rust workspace, with the following crates:
 
-- `cellang`: The main library crate located at [lib](./crates/lib)
-- `cellang-cli`: A CLI tool to evaluate CEL expressions located at [cli](./crates/cli)
+- `cellang`: The main library crate located at [lib](./crates/cellang)
+- `cellang-cli`: A CLI tool to evaluate CEL expressions located at [cli](./crates/cellang-cli)
 
 ## License
 

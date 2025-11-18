@@ -2,10 +2,7 @@
 
 resolver = "2"
 
-members = [
-    "crates/lib",
-    "crates/cli",
-]
+members = ["crates/cellang", "crates/cellang-cli"]
 
 [workspace.package]
 version = "0.4.3"
