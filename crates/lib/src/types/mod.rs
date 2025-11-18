@@ -9,6 +9,7 @@ pub mod value;
 use std::sync::Arc;
 
 pub use self::duration::*;
+pub use self::dynamic::*;
 pub use self::list::*;
 pub use self::map::*;
 pub use self::value::*;

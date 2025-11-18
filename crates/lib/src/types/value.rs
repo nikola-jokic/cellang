@@ -1,7 +1,7 @@
-use super::dynamic::Dyn;
 use super::{
     Key, KeyType, List, Map, deserialize_duration, serialize_duration,
 };
+use crate::Dyn;
 use base64::prelude::*;
 use miette::Error;
 use serde::de::DeserializeOwned;
