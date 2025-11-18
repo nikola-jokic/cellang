@@ -132,6 +132,7 @@ dependencies = [
  "cellang",
  "clap",
  "miette",
+ "serde",
  "serde_json",
 ]
 
