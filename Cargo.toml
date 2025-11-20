@@ -5,10 +5,9 @@ resolver = "2"
 members = ["crates/cellang", "crates/cellang-cli"]
 
 [workspace.package]
-version = "0.4.3"
+version = "0.5.0"
 edition = "2024"
 license = "MIT"
-
 
 [profile.release]
 codegen-units = 1
