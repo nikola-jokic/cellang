@@ -12,13 +12,18 @@ categories = ["development-tools", "compilers"]
 
 [dependencies]
 serde = { version = "^1", features = ["derive"] }
-miette = { version="^7"}
+miette = { version = "^7" }
 regex = "^1"
-time = { version="^0.3", features=["serde", "formatting", "parsing"]}
+time = { version = "^0.3", features = ["serde", "formatting", "parsing"] }
 base64 = "^0.22"
 thiserror = "^2"
 
 [dev-dependencies]
-miette = { version="^7", features = ["fancy"] }
+miette = { version = "^7", features = ["fancy"] }
 serde_json = "^1"
-time = { version="^0.3", features=["serde", "formatting", "parsing", "macros"]}
+time = { version = "^0.3", features = [
+    "serde",
+    "formatting",
+    "parsing",
+    "macros",
+] }
