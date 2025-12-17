@@ -317,10 +317,7 @@ impl<'src> Lexer<'src> {
                 source_code: self.whole.to_string(),
                 message: unexpected.to_string(),
                 help: None,
-                span: SourceSpan::new(
-                    token.offset.into(),
-                    token.origin.len(),
-                ),
+                span: SourceSpan::new(token.offset.into(), token.origin.len()),
             }),
             Some(Err(e)) => Err(e),
             None => Err(SyntaxError {
