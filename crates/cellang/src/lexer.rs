@@ -1,18 +1,7 @@
+use crate::SyntaxError;
 use core::fmt;
-use miette::{Diagnostic, Error, LabeledSpan};
+use miette::SourceSpan;
 use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
-
-/// Eof is returned when the lexer encounters an unexpected end of file.
-#[derive(Diagnostic, Debug)]
-pub struct Eof;
-
-impl fmt::Display for Eof {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Unexpected end of file")
-    }
-}
-
-impl std::error::Error for Eof {}
 
 /// Token represents a single token in the source code.
 /// The token from the lexer is used by the parser to build the AST (or a TokenTree).
@@ -286,7 +275,7 @@ pub struct Lexer<'src> {
     rest: &'src str,
     byte: usize,
     line: usize,
-    peeked: Option<Result<Token<'src>, miette::Error>>,
+    peeked: Option<Result<Token<'src>, SyntaxError>>,
 }
 
 impl<'src> Lexer<'src> {
@@ -309,7 +298,7 @@ impl<'src> Lexer<'src> {
         &mut self,
         expected: TokenType,
         unexpected: &str,
-    ) -> Result<Token<'src>, miette::Error> {
+    ) -> Result<Token<'src>, SyntaxError> {
         self.expect_where(|next| next.ty == expected, unexpected)
     }
 
@@ -321,25 +310,33 @@ impl<'src> Lexer<'src> {
         &mut self,
         mut check: impl FnMut(&Token<'src>) -> bool,
         unexpected: &str,
-    ) -> Result<Token<'src>, miette::Error> {
+    ) -> Result<Token<'src>, SyntaxError> {
         match self.next() {
             Some(Ok(token)) if check(&token) => Ok(token),
-            Some(Ok(token)) => Err(miette::miette! {
-                labels = vec![LabeledSpan::at(
-                    token.offset..token.offset + token.origin.len(),
-                    unexpected
-                )],
-                help = format!("Unexpected {token:?}"),
-                "{unexpected}",
+            Some(Ok(token)) => Err(SyntaxError {
+                source_code: self.whole.to_string(),
+                message: unexpected.to_string(),
+                help: None,
+                span: SourceSpan::new(
+                    token.offset.into(),
+                    token.origin.len().into(),
+                ),
             }),
             Some(Err(e)) => Err(e),
-            None => Err(Eof.into()),
+            None => Err(SyntaxError {
+                source_code: self.whole.to_string(),
+                message: format!(
+                    "Unexpected end of file, expected {unexpected}"
+                ),
+                help: None,
+                span: SourceSpan::new(self.byte.into(), 0),
+            }),
         }
     }
 
     /// Peek at the next token without consuming it.
     /// The peeked token is returned by the next call to next().
-    pub fn peek(&mut self) -> Option<&Result<Token<'src>, miette::Error>> {
+    pub fn peek(&mut self) -> Option<&Result<Token<'src>, SyntaxError>> {
         if self.peeked.is_none() {
             self.peeked = self.next();
         }
@@ -358,7 +355,7 @@ impl<'src> Lexer<'src> {
 }
 
 impl<'src> Iterator for Lexer<'src> {
-    type Item = Result<Token<'src>, Error>;
+    type Item = Result<Token<'src>, SyntaxError>;
 
     /// Get the next token from the source code.
     fn next(&mut self) -> Option<Self::Item> {
@@ -435,13 +432,16 @@ impl<'src> Iterator for Lexer<'src> {
                         self.rest = &self.rest[1..];
                         return just(TokenType::And);
                     } else {
-                        return Some(Err(miette::miette! {
-                            labels = vec![LabeledSpan::at(
-                                c_at..self.byte,
-                                "Unexpected character"
-                            )],
-                            help = "Expected `&&`",
-                            "[line {line}] Error: Unexpected character: {c}",
+                        return Some(Err(SyntaxError {
+                            source_code: self.whole.to_string(),
+                            span: SourceSpan::new(
+                                c_at.into(),
+                                self.byte - c_at,
+                            ),
+                            message: format!(
+                                "[line {line}] Error: Unexpected character: {c}"
+                            ),
+                            help: Some("expected `&&`".to_string()),
                         }));
                     }
                 }
@@ -451,13 +451,16 @@ impl<'src> Iterator for Lexer<'src> {
                         self.rest = &self.rest[1..];
                         return just(TokenType::Or);
                     } else {
-                        return Some(Err(miette::miette! {
-                            labels = vec![LabeledSpan::at(
-                                c_at..self.byte,
-                                "Unexpected character"
-                            )],
-                            help = "Expected ||",
-                            "[line {line}] Error: Unexpected character: {c}",
+                        return Some(Err(SyntaxError {
+                            source_code: self.whole.to_string(),
+                            span: SourceSpan::new(
+                                c_at.into(),
+                                self.byte - c_at,
+                            ),
+                            message: format!(
+                                "[line {line}] Error: Unexpected character: {c}"
+                            ),
+                            help: Some("expected `||`".to_string()),
                         }));
                     }
                 }
@@ -506,14 +509,15 @@ impl<'src> Iterator for Lexer<'src> {
                 c if c.is_whitespace() => continue,
                 c => {
                     let line = self.line;
-                    return Some(Err(miette::miette! {
-                        labels = vec![LabeledSpan::at(
-                            self.byte-c.len_utf8()..self.byte,
-                            "Unexpected character"
-                        )],
-                        "[line {line}] Error: Unexpected character: {c}",
-                    }
-                    .with_source_code(self.whole.to_string())));
+
+                    return Some(Err(SyntaxError {
+                        source_code: self.whole.to_string(),
+                        span: SourceSpan::new(c_at.into(), self.byte - c_at),
+                        message: format!(
+                            "[line {line}] Error: Unexpected character: {c}"
+                        ),
+                        help: None,
+                    }));
                 }
             };
 
@@ -683,13 +687,17 @@ impl<'src> Iterator for Lexer<'src> {
                     match state {
                         State::Nil => {
                             let line = self.line;
-                            return Some(Err(miette::miette! {
-                                labels = vec![LabeledSpan::at(
-                                    c_at..self.byte,
-                                    "Unexpected character"
-                                )],
-                                help = "Expected a number",
-                                "[line {line}] Error: Unexpected character: {c}",
+
+                            return Some(Err(SyntaxError {
+                                source_code: self.whole.to_string(),
+                                span: SourceSpan::new(
+                                    c_at.into(),
+                                    self.byte - c_at,
+                                ),
+                                message: format!(
+                                    "[line {line}] Error: Unexpected character: {c}"
+                                ),
+                                help: Some("Expected a number".to_string()),
                             }));
                         }
                         State::Dot | State::Exp => {
@@ -762,13 +770,16 @@ impl<'src> Iterator for Lexer<'src> {
                     let rest = &c_onwards[2..]; // ignore 0x
                     if rest.is_empty() {
                         let line = self.line;
-                        return Some(Err(miette::miette! {
-                            labels = vec![LabeledSpan::at(
-                                c_at..self.byte,
-                                "Unexpected character"
-                            )],
-                            help = "Expected a number",
-                            "[line {line}] Error: Unexpected character: {c}",
+                        return Some(Err(SyntaxError {
+                            source_code: self.whole.to_string(),
+                            span: SourceSpan::new(
+                                c_at.into(),
+                                self.byte - c_at,
+                            ),
+                            message: format!(
+                                "[line {line}] Error: Unexpected character: {c}"
+                            ),
+                            help: Some("Expected a number".to_string()),
                         }));
                     }
 
@@ -834,13 +845,15 @@ impl<'src> Iterator for Lexer<'src> {
     }
 }
 
-fn scan_str(s: &str) -> Result<(usize, &str), Error> {
+fn scan_str(s: &str) -> Result<(usize, &str), SyntaxError> {
     assert!(s.starts_with(['"', '\'']));
 
     if s.len() < 2 {
-        return Err(miette::miette! {
-            help = "Expected a closing quote",
-            "Unexpected end of file",
+        return Err(SyntaxError {
+            source_code: s.to_string(),
+            span: SourceSpan::new(0.into(), s.len()),
+            message: format!("Unexpected end of file"),
+            help: Some("Expected a closing quote".to_string()),
         });
     }
 
@@ -861,30 +874,24 @@ fn scan_str(s: &str) -> Result<(usize, &str), Error> {
         let c = match chars.next() {
             Some(c) => c,
             None => {
-                return Err(miette::miette! {
-                    labels = vec![LabeledSpan::at(
-                        0..end,
-                        "Unexpected character"
-                    )],
-                    help = "Expected a closing quote",
-                    "Unexpected end of file",
-                }
-                .with_source_code(s.to_string()));
+                return Err(SyntaxError {
+                    source_code: s.to_string(),
+                    span: SourceSpan::new(0.into(), end),
+                    message: "Unexpected end of file".to_string(),
+                    help: Some("Expected a closing quote".to_string()),
+                });
             }
         };
 
         end += c.len_utf8();
 
         if delim_n == 1 && matches!(c, '\r' | '\n') {
-            return Err(miette::miette! {
-                labels = vec![LabeledSpan::at(
-                    end-1..end,
-                    "Unexpected character"
-                )],
-                help = "Unterminated string",
-                "Unexpected newline in string",
-            }
-            .with_source_code(s[..end].to_string()));
+            return Err(SyntaxError {
+                source_code: s[..end].to_string(),
+                span: SourceSpan::new((end - 1).into(), 1),
+                message: "Unexpected newline in string".to_string(),
+                help: Some("Unterminated string".to_string()),
+            });
         }
 
         // if it is a delimiter, check if it is the closing delimiter
@@ -906,15 +913,12 @@ fn scan_str(s: &str) -> Result<(usize, &str), Error> {
         let c = match chars.next() {
             Some(c) => c,
             None => {
-                return Err(miette::miette! {
-                    labels = vec![LabeledSpan::at(
-                        0..end,
-                        "Unexpected character"
-                    )],
-                    help = "Expected char after escape",
-                    "Unexpected end of file",
-                }
-                .with_source_code(s.to_string()));
+                return Err(SyntaxError {
+                    source_code: s.to_string(),
+                    span: SourceSpan::new(0.into(), end.into()),
+                    message: "Unexpected end of file".to_string(),
+                    help: Some("Expected char after escape".to_string()),
+                });
             }
         };
         end += c.len_utf8();
@@ -961,25 +965,24 @@ fn scan_str(s: &str) -> Result<(usize, &str), Error> {
                 end += 2;
             }
             _ => {
-                return Err(miette::miette! {
-                    labels = vec![LabeledSpan::at(
-                        0..end,
-                        "Unexpected character"
-                    )],
-                    help = "Expected a hex digit",
-                    "Unexpected character: {c}",
-                }
-                .with_source_code(s.to_string()));
+                return Err(SyntaxError {
+                    source_code: s.to_string(),
+                    span: SourceSpan::new(0.into(), end.into()),
+                    message: format!("Unexpected character: {c}"),
+                    help: Some("Expected a hex digit".to_string()),
+                });
             }
         }
     }
 }
 
-fn read_str_raw(s: &str) -> Result<(usize, &str), Error> {
+fn read_str_raw(s: &str) -> Result<(usize, &str), SyntaxError> {
     if s.len() < 2 {
-        return Err(miette::miette! {
-            help = "Expected a closing quote",
-            "Unexpected end of file",
+        return Err(SyntaxError {
+            source_code: s.to_string(),
+            span: SourceSpan::new(0.into(), s.len()),
+            message: format!("Unexpected end of file"),
+            help: Some("Expected a closing quote".to_string()),
         });
     }
 
@@ -994,9 +997,11 @@ fn read_str_raw(s: &str) -> Result<(usize, &str), Error> {
     let end = match rest.find(delim) {
         Some(end) => end,
         None => {
-            return Err(miette::miette! {
-                help = "Expected a closing quote",
-                "Unexpected end of file",
+            return Err(SyntaxError {
+                source_code: s.to_string(),
+                span: SourceSpan::new(0.into(), s.len()),
+                message: format!("Unexpected end of file"),
+                help: Some("Expected a closing quote".to_string()),
             });
         }
     };
@@ -1017,23 +1022,27 @@ fn read_chars_tested(
     n: usize,
     test_fn: impl Fn(char) -> bool,
     err_msg: &str,
-) -> Result<String, Error> {
+) -> Result<String, SyntaxError> {
     let mut buf = String::with_capacity(n);
     for _ in 0..n {
         let c = match chars.next() {
             Some(c) => c,
             None => {
-                return Err(miette::miette! {
-                    help = err_msg,
-                    "Unexpected end of file",
+                return Err(SyntaxError {
+                    source_code: buf.clone(),
+                    span: SourceSpan::new(0.into(), buf.len().into()),
+                    message: "Unexpected end of file".to_string(),
+                    help: Some(err_msg.to_string()),
                 });
             }
         };
 
         if !test_fn(c) {
-            return Err(miette::miette! {
-                help = err_msg,
-                "Unexpected character: {c}",
+            return Err(SyntaxError {
+                source_code: buf.clone(),
+                span: SourceSpan::new(0.into(), buf.len().into()),
+                message: format!("Unexpected character: {c}"),
+                help: Some(err_msg.to_string()),
             });
         }
 

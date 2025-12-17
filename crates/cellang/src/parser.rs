@@ -1,6 +1,7 @@
 use crate::Lexer;
+use crate::SyntaxError;
 use crate::lexer::{Token, TokenType};
-use miette::{Context, Error, LabeledSpan};
+use miette::SourceSpan;
 use serde::Serialize;
 use serde::ser::SerializeStruct;
 use std::borrow::Cow;
@@ -23,11 +24,14 @@ impl<'src> Parser<'src> {
     }
 
     /// Parses the whole input and returns the AST.
-    pub fn parse(&mut self) -> Result<TokenTree<'src>, Error> {
+    pub fn parse(&mut self) -> Result<TokenTree<'src>, SyntaxError> {
         self.parse_expr(0)
     }
 
-    fn parse_expr(&mut self, min_bp: u8) -> Result<TokenTree<'src>, Error> {
+    fn parse_expr(
+        &mut self,
+        min_bp: u8,
+    ) -> Result<TokenTree<'src>, SyntaxError> {
         let lhs = match self.lexer.next() {
             Some(Ok(token)) => token,
             None => return Ok(TokenTree::Atom(Atom::Null)), // todo: figure out this
@@ -132,15 +136,14 @@ impl<'src> Parser<'src> {
             } => self.parse_list()?,
 
             token => {
-                return Err(miette::miette! {
-                    labels = vec![
-                        LabeledSpan::at(
-                            token.offset..token.offset + token.origin.len(),
-                            "here",
-                        ),
-                    ],
-                        help = format!("Unexpected token: {:?}", token.ty),
-                        "Unexpected token"
+                return Err(SyntaxError {
+                    source_code: self.input.to_string(),
+                    span: SourceSpan::new(
+                        token.offset.into(),
+                        token.origin.len(),
+                    ),
+                    message: format!("Unexpected token: {:?}", token),
+                    help: Some("Expected an expression".to_string()),
                 });
             }
         };
@@ -152,103 +155,103 @@ impl<'src> Parser<'src> {
                     .lexer
                     .next()
                     .expect("checked Some above")
-                    .expect_err("checked Err above"))
-                .wrap_err("in place of expected operator");
+                    .expect_err("checked Err above"));
             }
 
-            let op = match op.map(|res| res.as_ref().expect("handled Err above")) {
-                None | Some(Token {
-                    ty:
-                        TokenType::RightParen
-                        | TokenType::RightBracket
-                        | TokenType::RightBrace
-                        | TokenType::Comma
-                        | TokenType::Colon
-                        | TokenType::Semicolon,
-                    ..
-                }) => break,
-                Some(Token {
-                    ty: TokenType::LeftParen,
-                    ..
-                }) => Op::Call,
-                Some(Token {
-                    ty: TokenType::LeftBracket,
-                    ..
-                }) => Op::Index,
-                Some(Token {
-                    ty: TokenType::Dot,
-                    ..
-                }) => Op::Field,
-                Some(Token {
-                    ty: TokenType::Minus,
-                    ..
-                }) => Op::Minus,
-                Some(Token {
-                    ty: TokenType::Plus,
-                    ..
-                }) => Op::Plus,
-                Some(Token {
-                    ty: TokenType::Star,
-                    ..
-                }) => Op::Multiply,
-                Some(Token {
-                    ty: TokenType::Percent,
-                    ..
-                }) => Op::Mod,
-                Some(Token {
-                    ty: TokenType::NotEqual,
-                    ..
-                }) => Op::NotEqual,
-                Some(Token {
-                    ty: TokenType::In,
-                    ..
-                }) => Op::In,
-                Some(Token {
-                    ty: TokenType::EqualEqual,
-                    ..
-                }) => Op::EqualEqual,
-                Some(Token {
-                    ty: TokenType::LessEqual,
-                    ..
-                }) => Op::LessEqual,
-                Some(Token {
-                    ty: TokenType::GreaterEqual,
-                    ..
-                }) => Op::GreaterEqual,
-                Some(Token {
-                    ty: TokenType::Less,
-                    ..
-                }) => Op::Less,
-                Some(Token {
-                    ty: TokenType::Greater,
-                    ..
-                }) => Op::Greater,
-                Some(Token {
-                    ty: TokenType::Slash,
-                    ..
-                }) => Op::Devide,
-                Some(Token {
-                    ty: TokenType::And,
-                    ..
-                }) => Op::And,
-                Some(Token {
-                    ty: TokenType::Or,
-                    ..
-                }) => Op::Or,
-                Some(Token {
-                    ty: TokenType::QuestionMark,
-                    ..
-                }) => Op::IfTernary,
+            let op =
+                match op.map(|res| res.as_ref().expect("handled Err above")) {
+                    None
+                    | Some(Token {
+                        ty:
+                            TokenType::RightParen
+                            | TokenType::RightBracket
+                            | TokenType::RightBrace
+                            | TokenType::Comma
+                            | TokenType::Colon
+                            | TokenType::Semicolon,
+                        ..
+                    }) => break,
+                    Some(Token {
+                        ty: TokenType::LeftParen,
+                        ..
+                    }) => Op::Call,
+                    Some(Token {
+                        ty: TokenType::LeftBracket,
+                        ..
+                    }) => Op::Index,
+                    Some(Token {
+                        ty: TokenType::Dot, ..
+                    }) => Op::Field,
+                    Some(Token {
+                        ty: TokenType::Minus,
+                        ..
+                    }) => Op::Minus,
+                    Some(Token {
+                        ty: TokenType::Plus,
+                        ..
+                    }) => Op::Plus,
+                    Some(Token {
+                        ty: TokenType::Star,
+                        ..
+                    }) => Op::Multiply,
+                    Some(Token {
+                        ty: TokenType::Percent,
+                        ..
+                    }) => Op::Mod,
+                    Some(Token {
+                        ty: TokenType::NotEqual,
+                        ..
+                    }) => Op::NotEqual,
+                    Some(Token {
+                        ty: TokenType::In, ..
+                    }) => Op::In,
+                    Some(Token {
+                        ty: TokenType::EqualEqual,
+                        ..
+                    }) => Op::EqualEqual,
+                    Some(Token {
+                        ty: TokenType::LessEqual,
+                        ..
+                    }) => Op::LessEqual,
+                    Some(Token {
+                        ty: TokenType::GreaterEqual,
+                        ..
+                    }) => Op::GreaterEqual,
+                    Some(Token {
+                        ty: TokenType::Less,
+                        ..
+                    }) => Op::Less,
+                    Some(Token {
+                        ty: TokenType::Greater,
+                        ..
+                    }) => Op::Greater,
+                    Some(Token {
+                        ty: TokenType::Slash,
+                        ..
+                    }) => Op::Devide,
+                    Some(Token {
+                        ty: TokenType::And, ..
+                    }) => Op::And,
+                    Some(Token {
+                        ty: TokenType::Or, ..
+                    }) => Op::Or,
+                    Some(Token {
+                        ty: TokenType::QuestionMark,
+                        ..
+                    }) => Op::IfTernary,
 
-                Some(token) => return Err(miette::miette! {
-                    labels = vec![
-                        LabeledSpan::at(token.offset..token.offset + token.origin.len(), "here"),
-                    ],
-                    help = format!("Unexpected {token:?}"),
-                    "Expected an infix operator",
-                }
-                .with_source_code(self.input.to_string())),
-            };
+                    Some(token) => {
+                        return Err(SyntaxError {
+                            source_code: self.input.to_string(),
+                            span: SourceSpan::new(
+                                token.offset.into(),
+                                token.origin.len(),
+                            ),
+                            message: format!("Unexpected token: {:?}", token),
+                            help: Some("Expected an operator".to_string()),
+                        });
+                    }
+                };
 
             if let Some((l_bp, ())) = postfix_binding_power(op) {
                 if l_bp < min_bp {
@@ -259,15 +262,11 @@ impl<'src> Parser<'src> {
                 lhs = match op {
                     Op::Call => TokenTree::Call {
                         func: Box::new(lhs),
-                        args: self
-                            .parse_fn_call_args()
-                            .wrap_err("in function call arguments")?,
+                        args: self.parse_fn_call_args()?,
                         is_method: false,
                     },
                     Op::Index => {
-                        let index = self
-                            .parse_expr(0)
-                            .wrap_err("in index expression")?;
+                        let index = self.parse_expr(0)?;
                         self.lexer.expect(
                             TokenType::RightBracket,
                             "Expected closing bracket",
@@ -346,7 +345,7 @@ impl<'src> Parser<'src> {
         Ok(lhs)
     }
 
-    fn parse_map(&mut self) -> Result<TokenTree<'src>, Error> {
+    fn parse_map(&mut self) -> Result<TokenTree<'src>, SyntaxError> {
         let mut items = Vec::new();
         if matches!(
             self.lexer.peek(),
@@ -359,27 +358,21 @@ impl<'src> Parser<'src> {
             return Ok(TokenTree::Cons(Op::Map, items));
         }
         loop {
-            let key = self.parse_expr(0).wrap_err("in map key")?;
+            let key = self.parse_expr(0)?;
             self.lexer.expect(
                 TokenType::Colon,
                 "Expected colon between map key and value",
             )?;
-            let value = self.parse_expr(0).wrap_err("in map value")?;
+            let value = self.parse_expr(0)?;
             items.push(key);
             items.push(value);
 
-            let token = self
-                .lexer
-                .expect_where(
-                    |token| {
-                        matches!(
-                            token.ty,
-                            TokenType::Comma | TokenType::RightBrace
-                        )
-                    },
-                    "continuing map",
-                )
-                .wrap_err("in map")?;
+            let token = self.lexer.expect_where(
+                |token| {
+                    matches!(token.ty, TokenType::Comma | TokenType::RightBrace)
+                },
+                "continuing map",
+            )?;
 
             if token.ty == TokenType::RightBrace {
                 break;
@@ -388,7 +381,7 @@ impl<'src> Parser<'src> {
         Ok(TokenTree::Cons(Op::Map, items))
     }
 
-    fn parse_list(&mut self) -> Result<TokenTree<'src>, Error> {
+    fn parse_list(&mut self) -> Result<TokenTree<'src>, SyntaxError> {
         let mut items = Vec::new();
         if matches!(
             self.lexer.peek(),
@@ -401,20 +394,17 @@ impl<'src> Parser<'src> {
             return Ok(TokenTree::Cons(Op::List, items));
         }
         loop {
-            let item = self.parse_expr(0).wrap_err("in list item")?;
+            let item = self.parse_expr(0)?;
             items.push(item);
-            let token = self
-                .lexer
-                .expect_where(
-                    |token| {
-                        matches!(
-                            token.ty,
-                            TokenType::Comma | TokenType::RightBracket
-                        )
-                    },
-                    "continuing list",
-                )
-                .wrap_err("in list")?;
+            let token = self.lexer.expect_where(
+                |token| {
+                    matches!(
+                        token.ty,
+                        TokenType::Comma | TokenType::RightBracket
+                    )
+                },
+                "continuing list",
+            )?;
 
             if token.ty == TokenType::RightBracket {
                 break;
@@ -423,7 +413,9 @@ impl<'src> Parser<'src> {
         Ok(TokenTree::Cons(Op::List, items))
     }
 
-    fn parse_fn_call_args(&mut self) -> Result<Vec<TokenTree<'src>>, Error> {
+    fn parse_fn_call_args(
+        &mut self,
+    ) -> Result<Vec<TokenTree<'src>>, SyntaxError> {
         let mut args = Vec::new();
 
         if !matches!(
@@ -434,22 +426,17 @@ impl<'src> Parser<'src> {
             }))
         ) {
             loop {
-                let arg = self.parse_expr(0).wrap_err_with(|| {
-                    format!("in argument #{} of function call", args.len() + 1)
-                })?;
+                let arg = self.parse_expr(0)?;
                 args.push(arg);
-                let token = self
-                    .lexer
-                    .expect_where(
-                        |token| {
-                            matches!(
-                                token.ty,
-                                TokenType::Comma | TokenType::RightParen
-                            )
-                        },
-                        "continuing argument list",
-                    )
-                    .wrap_err("in argument list of function call")?;
+                let token = self.lexer.expect_where(
+                    |token| {
+                        matches!(
+                            token.ty,
+                            TokenType::Comma | TokenType::RightParen
+                        )
+                    },
+                    "continuing argument list",
+                )?;
 
                 if token.ty == TokenType::RightParen {
                     break;

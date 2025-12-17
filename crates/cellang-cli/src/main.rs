@@ -1,6 +1,6 @@
 use cellang::{EnvironmentBuilder, Lexer, Map, Parser, eval};
 use clap::{Parser as ClapParser, Subcommand};
-use miette::{Error, IntoDiagnostic, WrapErr};
+use miette::{Error, IntoDiagnostic, Report, WrapErr};
 use serde::Serialize;
 use std::fmt;
 use std::{fs, path::PathBuf};
@@ -41,7 +41,7 @@ impl Lex {
         for token in lexer {
             match token {
                 Ok(token) => println!("{:#?}", token),
-                Err(err) => return Err(err),
+                Err(err) => return Err(Report::new(err)),
             }
         }
         Ok(())
