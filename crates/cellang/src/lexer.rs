@@ -319,7 +319,7 @@ impl<'src> Lexer<'src> {
                 help: None,
                 span: SourceSpan::new(
                     token.offset.into(),
-                    token.origin.len().into(),
+                    token.origin.len(),
                 ),
             }),
             Some(Err(e)) => Err(e),
@@ -852,7 +852,7 @@ fn scan_str(s: &str) -> Result<(usize, &str), SyntaxError> {
         return Err(SyntaxError {
             source_code: s.to_string(),
             span: SourceSpan::new(0.into(), s.len()),
-            message: format!("Unexpected end of file"),
+            message: "Unexpected end of file".to_string(),
             help: Some("Expected a closing quote".to_string()),
         });
     }
@@ -915,7 +915,7 @@ fn scan_str(s: &str) -> Result<(usize, &str), SyntaxError> {
             None => {
                 return Err(SyntaxError {
                     source_code: s.to_string(),
-                    span: SourceSpan::new(0.into(), end.into()),
+                    span: SourceSpan::new(0.into(), end),
                     message: "Unexpected end of file".to_string(),
                     help: Some("Expected char after escape".to_string()),
                 });
@@ -967,7 +967,7 @@ fn scan_str(s: &str) -> Result<(usize, &str), SyntaxError> {
             _ => {
                 return Err(SyntaxError {
                     source_code: s.to_string(),
-                    span: SourceSpan::new(0.into(), end.into()),
+                    span: SourceSpan::new(0.into(), end),
                     message: format!("Unexpected character: {c}"),
                     help: Some("Expected a hex digit".to_string()),
                 });
@@ -981,7 +981,7 @@ fn read_str_raw(s: &str) -> Result<(usize, &str), SyntaxError> {
         return Err(SyntaxError {
             source_code: s.to_string(),
             span: SourceSpan::new(0.into(), s.len()),
-            message: format!("Unexpected end of file"),
+            message: "Unexpected end of file".to_string(),
             help: Some("Expected a closing quote".to_string()),
         });
     }
@@ -1000,7 +1000,7 @@ fn read_str_raw(s: &str) -> Result<(usize, &str), SyntaxError> {
             return Err(SyntaxError {
                 source_code: s.to_string(),
                 span: SourceSpan::new(0.into(), s.len()),
-                message: format!("Unexpected end of file"),
+                message: "Unexpected end of file".to_string(),
                 help: Some("Expected a closing quote".to_string()),
             });
         }
@@ -1030,7 +1030,7 @@ fn read_chars_tested(
             None => {
                 return Err(SyntaxError {
                     source_code: buf.clone(),
-                    span: SourceSpan::new(0.into(), buf.len().into()),
+                    span: SourceSpan::new(0.into(), buf.len()),
                     message: "Unexpected end of file".to_string(),
                     help: Some(err_msg.to_string()),
                 });
@@ -1040,7 +1040,7 @@ fn read_chars_tested(
         if !test_fn(c) {
             return Err(SyntaxError {
                 source_code: buf.clone(),
-                span: SourceSpan::new(0.into(), buf.len().into()),
+                span: SourceSpan::new(0.into(), buf.len()),
                 message: format!("Unexpected character: {c}"),
                 help: Some(err_msg.to_string()),
             });
