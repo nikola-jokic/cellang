@@ -10,6 +10,7 @@ use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
 pub struct Token<'src> {
     pub origin: &'src str,
     pub offset: usize,
+    pub span_len: usize,
     pub line: usize,
     pub ty: TokenType,
 }
@@ -317,7 +318,7 @@ impl<'src> Lexer<'src> {
                 source_code: self.whole.to_string(),
                 message: unexpected.to_string(),
                 help: None,
-                span: SourceSpan::new(token.offset.into(), token.origin.len()),
+                span: SourceSpan::new(token.offset.into(), token.span_len),
             }),
             Some(Err(e)) => Err(e),
             None => Err(SyntaxError {
@@ -386,6 +387,7 @@ impl<'src> Iterator for Lexer<'src> {
                     ty,
                     line,
                     offset: c_at,
+                    span_len: c_str.len(),
                     origin: c_str,
                 }))
             };
@@ -533,6 +535,7 @@ impl<'src> Iterator for Lexer<'src> {
                             ty: TokenType::Slash,
                             line: self.line,
                             offset: c_at,
+                            span_len: self.byte - c_at,
                             origin: c_str,
                         }))
                     }
@@ -549,6 +552,7 @@ impl<'src> Iterator for Lexer<'src> {
                         ty: TokenType::String,
                         line: self.line,
                         offset: c_at,
+                        span_len: self.byte - c_at,
                         origin: literal,
                     }))
                 }
@@ -565,6 +569,7 @@ impl<'src> Iterator for Lexer<'src> {
                         ty: TokenType::RawString,
                         line: self.line,
                         offset: c_at,
+                        span_len: self.byte - c_at,
                         origin: literal,
                     }))
                 }
@@ -580,6 +585,7 @@ impl<'src> Iterator for Lexer<'src> {
                         ty: TokenType::Bytes,
                         line: self.line,
                         offset: c_at,
+                        span_len: self.byte - c_at,
                         origin: literal,
                     }))
                 }
@@ -597,6 +603,7 @@ impl<'src> Iterator for Lexer<'src> {
                         ty: TokenType::RawBytes,
                         line: self.line,
                         offset: c_at,
+                        span_len: self.byte - c_at,
                         origin: literal,
                     }))
                 }
@@ -615,11 +622,13 @@ impl<'src> Iterator for Lexer<'src> {
                         None => TokenType::Ident,
                     };
 
+                    let span_len = self.byte - c_at;
                     if literal == "dyn" {
                         Some(Ok(Token {
                             ty: TokenType::Dyn,
                             line: self.line,
                             offset: c_at,
+                            span_len,
                             origin: literal,
                         }))
                     } else {
@@ -627,6 +636,7 @@ impl<'src> Iterator for Lexer<'src> {
                             ty,
                             line: self.line,
                             offset: c_at,
+                            span_len,
                             origin: literal,
                         }))
                     }
@@ -708,6 +718,7 @@ impl<'src> Iterator for Lexer<'src> {
                                 ),
                                 line: self.line,
                                 offset: c_at,
+                                span_len: self.byte - c_at,
                                 origin: &c_onwards[..read],
                             }))
                         }
@@ -722,6 +733,7 @@ impl<'src> Iterator for Lexer<'src> {
                                 ),
                                 line: self.line,
                                 offset: c_at,
+                                span_len: self.byte - c_at,
                                 origin: &c_onwards[..read],
                             }))
                         }
@@ -734,6 +746,7 @@ impl<'src> Iterator for Lexer<'src> {
                                 ),
                                 line: self.line,
                                 offset: c_at,
+                                span_len: self.byte - c_at,
                                 origin: &c_onwards[..index],
                             }))
                         }
@@ -746,6 +759,7 @@ impl<'src> Iterator for Lexer<'src> {
                                 ),
                                 line: self.line,
                                 offset: c_at,
+                                span_len: self.byte - c_at,
                                 origin: &c_onwards[..index],
                             }))
                         }
@@ -758,6 +772,7 @@ impl<'src> Iterator for Lexer<'src> {
                                 ),
                                 line: self.line,
                                 offset: c_at,
+                                span_len: self.byte - c_at,
                                 origin: &c_onwards[..index],
                             }))
                         }
@@ -803,6 +818,7 @@ impl<'src> Iterator for Lexer<'src> {
                             ),
                             line: self.line,
                             offset: c_at,
+                            span_len: self.byte - c_at,
                             origin: literal,
                         }))
                     } else {
@@ -813,6 +829,7 @@ impl<'src> Iterator for Lexer<'src> {
                             ),
                             line: self.line,
                             offset: c_at,
+                            span_len: self.byte - c_at,
                             origin: literal,
                         }))
                     }
@@ -826,6 +843,7 @@ impl<'src> Iterator for Lexer<'src> {
                             ty: or_else,
                             line: self.line,
                             offset: c_at,
+                            span_len: self.byte - c_at,
                             origin: span,
                         }))
                     } else {
@@ -833,6 +851,7 @@ impl<'src> Iterator for Lexer<'src> {
                             ty: token,
                             line: self.line,
                             offset: c_at,
+                            span_len: self.byte - c_at,
                             origin: c_str,
                         }))
                     }
@@ -1144,6 +1163,13 @@ pub(crate) fn unescape(s: &str) -> Cow<'_, str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[track_caller]
+    fn assert_span_slice(source: &str, token: &Token<'_>, expected: &str) {
+        let span = &source[token.offset..token.offset + token.span_len];
+        assert_eq!(span, expected);
+        assert_eq!(token.span_len, expected.len());
+    }
 
     #[test]
     fn test_good_identifier() {
@@ -1564,5 +1590,52 @@ foo{main}{main}{other}{main} <- catches that the delimiter is not the same and p
         let input = r#"\n\t\r\"\'"#;
         let out = Token::unescape(input);
         assert_eq!(out, "\n\t\r\"\'");
+    }
+
+    #[test]
+    fn test_string_span_and_offset() {
+        let source = r#"  "line\n" 42"#;
+        let mut lexer = Lexer::new(source);
+
+        let string = lexer.next().unwrap().unwrap();
+        assert_eq!(string.ty, TokenType::String);
+        assert_eq!(string.offset, 2);
+        assert_span_slice(source, &string, "\"line\\n\"");
+        assert_eq!(string.origin, "line\\n");
+
+        let number = lexer.next().unwrap().unwrap();
+        assert!(matches!(number.ty, TokenType::Int(42)));
+        let num_start = source.find("42").unwrap();
+        assert_eq!(number.offset, num_start);
+        assert_span_slice(source, &number, "42");
+    }
+
+    #[test]
+    fn test_span_len_for_prefixed_literals() {
+        let source = r#"foo rb"bar" b"baz" r"qux" 123u"#;
+        let mut lexer = Lexer::new(source);
+
+        let ident = lexer.next().unwrap().unwrap();
+        assert_eq!(ident.ty, TokenType::Ident);
+        assert_span_slice(source, &ident, "foo");
+
+        let raw_bytes = lexer.next().unwrap().unwrap();
+        assert_eq!(raw_bytes.ty, TokenType::RawBytes);
+        assert_span_slice(source, &raw_bytes, "rb\"bar\"");
+        assert_eq!(raw_bytes.origin, "bar");
+
+        let bytes = lexer.next().unwrap().unwrap();
+        assert_eq!(bytes.ty, TokenType::Bytes);
+        assert_span_slice(source, &bytes, "b\"baz\"");
+        assert_eq!(bytes.origin, "baz");
+
+        let raw_string = lexer.next().unwrap().unwrap();
+        assert_eq!(raw_string.ty, TokenType::RawString);
+        assert_span_slice(source, &raw_string, "r\"qux\"");
+        assert_eq!(raw_string.origin, "qux");
+
+        let uint = lexer.next().unwrap().unwrap();
+        assert!(matches!(uint.ty, TokenType::Uint(123)));
+        assert_span_slice(source, &uint, "123u");
     }
 }

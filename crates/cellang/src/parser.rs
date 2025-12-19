@@ -140,7 +140,7 @@ impl<'src> Parser<'src> {
                     source_code: self.input.to_string(),
                     span: SourceSpan::new(
                         token.offset.into(),
-                        token.origin.len(),
+                        token.span_len,
                     ),
                     message: format!("Unexpected token: {:?}", token),
                     help: Some("Expected an expression".to_string()),
@@ -245,7 +245,7 @@ impl<'src> Parser<'src> {
                             source_code: self.input.to_string(),
                             span: SourceSpan::new(
                                 token.offset.into(),
-                                token.origin.len(),
+                                token.span_len,
                             ),
                             message: format!("Unexpected token: {:?}", token),
                             help: Some("Expected an operator".to_string()),
@@ -746,6 +746,20 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[track_caller]
+    fn assert_span_matches(
+        err: &SyntaxError,
+        expected_offset: usize,
+        expected_slice: &str,
+    ) {
+        let span = err.span;
+        let offset: usize = span.offset().into();
+        assert_eq!(offset, expected_offset, "unexpected span offset");
+        assert_eq!(span.len(), expected_slice.len(), "unexpected span len");
+        let fragment = &err.source_code[offset..offset + span.len()];
+        assert_eq!(fragment, expected_slice, "unexpected source slice");
+    }
 
     #[test]
     fn test_add_and_multiply() {
@@ -1384,5 +1398,27 @@ mod tests {
         );
 
         assert_eq!(tree, want);
+    }
+
+    #[test]
+    fn test_parser_propagates_lexer_error_span() {
+        let input = "&";
+        let mut parser = Parser::new(input);
+        let err = parser.parse().expect_err("expected lexer error");
+        assert_span_matches(&err, 0, "&");
+        assert!(err
+            .message
+            .contains("Unexpected character"), "unexpected message: {}", err.message);
+    }
+
+    #[test]
+    fn test_parser_propagates_eof_span() {
+        let input = "(";
+        let mut parser = Parser::new(input);
+        let err = parser.parse().expect_err("expected missing closing paren");
+        let span = err.span;
+        let offset: usize = span.offset().into();
+        assert_eq!(offset, input.len(), "eof span should point to end of input");
+        assert_eq!(span.len(), 0, "eof span should have zero length");
     }
 }
