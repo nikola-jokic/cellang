@@ -743,19 +743,31 @@ fn infix_binding_power(op: Op) -> Option<(u8, u8)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use miette::Report;
 
     #[track_caller]
     fn assert_span_matches(
         err: &SyntaxError,
         expected_offset: usize,
         expected_slice: &str,
+        report: &Report,
     ) {
         let span = err.span;
-        let offset: usize = span.offset().into();
-        assert_eq!(offset, expected_offset, "unexpected span offset");
-        assert_eq!(span.len(), expected_slice.len(), "unexpected span len");
+        let offset: usize = span.offset();
+        assert_eq!(
+            offset, expected_offset,
+            "unexpected span offset: {report:?}"
+        );
+        assert_eq!(
+            span.len(),
+            expected_slice.len(),
+            "unexpected span len: {report:?}"
+        );
         let fragment = &err.source_code[offset..offset + span.len()];
-        assert_eq!(fragment, expected_slice, "unexpected source slice");
+        assert_eq!(
+            fragment, expected_slice,
+            "unexpected source slice: {report:?}"
+        );
     }
 
     #[test]
@@ -1402,10 +1414,11 @@ mod tests {
         let input = "&";
         let mut parser = Parser::new(input);
         let err = parser.parse().expect_err("expected lexer error");
-        assert_span_matches(&err, 0, "&");
+        let report = Report::new(err.clone());
+        assert_span_matches(&err, 0, "&", &report);
         assert!(
             err.message.contains("Unexpected character"),
-            "unexpected message: {}",
+            "unexpected message: {}; {report:?}",
             err.message
         );
     }
@@ -1416,12 +1429,28 @@ mod tests {
         let mut parser = Parser::new(input);
         let err = parser.parse().expect_err("expected missing closing paren");
         let span = err.span;
-        let offset: usize = span.offset().into();
+        let offset: usize = span.offset();
         assert_eq!(
             offset,
             input.len(),
             "eof span should point to end of input"
         );
         assert_eq!(span.len(), 0, "eof span should have zero length");
+    }
+
+    #[test]
+    fn test_parser_propagates_unexpected_token_span() {
+        let input = "1 + (1abc";
+        let mut parser = Parser::new(input);
+        let err = parser
+            .parse()
+            .expect_err("expected missing closing paren error");
+        let report = Report::new(err.clone());
+        assert_span_matches(&err, "1 + (1".len(), "abc", &report);
+        assert!(
+            err.message.contains("Unexpected token"),
+            "unexpected message: {}; {report:?}",
+            err.message
+        );
     }
 }
