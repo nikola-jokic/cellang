@@ -138,10 +138,7 @@ impl<'src> Parser<'src> {
             token => {
                 return Err(SyntaxError {
                     source_code: self.input.to_string(),
-                    span: SourceSpan::new(
-                        token.offset.into(),
-                        token.span_len,
-                    ),
+                    span: SourceSpan::new(token.offset.into(), token.span_len),
                     message: format!("Unexpected token: {:?}", token),
                     help: Some("Expected an expression".to_string()),
                 });
@@ -1406,9 +1403,11 @@ mod tests {
         let mut parser = Parser::new(input);
         let err = parser.parse().expect_err("expected lexer error");
         assert_span_matches(&err, 0, "&");
-        assert!(err
-            .message
-            .contains("Unexpected character"), "unexpected message: {}", err.message);
+        assert!(
+            err.message.contains("Unexpected character"),
+            "unexpected message: {}",
+            err.message
+        );
     }
 
     #[test]
@@ -1418,7 +1417,11 @@ mod tests {
         let err = parser.parse().expect_err("expected missing closing paren");
         let span = err.span;
         let offset: usize = span.offset().into();
-        assert_eq!(offset, input.len(), "eof span should point to end of input");
+        assert_eq!(
+            offset,
+            input.len(),
+            "eof span should point to end of input"
+        );
         assert_eq!(span.len(), 0, "eof span should have zero length");
     }
 }
