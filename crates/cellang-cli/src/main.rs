@@ -1,4 +1,3 @@
-use cellang::{EnvironmentBuilder, Lexer, Map, Parser, eval};
 use clap::{Parser as ClapParser, Subcommand};
 use miette::{Error, IntoDiagnostic, Report, WrapErr};
 use serde::Serialize;
@@ -30,21 +29,7 @@ enum Lex {
 
 impl Lex {
     fn run(&self) -> Result<(), Error> {
-        let content = match self {
-            Lex::File { path } => fs::read_to_string(path)
-                .into_diagnostic()
-                .wrap_err("Failed to read file")?,
-            Lex::Expr { expr } => expr.clone(),
-        };
-
-        let lexer = Lexer::new(&content);
-        for token in lexer {
-            match token {
-                Ok(token) => println!("{:#?}", token),
-                Err(err) => return Err(Report::new(err)),
-            }
-        }
-        Ok(())
+        todo!()
     }
 }
 
@@ -109,22 +94,7 @@ impl fmt::Display for Format {
 
 impl Parse {
     fn run(&self) -> Result<(), Error> {
-        let (content, format) = match self {
-            Parse::File { path, format } => (
-                fs::read_to_string(path)
-                    .into_diagnostic()
-                    .wrap_err("Failed to read file")?,
-                format,
-            ),
-            Parse::Expr { expr, format } => (expr.clone(), format),
-        };
-
-        let mut parser = Parser::new(&content);
-        let ast = parser.parse().wrap_err("Failed to parse")?;
-
-        format.print(&ast);
-
-        Ok(())
+        todo!()
     }
 }
 
@@ -146,32 +116,7 @@ enum Eval {
 
 impl Eval {
     fn run(&self) -> Result<(), Error> {
-        let (content, env_path) = match self {
-            Eval::File { path, env_path } => (
-                fs::read_to_string(path)
-                    .into_diagnostic()
-                    .wrap_err("Failed to read file")?,
-                env_path,
-            ),
-            Eval::Expr { expr, env_path } => (expr.clone(), env_path),
-        };
-
-        let variables: Map = serde_json::from_str(
-            &fs::read_to_string(env_path)
-                .into_diagnostic()
-                .wrap_err("Failed to read file")?,
-        )
-        .into_diagnostic()
-        .wrap_err("Failed to deserialize environment")?;
-
-        let env = EnvironmentBuilder::default();
-        let mut env = env.build();
-        env.set_variables(&variables);
-        match eval(&env, &content) {
-            Ok(value) => println!("{value:?}"),
-            Err(err) => return Err(err),
-        }
-        Ok(())
+       todo!() 
     }
 }
 

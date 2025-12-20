@@ -1,79 +1,34 @@
-use std::sync::Arc;
+use cellang::{ListValue, Runtime, RuntimeError, Value};
+use miette::Result;
 
-use cellang::{Environment, EnvironmentBuilder, List, Map, TokenTree, Value};
-use miette::Error;
-
-/// Let's create a function to split a string on a given character.
-/// By the very nature of CEL, this function can be called like the following:
-/// ```
-/// 'a,b,c'.split(',')
-/// // OR
-/// split('a,b,c', ',')
-/// // Or by using variables
-/// x.split(',')
-/// ```
-fn split(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
-    // We expect two arguments: the string to split and the character to split on
-    //
-    // The parser would transform x.split(',') into split(x, ',')
-    if tokens.len() != 2 {
-        miette::bail!("Expected two arguments");
+fn split(input: String, delimiter: String) -> Result<Vec<String>, RuntimeError> {
+    if delimiter.chars().count() != 1 {
+        return Err(RuntimeError::new(
+            "split expects a single-character delimiter",
+        ));
     }
-
-    // Evaluate the first argument
-    // The value of the argument should be of type Value::String
-    // However, it may also be a reference to a variable that is of type string
-    let string = match cellang::eval_ast(env, &tokens[0])?.to_value()? {
-        Value::String(string) => string,
-        _ => miette::bail!("Expected a string as the first argument"),
-    };
-
-    // Evaluate the second argument
-    // The value of the argument should be of type Value::String since there
-    // are no character types in CEL
-    let character = match cellang::eval_ast(env, &tokens[1])?.to_value()? {
-        Value::String(character) if character.len() == 1 => {
-            character.chars().next().unwrap()
-        }
-        _ => miette::bail!("Expected a string as the second argument"),
-    };
-
-    // Now, we are in the rust land. We can use the standard library to split the string
-    // on the character and return the result
-    let result = string
-        .split(character)
-        .map(|s| s.into())
-        .collect::<Vec<Value>>();
-
-    // Now, return the type List of strings
-    Ok(Value::List(result.try_into().unwrap()))
+    let needle = delimiter.chars().next().expect("delimiter has exactly one char");
+    let parts = input
+        .split(needle)
+        .map(|segment| segment.to_string())
+        .collect::<Vec<_>>();
+    Ok(parts)
 }
 
-fn main() {
-    // Create a new environment with functions but without variables
-    let mut env = EnvironmentBuilder::default();
+fn main() -> Result<()> {
+    let mut builder = Runtime::builder();
+    builder.register_function("split", split)?;
+    let runtime = builder.build();
 
-    // Register the function
-    env.set_function("split", Arc::new(split));
+    let expected = Value::List(ListValue::from(vec!["a", "b", "c"]));
+    let value = runtime.eval("'a,b,c'.split(',')")?;
+    assert_eq!(value, expected);
 
-    // Seal the environment so that it can be used for evaluation
-    let env = env.build();
+    let mut scoped = runtime.child_builder();
+    scoped.set_variable("x", "a,b,c");
+    let scoped = scoped.build();
+    let via_variable = scoped.eval("x.split(',')")?;
+    assert_eq!(via_variable, expected);
 
-    // Evaluate a simple expression
-    let value = cellang::eval(&env, "'a,b,c'.split(',')").unwrap();
-    assert_eq!(
-        value,
-        Value::List(List::try_from(vec!["a", "b", "c",]).unwrap())
-    );
-
-    // Evaluate a simple expression with variables
-    let mut variables = Map::new();
-    variables.insert("x".into(), "a,b,c".into()).unwrap();
-    let mut env = env.child();
-    env.set_variables(&variables);
-    let value = cellang::eval(&env, "x.split(',')").unwrap();
-    assert_eq!(
-        value,
-        Value::List(List::try_from(vec!["a", "b", "c",]).unwrap())
-    );
+    Ok(())
 }

@@ -1,87 +1,50 @@
-use std::sync::Arc;
+use cellang::{ListValue, MapValue, Runtime, RuntimeError, Value};
+use miette::Result;
 
-use cellang::{Environment, EnvironmentBuilder, TokenTree, Value};
-use miette::Error;
-use serde::{Deserialize, Serialize};
+fn main() -> Result<()> {
+    let mut builder = Runtime::builder();
+    builder.set_variable("users", load_users());
+    builder.register_function("has_role", has_role)?;
 
-fn main() {
-    // Creates a root environment
-    let mut env = EnvironmentBuilder::default();
+    builder.set_variable("role", "admin");
+    let runtime = builder.build();
+    let is_admin = runtime.eval("users[0].has_role(role)")?;
+    assert_eq!(is_admin, Value::Bool(true));
 
-    // Fetches the required variables from the database
-    let users = list_users().unwrap();
+    let mut scoped = runtime.child_builder();
+    scoped.set_variable("role", "user");
+    let scoped = scoped.build();
+    let is_user = scoped.eval("users[1].has_role(role)")?;
+    assert_eq!(is_user, Value::Bool(true));
 
-    // Adds the users to the environment
-    env.set_variable("users", users).unwrap();
-
-    // Add a custom function to the environment
-    env.set_function("has_role", Arc::new(has_role));
-
-    // Let's say the program tries to get the number of users with particular role
-    let program = "size(users.filter(u, u.has_role(role)))";
-
-    // Now, we want to calculate users with role 'admin'
-    env.set_variable("role", "admin").unwrap();
-
-    // Get number of admin users
-    let n: i64 = cellang::eval(&env.build(), program)
-        .expect("Failed to evaluate the expression")
-        .into();
-
-    println!("Number of admin users: {}", n);
-
-    // Or role 'user'
-    env.set_variable("role", "user").unwrap();
-
-    // Get number of admin users
-    let n: i64 = cellang::eval(&env.build(), program)
-        .expect("Failed to evaluate the expression")
-        .into();
-
-    println!("Number of users: {}", n);
+    Ok(())
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct User {
-    pub name: String,
-    pub roles: Vec<String>,
+fn load_users() -> Value {
+    let records = vec![
+        build_user("Alice", &["admin"]),
+        build_user("Bob", &["user"]),
+        build_user("Charlie", &["admin", "user"]),
+        build_user("David", &["user"]),
+    ];
+    Value::List(ListValue::from(records))
 }
 
-fn list_users() -> Result<Vec<User>, Error> {
-    Ok(vec![
-        User {
-            name: "Alice".into(),
-            roles: vec!["admin".into()],
-        },
-        User {
-            name: "Bob".into(),
-            roles: vec!["user".into()],
-        },
-        User {
-            name: "Charlie".into(),
-            roles: vec!["admin".into(), "user".into()],
-        },
-        User {
-            name: "David".into(),
-            roles: vec!["user".into()],
-        },
-    ])
+fn build_user(name: &str, roles: &[&str]) -> Value {
+    let mut record = MapValue::new();
+    record.insert("name", name);
+    record.insert("roles", ListValue::from(roles.to_vec()));
+    Value::Map(record)
 }
 
-fn has_role(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
-    if tokens.len() != 2 {
-        miette::bail!("Expected 2 arguments, got {}", tokens.len());
-    }
-
-    let user: User = match cellang::eval_ast(env, &tokens[0])?.to_value()? {
-        Value::Map(m) => m.try_into()?,
-        _ => miette::bail!("Expected a map, got something else"),
+fn has_role(user: MapValue, role: String) -> Result<bool, RuntimeError> {
+    let roles = user
+        .get_str("roles")
+        .ok_or_else(|| RuntimeError::new("user.roles is missing"))?;
+    let Value::List(list) = roles else {
+        return Err(RuntimeError::new("user.roles must be a list"));
     };
-
-    let role = match cellang::eval_ast(env, &tokens[1])?.to_value()? {
-        Value::String(s) => s,
-        _ => miette::bail!("Expected a string, got something else"),
-    };
-
-    Ok(user.roles.contains(&role).into())
+    Ok(list
+        .iter()
+        .any(|value| matches!(value, Value::String(current) if current == &role)))
 }
