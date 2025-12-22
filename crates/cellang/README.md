@@ -46,10 +46,25 @@ The [user_role](./examples/user_role.rs) example demonstrates how to register st
 
 ```rust
 use cellang::runtime::RuntimeBuilder;
+use cellang::Runtime;
 use cellang::types::{FieldDecl, FunctionDecl, IdentDecl, NamedType, OverloadDecl, StructType, Type};
 use cellang::value::{IntoValue, StructValue, TryFromValue, Value, ValueError};
 
 const USER_TYPE: &str = "example.User";
+const EXPRESSION: &str = "users[0].has_role(role)";
+
+fn main() -> miette::Result<()> {
+    let runtime = build_runtime()?;
+
+    let mut scoped = runtime.child_builder();
+    scoped.set_variable("role", "admin");
+    let scoped = scoped.build();
+
+    let result = scoped.eval(EXPRESSION)?;
+    assert_eq!(result, Value::Bool(true));
+    println!("{} => {}", EXPRESSION, result);
+    Ok(())
+}
 
 fn install_user_schema(builder: &mut RuntimeBuilder) -> miette::Result<()> {
     let mut user = StructType::new(USER_TYPE);
@@ -119,32 +134,3 @@ fn build_runtime() -> miette::Result<cellang::Runtime> {
     Ok(builder.build())
 }
 ```
-
-### CLI helpers
-
-The sibling `cellang-cli` binary makes it easy to introspect expressions:
-
-```bash
-cargo run -p cellang-cli -- lex expr --format json "1 + size([1, 2, 3])"
-cargo run -p cellang-cli -- parse file --path my_rule.cel
-cargo run -p cellang-cli -- eval expr --expr "users[0].has_role(role)" --env-path env.json
-```
-
-Use `lex` to dump tokens, `parse` to inspect the Pratt parser’s AST, and `eval` to execute CEL against a JSON environment for fast iteration.
-
-### Running tests
-
-From the workspace root:
-
-```bash
-cargo test --locked --all-features --all-targets
-cargo test --locked --all-features --doc
-
-cd crates/cellang
-for example in examples/*.rs; do \
-  name=$(basename "${example%.rs}"); \
-  cargo test --locked --all-features --example "$name"; \
-done
-```
-
-This mirrors the GitHub Actions workflow and ensures every example continues to compile.
