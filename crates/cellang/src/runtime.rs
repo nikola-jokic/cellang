@@ -1,3 +1,4 @@
+use crate::builtins;
 use crate::env::{Env, EnvBuilder};
 use crate::error::{EnvError, RuntimeError};
 use crate::types::{FunctionDecl, IdentDecl, NamedType};
@@ -84,11 +85,25 @@ impl<'a> CallContext<'a> {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct RuntimeBuilder {
     env_builder: EnvBuilder,
     variables: BTreeMap<String, Value>,
     functions: BTreeMap<String, NativeFunction>,
+}
+
+impl Default for RuntimeBuilder {
+    fn default() -> Self {
+        let mut builder = RuntimeBuilder {
+            env_builder: EnvBuilder::default(),
+            variables: BTreeMap::new(),
+            functions: BTreeMap::new(),
+        };
+        builder
+            .install_standard_library()
+            .expect("core functions must register");
+        builder
+    }
 }
 
 impl RuntimeBuilder {
@@ -204,6 +219,10 @@ impl RuntimeBuilder {
             variables: Arc::new(self.variables),
             functions: Arc::new(self.functions),
         }
+    }
+
+    fn install_standard_library(&mut self) -> Result<(), RuntimeError> {
+        builtins::register(self)
     }
 }
 
@@ -327,5 +346,31 @@ where
 {
     fn into_runtime_result(self) -> Result<Value, RuntimeError> {
         Ok(Value::List(ListValue::from(self)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn size_builtin_is_available() {
+        let runtime = Runtime::builder().build();
+        let value = runtime.eval("size([1, 2, 3])").expect("size to work");
+        assert_eq!(value, Value::Int(3));
+    }
+
+    #[test]
+    fn starts_with_builtin_supports_methods() {
+        let runtime = Runtime::builder().build();
+        let positive = runtime
+            .eval("'foobar'.startsWith('foo')")
+            .expect("startsWith to work");
+        assert_eq!(positive, Value::Bool(true));
+
+        let negative = runtime
+            .eval("'foobar'.startsWith('bar')")
+            .expect("startsWith to work");
+        assert_eq!(negative, Value::Bool(false));
     }
 }

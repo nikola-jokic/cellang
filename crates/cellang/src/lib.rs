@@ -1,5 +1,6 @@
 #![deny(clippy::match_same_arms)]
 
+mod builtins;
 pub mod env;
 pub mod error;
 pub mod interpreter;
