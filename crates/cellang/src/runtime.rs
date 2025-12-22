@@ -234,103 +234,55 @@ where
     }
 }
 
-impl<F, R, A0> IntoNativeFunction<(A0,), R> for F
-where
-    F: Fn(A0) -> R + Send + Sync + 'static,
-    R: FunctionOutput,
-    A0: TryFromValue,
-{
-    fn into_native(self, name: String) -> NativeFunction {
-        let fname = name.clone();
-        Arc::new(move |ctx| {
-            if ctx.args.len() != 1 {
-                return Err(RuntimeError::wrong_arity(&fname, 1, ctx.args.len()));
+macro_rules! impl_into_native_function {
+    ($(($param:ident, $var:ident)),+ $(,)?) => {
+        impl<F, R, $($param),+> IntoNativeFunction<($($param,)+), R> for F
+        where
+            F: Fn($($param),+) -> R + Send + Sync + 'static,
+            R: FunctionOutput,
+            $($param: TryFromValue,)+
+        {
+            fn into_native(self, name: String) -> NativeFunction {
+                let fname = name.clone();
+                Arc::new(move |ctx| {
+                    const EXPECTED: usize = impl_into_native_function!(@count $(($param, $var)),+);
+                    if ctx.args.len() != EXPECTED {
+                        return Err(RuntimeError::wrong_arity(&fname, EXPECTED, ctx.args.len()));
+                    }
+                    impl_into_native_function!(@convert ctx, fname, self, [$(($param, $var)),+])
+                })
             }
-            let arg0 = A0::try_from_value(&ctx.args[0])
-                .map_err(|err| RuntimeError::argument(&fname, 0, err))?;
-            let result = self(arg0);
-            result.into_runtime_result()
-        })
-    }
+        }
+    };
+
+    (@count $(($param:ident, $var:ident)),+) => {
+        impl_into_native_function!(@count_helper $($param),+)
+    };
+    (@count_helper $head:ident $(,$tail:ident)*) => {
+        1usize + impl_into_native_function!(@count_helper $($tail),*)
+    };
+    (@count_helper) => {0usize};
+
+    (@convert $ctx:ident, $fname:ident, $func:ident, [$(($param:ident, $var:ident)),+]) => {{
+        let mut iter = $ctx.args.iter().enumerate();
+        $(
+            let $var = {
+                let (idx, value) = iter.next().expect("arity validated");
+                $param::try_from_value(value)
+                    .map_err(|err| RuntimeError::argument(&$fname, idx, err))?
+            };
+        )+
+        let result = $func($($var),+);
+        result.into_runtime_result()
+    }};
 }
 
-impl<F, R, A0, A1> IntoNativeFunction<(A0, A1), R> for F
-where
-    F: Fn(A0, A1) -> R + Send + Sync + 'static,
-    R: FunctionOutput,
-    A0: TryFromValue,
-    A1: TryFromValue,
-{
-    fn into_native(self, name: String) -> NativeFunction {
-        let fname = name.clone();
-        Arc::new(move |ctx| {
-            if ctx.args.len() != 2 {
-                return Err(RuntimeError::wrong_arity(&fname, 2, ctx.args.len()));
-            }
-            let arg0 = A0::try_from_value(&ctx.args[0])
-                .map_err(|err| RuntimeError::argument(&fname, 0, err))?;
-            let arg1 = A1::try_from_value(&ctx.args[1])
-                .map_err(|err| RuntimeError::argument(&fname, 1, err))?;
-            let result = self(arg0, arg1);
-            result.into_runtime_result()
-        })
-    }
-}
-
-impl<F, R, A0, A1, A2> IntoNativeFunction<(A0, A1, A2), R> for F
-where
-    F: Fn(A0, A1, A2) -> R + Send + Sync + 'static,
-    R: FunctionOutput,
-    A0: TryFromValue,
-    A1: TryFromValue,
-    A2: TryFromValue,
-{
-    fn into_native(self, name: String) -> NativeFunction {
-        let fname = name.clone();
-        Arc::new(move |ctx| {
-            if ctx.args.len() != 3 {
-                return Err(RuntimeError::wrong_arity(&fname, 3, ctx.args.len()));
-            }
-            let arg0 = A0::try_from_value(&ctx.args[0])
-                .map_err(|err| RuntimeError::argument(&fname, 0, err))?;
-            let arg1 = A1::try_from_value(&ctx.args[1])
-                .map_err(|err| RuntimeError::argument(&fname, 1, err))?;
-            let arg2 = A2::try_from_value(&ctx.args[2])
-                .map_err(|err| RuntimeError::argument(&fname, 2, err))?;
-            let result = self(arg0, arg1, arg2);
-            result.into_runtime_result()
-        })
-    }
-}
-
-impl<F, R, A0, A1, A2, A3> IntoNativeFunction<(A0, A1, A2, A3), R> for F
-where
-    F: Fn(A0, A1, A2, A3) -> R + Send + Sync + 'static,
-    R: FunctionOutput,
-    A0: TryFromValue,
-    A1: TryFromValue,
-    A2: TryFromValue,
-    A3: TryFromValue,
-{
-    fn into_native(self, name: String) -> NativeFunction {
-        let fname = name.clone();
-        Arc::new(move |ctx| {
-            if ctx.args.len() != 4 {
-                return Err(RuntimeError::wrong_arity(&fname, 4, ctx.args.len()));
-            }
-            let arg0 = A0::try_from_value(&ctx.args[0])
-                .map_err(|err| RuntimeError::argument(&fname, 0, err))?;
-            let arg1 = A1::try_from_value(&ctx.args[1])
-                .map_err(|err| RuntimeError::argument(&fname, 1, err))?;
-            let arg2 = A2::try_from_value(&ctx.args[2])
-                .map_err(|err| RuntimeError::argument(&fname, 2, err))?;
-            let arg3 = A3::try_from_value(&ctx.args[3])
-                .map_err(|err| RuntimeError::argument(&fname, 3, err))?;
-            let result = self(arg0, arg1, arg2, arg3);
-            result.into_runtime_result()
-        })
-    }
-}
+impl_into_native_function!((A0, arg0));
+impl_into_native_function!((A0, arg0), (A1, arg1));
+impl_into_native_function!((A0, arg0), (A1, arg1), (A2, arg2));
+impl_into_native_function!((A0, arg0), (A1, arg1), (A2, arg2), (A3, arg3));
+impl_into_native_function!((A0, arg0), (A1, arg1), (A2, arg2), (A3, arg3), (A4, arg4));
+impl_into_native_function!((A0, arg0), (A1, arg1), (A2, arg2), (A3, arg3), (A4, arg4), (A5, arg5));
 
 pub trait FunctionOutput {
     fn into_runtime_result(self) -> Result<Value, RuntimeError>;
