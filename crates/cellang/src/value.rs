@@ -849,3 +849,128 @@ impl ValueError {
         ValueError::UnexpectedType { expected, actual }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value as JsonValue, json};
+    use time::Duration;
+
+    #[test]
+    fn value_serializes_scalars() {
+        let cases = vec![
+            (Value::Bool(true), json!(true)),
+            (Value::Int(-42), json!(-42)),
+            (Value::Uint(7), json!(7)),
+            (Value::Double(3.14), json!(3.14)),
+            (Value::String("hi".into()), json!("hi")),
+            (Value::Bytes(vec![1, 2, 3]), json!([1, 2, 3])),
+            (Value::Duration(Duration::seconds(5)), json!("5s")),
+            (Value::Null, JsonValue::Null),
+        ];
+        for (value, expected) in cases {
+            let serialized = serde_json::to_value(&value).unwrap();
+            assert_eq!(serialized, expected);
+        }
+    }
+
+    #[test]
+    fn value_serializes_nested_structures() {
+        let mut struct_value = StructValue::new("example.User");
+        struct_value.set_field("name", "Ada");
+        struct_value.set_field("roles", ListValue::from(vec!["admin", "user"]));
+
+        let mut map = MapValue::new();
+        map.insert("user", Value::Struct(struct_value.clone()));
+        map.insert("active", true);
+
+        let list = ListValue::from(vec![
+            Value::Map(map.clone()),
+            Value::Struct(struct_value),
+        ]);
+        let serialized = serde_json::to_value(&list).unwrap();
+
+        assert_eq!(
+            serialized,
+            json!([
+                {"user": {"name": "Ada", "roles": ["admin", "user"]}, "active": true},
+                {"name": "Ada", "roles": ["admin", "user"]}
+            ])
+        );
+    }
+
+    #[test]
+    fn json_deserializes_into_struct_value() {
+        let json = json!({
+            "name": "Ada",
+            "roles": ["admin", "user"],
+            "active": true
+        });
+        let expected = {
+            let mut map = MapValue::new();
+            map.insert("name", "Ada");
+            map.insert("roles", ListValue::from(vec!["admin", "user"]));
+            map.insert("active", true);
+            Value::Map(map)
+        };
+        assert_eq!(json_to_value(json), expected);
+    }
+
+    #[test]
+    fn json_deserializes_complex_map() {
+        let json = json!({
+            "users": [
+                {"name": "Ada", "roles": ["admin"]},
+                {"name": "Bob", "roles": ["user"]}
+            ],
+            "count": 2
+        });
+        let mut user_one = MapValue::new();
+        user_one.insert("name", "Ada");
+        user_one.insert("roles", ListValue::from(vec!["admin"]));
+
+        let mut user_two = MapValue::new();
+        user_two.insert("name", "Bob");
+        user_two.insert("roles", ListValue::from(vec!["user"]));
+
+        let expected = {
+            let mut map = MapValue::new();
+            map.insert(
+                "users",
+                Value::List(ListValue::from(vec![
+                    Value::Map(user_one),
+                    Value::Map(user_two),
+                ])),
+            );
+            map.insert("count", 2);
+            Value::Map(map)
+        };
+        assert_eq!(json_to_value(json), expected);
+    }
+
+    fn json_to_value(value: JsonValue) -> Value {
+        match value {
+            JsonValue::Null => Value::Null,
+            JsonValue::Bool(flag) => Value::Bool(flag),
+            JsonValue::Number(num) => num
+                .as_i64()
+                .map(Value::Int)
+                .or_else(|| num.as_u64().map(Value::Uint))
+                .or_else(|| num.as_f64().map(Value::Double))
+                .unwrap_or(Value::Null),
+            JsonValue::String(text) => Value::String(text),
+            JsonValue::Array(items) => {
+                let converted =
+                    items.into_iter().map(json_to_value).collect::<Vec<_>>();
+                Value::List(ListValue::from(converted))
+            }
+            JsonValue::Object(map) => {
+                let mut cel_map = MapValue::new();
+                for (key, value) in map {
+                    cel_map.insert(key, json_to_value(value));
+                }
+                Value::Map(cel_map)
+            }
+        }
+    }
+}

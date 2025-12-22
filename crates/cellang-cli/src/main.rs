@@ -242,9 +242,9 @@ fn print_tokens(source: &str, format: Format) -> Result<(), Error> {
 }
 
 fn lex_source(source: &str) -> Result<Vec<LexToken>, Error> {
-    let mut lexer = Lexer::new(source);
+    let lexer = Lexer::new(source);
     let mut tokens = Vec::new();
-    while let Some(next) = lexer.next() {
+    for next in lexer {
         tokens.push(next?.into());
     }
     Ok(tokens)
