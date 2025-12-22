@@ -1,23 +1,20 @@
-use cellang::Environment;
+use cellang::{Runtime, Value};
+use miette::Result;
 
-fn main() {
-    // Create a new environment with functions but without variables
-    let env = Environment::root();
+fn main() -> Result<()> {
+    let runtime = Runtime::builder().build();
 
-    // Evaluate a simple expression
-    let value = cellang::eval(&env, "1 + 2 * 3").unwrap();
-    assert_eq!(value, 7i64.into());
+    let value = cellang::eval(&runtime, "1 + 2 * 3")?;
+    assert_eq!(value, Value::Int(7));
 
-    // Evaluate a simple expression with variables
-    let mut env = env.child_builder();
-    env.set_variable("x", 2i64).unwrap();
-    let env = env.build();
-    let value = cellang::eval(&env, "x >= 2").unwrap();
-    assert_eq!(value, true.into());
+    let mut child = runtime.child_builder();
+    child.set_variable("x", 2_i64);
+    let runtime = child.build();
+    let value = cellang::eval(&runtime, "x >= 2")?;
+    assert_eq!(value, Value::Bool(true));
 
-    // Evaluate a simple expression with macros
-    let env = Environment::root();
-    let value =
-        cellang::eval(&env, "'Hello, World!'.startsWith('Hello')").unwrap();
-    assert_eq!(value, true.into());
+    let contains = runtime.eval("'World' in 'Hello, World!'")?;
+    assert_eq!(contains, Value::Bool(true));
+
+    Ok(())
 }

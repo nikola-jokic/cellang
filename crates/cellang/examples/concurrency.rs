@@ -1,41 +1,25 @@
-use cellang::{Environment, EnvironmentBuilder, TokenTree, Value};
-use std::sync::Arc;
+use cellang::{Runtime, RuntimeError};
+use miette::Result;
 use std::thread;
 
-fn main() {
-    let mut env = EnvironmentBuilder::default();
-    env.set_function(
-        "plus_two",
-        Arc::new(|env: &Environment, tokens: &[TokenTree]| {
-            if tokens.len() != 1 {
-                miette::bail!("Expected one argument");
-            }
-            let value = cellang::eval_ast(env, &tokens[0])?;
-            let result = match value.try_value()? {
-                Value::Int(n) => *n + 2,
-                Value::Uint(n) => (*n + 2) as i64,
-                Value::Double(n) => (*n + 2.0) as i64,
-                _ => miette::bail!("Expected a number"),
-            };
-
-            Ok(Value::Int(result))
-        }),
-    );
+fn main() -> Result<()> {
+    let mut builder = Runtime::builder();
+    builder.register_function("plus_two", |value: i64| value + 2)?;
 
     let (tx, rx) = std::sync::mpsc::channel();
-    let worker_env = env.clone();
-    let h = thread::spawn(move || {
-        let env = worker_env.build();
-        let val: i64 = cellang::eval(&env, "2.plus_two()")
-            .unwrap()
-            .try_into()
-            .unwrap();
-
-        tx.send(val).unwrap();
+    let worker_builder = builder.clone();
+    let handle = thread::spawn(move || {
+        let runtime = worker_builder.build();
+        let value = runtime.eval("2.plus_two()")?;
+        let number: i64 = value.try_into()?;
+        tx.send(number)
+            .map_err(|err| RuntimeError::new(err.to_string()))?;
+        Ok::<(), RuntimeError>(())
     });
 
+    handle.join().unwrap()?;
     let value = rx.recv().unwrap();
-    h.join().unwrap();
-
     assert_eq!(value, 4);
+
+    Ok(())
 }

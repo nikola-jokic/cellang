@@ -18,66 +18,110 @@ Therefore, the library exposes lower-level primitives that would allow you to do
 
 ## Getting started
 
-This library aims to be as simple as possible to use. You build up an environment, and then you evaluate the expression with it.
+This library aims to be ergonomic without hiding the lower-level building blocks that make CEL powerful. The typical workflow is:
 
-The environment is built using environment builder. The reason is that you can mutate it. Once the
-environment is done, you can `build()` it. Build takes the reference to the builder, so it is tied
-to it.
-
-Let's show more complicated example ([user_role](./examples/user_role.rs)). Check-out the [examples](./examples/) directory for more examples, or consider contributing one!
+1. Build a `Runtime` with variables, declared types, and native functions.
+2. Evaluate expressions against that runtime (or child runtimes that inherit the same environment).
 
 ```rust
-use std::sync::Arc;
+use cellang::{Runtime, Value};
 
-use cellang::{Environment, EnvironmentBuilder, TokenTree, Value};
-use miette::Error;
-use serde::{Deserialize, Serialize};
+fn main() -> miette::Result<()> {
+    let mut builder = Runtime::builder();
+    builder.set_variable("greeting", "Hello");
+    builder.set_variable("name", "World");
 
-fn main() {
-    // Creates a root environment
-    let mut env = EnvironmentBuilder::default();
+    builder.register_function("shout", |text: String| text.to_uppercase())?;
 
-    // Fetches the required variables from the database
-    let users = list_users().unwrap();
+    let runtime = builder.build();
+    let value = runtime.eval("shout(greeting + ", " + name)")?;
+    assert_eq!(value, Value::String("HELLO, WORLD".into()));
+    Ok(())
+}
+```
 
-    // Adds the users to the environment
-    env.set_variable("users", users).unwrap();
+### Advanced example
 
-    // Add a custom function to the environment
-    env.set_function("has_role", Arc::new(has_role));
+The [user_role](./examples/user_role.rs) example demonstrates how to register structured data, declare CEL metadata, and surface strongly typed native functions:
 
-    // Let's say the program tries to get the number of users with particular role
-    let program = "size(users.filter(u, u.has_role(role)))";
+```rust
+use cellang::runtime::RuntimeBuilder;
+use cellang::Runtime;
+use cellang::types::{FieldDecl, FunctionDecl, IdentDecl, NamedType, OverloadDecl, StructType, Type};
+use cellang::value::{IntoValue, StructValue, TryFromValue, Value, ValueError};
 
-    // Now, we want to calculate users with role 'admin'
-    env.set_variable("role", "admin").unwrap();
+const USER_TYPE: &str = "example.User";
+const EXPRESSION: &str = "users[0].has_role(role)";
 
-    // Get number of admin users
-    let n: i64 = cellang::eval(&env.build(), program)
-        .expect("Failed to evaluate the expression")
-        .into();
+fn main() -> miette::Result<()> {
+    let runtime = build_runtime()?;
 
-    println!("Number of admin users: {}", n);
+    let mut scoped = runtime.child_builder();
+    scoped.set_variable("role", "admin");
+    let scoped = scoped.build();
 
-    // Or role 'user'
-    env.set_variable("role", "user").unwrap();
-
-    // Get number of admin users
-    let n: i64 = cellang::eval(&env.build(), program)
-        .expect("Failed to evaluate the expression")
-        .into();
-
-    println!("Number of users: {}", n);
+    let result = scoped.eval(EXPRESSION)?;
+    assert_eq!(result, Value::Bool(true));
+    println!("{} => {}", EXPRESSION, result);
+    Ok(())
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct User {
-    pub name: String,
-    pub roles: Vec<String>,
+fn install_user_schema(builder: &mut RuntimeBuilder) -> miette::Result<()> {
+    let mut user = StructType::new(USER_TYPE);
+    user.add_field("name", FieldDecl::new(Type::String))?;
+    user.add_field("roles", FieldDecl::new(Type::list(Type::String)))?;
+    builder.add_type(NamedType::Struct(user))?;
+    builder.add_ident(IdentDecl::new("users", Type::list(Type::struct_type(USER_TYPE))))?;
+
+    let mut decl = FunctionDecl::new("has_role");
+    decl.add_overload(
+        OverloadDecl::new(
+            "user_has_role_string",
+            vec![Type::struct_type(USER_TYPE), Type::String],
+            Type::Bool,
+        )
+        .with_receiver(Type::struct_type(USER_TYPE)),
+    )?;
+    builder.add_function_decl(decl)?;
+    Ok(())
 }
 
-fn list_users() -> Result<Vec<User>, Error> {
-    Ok(vec![
+#[derive(Clone)]
+struct User {
+    name: String,
+    roles: Vec<String>,
+}
+
+impl IntoValue for User {
+    fn into_value(self) -> Value {
+        let mut value = StructValue::new(USER_TYPE);
+        value.set_field("name", self.name);
+        value.set_field("roles", self.roles);
+        Value::Struct(value)
+    }
+}
+
+impl TryFromValue for User {
+    fn try_from_value(value: &Value) -> Result<Self, ValueError> {
+        let Value::Struct(strct) = value else {
+            return Err(ValueError::Message("expected struct".into()));
+        };
+        Ok(Self {
+            name: String::try_from_value(strct.get("name").unwrap())?,
+            roles: Vec::<String>::try_from_value(strct.get("roles").unwrap())?,
+        })
+    }
+}
+
+fn has_role(user: User, role: String) -> bool {
+    user.roles.iter().any(|current| current == &role)
+}
+
+fn build_runtime() -> miette::Result<cellang::Runtime> {
+    let mut builder = Runtime::builder();
+    install_user_schema(&mut builder)?;
+    builder.register_function("has_role", has_role)?;
+    builder.set_variable("users", vec![
         User {
             name: "Alice".into(),
             roles: vec!["admin".into()],
@@ -86,32 +130,7 @@ fn list_users() -> Result<Vec<User>, Error> {
             name: "Bob".into(),
             roles: vec!["user".into()],
         },
-        User {
-            name: "Charlie".into(),
-            roles: vec!["admin".into(), "user".into()],
-        },
-        User {
-            name: "David".into(),
-            roles: vec!["user".into()],
-        },
-    ])
-}
-
-fn has_role(env: &Environment, tokens: &[TokenTree]) -> Result<Value, Error> {
-    if tokens.len() != 2 {
-        miette::bail!("Expected 2 arguments, got {}", tokens.len());
-    }
-
-    let user: User = match cellang::eval_ast(env, &tokens[0])?.to_value()? {
-        Value::Map(m) => m.try_into()?,
-        _ => miette::bail!("Expected a map, got something else"),
-    };
-
-    let role = match cellang::eval_ast(env, &tokens[1])?.to_value()? {
-        Value::String(s) => s,
-        _ => miette::bail!("Expected a string, got something else"),
-    };
-
-    Ok(user.roles.contains(&role).into())
+    ]);
+    Ok(builder.build())
 }
 ```
