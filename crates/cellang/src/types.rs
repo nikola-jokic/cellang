@@ -351,3 +351,52 @@ impl FunctionDecl {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn struct_field_duplicate_errors() {
+        let mut user = StructType::new("acme.User");
+        user.add_field("id", FieldDecl::new(Type::String)).unwrap();
+        let err = user.add_field("id", FieldDecl::new(Type::Int));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn enum_duplicate_value_errors() {
+        let mut status = EnumType::new("acme.Status");
+        status.add_value(EnumValue::new("PENDING", 0)).unwrap();
+        let err = status.add_value(EnumValue::new("PENDING", 1));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn type_registry_duplicate_type_errors() {
+        let mut registry = TypeRegistry::default();
+        registry
+            .register(NamedType::Struct(StructType::new("acme.User")))
+            .unwrap();
+        let err =
+            registry.register(NamedType::Struct(StructType::new("acme.User")));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn function_duplicate_overload_id_errors() {
+        let mut decl = FunctionDecl::new("check");
+        decl.add_overload(OverloadDecl::new(
+            "check_string",
+            vec![Type::String],
+            Type::Bool,
+        ))
+        .unwrap();
+        let err = decl.add_overload(OverloadDecl::new(
+            "check_string",
+            vec![Type::Bool],
+            Type::Bool,
+        ));
+        assert!(err.is_err());
+    }
+}

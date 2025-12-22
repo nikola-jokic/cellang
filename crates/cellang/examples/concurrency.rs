@@ -12,7 +12,8 @@ fn main() -> Result<()> {
         let runtime = worker_builder.build();
         let value = runtime.eval("2.plus_two()")?;
         let number: i64 = value.try_into()?;
-        tx.send(number).map_err(|err| RuntimeError::new(err.to_string()))?;
+        tx.send(number)
+            .map_err(|err| RuntimeError::new(err.to_string()))?;
         Ok::<(), RuntimeError>(())
     });
 

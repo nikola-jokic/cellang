@@ -176,6 +176,43 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_type_registration_errors() {
+        let scan = build_scan_type();
+        let mut builder = Env::builder();
+        builder.add_type(NamedType::Struct(scan.clone())).unwrap();
+        let err = builder.add_type(NamedType::Struct(scan));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn duplicate_function_overload_id_errors() {
+        let scan = build_scan_type();
+        let mut builder = Env::builder();
+        builder.add_type(NamedType::Struct(scan.clone())).unwrap();
+
+        let mut initial = FunctionDecl::new("scan_status");
+        initial
+            .add_overload(OverloadDecl::new(
+                "scan_status_overload",
+                vec![Type::struct_type(scan.name.clone())],
+                Type::Bool,
+            ))
+            .unwrap();
+        builder.add_function(initial).unwrap();
+
+        let mut duplicate = FunctionDecl::new("scan_status");
+        duplicate
+            .add_overload(OverloadDecl::new(
+                "scan_status_overload",
+                vec![Type::Bool],
+                Type::Bool,
+            ))
+            .unwrap();
+        let err = builder.add_function(duplicate);
+        assert!(err.is_err());
+    }
+
+    #[test]
     fn merge_existing_env() {
         let scan = build_scan_type();
         let mut base = Env::builder();

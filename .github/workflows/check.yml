@@ -61,3 +61,11 @@ jobs:
         run: cargo test --locked --all-features --all-targets
       - name: cargo test --doc
         run: cargo test --locked --all-features --doc
+      - name: cargo run examples
+        run: |
+          for example in examples/*.rs; do
+            name=$(basename "$example" .rs)
+            echo "Testing example: $name"
+            cargo run --locked --all-features --example $name
+          done
+        working-directory: ./crates/cellang

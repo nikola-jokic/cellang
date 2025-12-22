@@ -7,7 +7,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub type NativeFunction = Arc<
-    dyn Fn(&CallContext<'_>) -> Result<Value, RuntimeError> + Send + Sync + 'static,
+    dyn Fn(&CallContext<'_>) -> Result<Value, RuntimeError>
+        + Send
+        + Sync
+        + 'static,
 >;
 
 /// User facing runtime environment that stores variables, types and callable functions.
@@ -141,7 +144,10 @@ impl RuntimeBuilder {
         Ok(self)
     }
 
-    pub fn add_ident(&mut self, ident: IdentDecl) -> Result<&mut Self, EnvError> {
+    pub fn add_ident(
+        &mut self,
+        ident: IdentDecl,
+    ) -> Result<&mut Self, EnvError> {
         self.env_builder
             .add_ident(ident)
             .map_err(|err| EnvError::new(err.to_string()))?;
@@ -158,7 +164,11 @@ impl RuntimeBuilder {
         Ok(self)
     }
 
-    pub fn set_variable<V>(&mut self, name: impl Into<String>, value: V) -> &mut Self
+    pub fn set_variable<V>(
+        &mut self,
+        name: impl Into<String>,
+        value: V,
+    ) -> &mut Self
     where
         V: IntoValue,
     {
@@ -245,7 +255,11 @@ where
         let fname = name.clone();
         Arc::new(move |ctx| {
             if !ctx.args.is_empty() {
-                return Err(RuntimeError::wrong_arity(&fname, 0, ctx.args.len()));
+                return Err(RuntimeError::wrong_arity(
+                    &fname,
+                    0,
+                    ctx.args.len(),
+                ));
             }
             let result = self();
             result.into_runtime_result()
@@ -300,8 +314,21 @@ impl_into_native_function!((A0, arg0));
 impl_into_native_function!((A0, arg0), (A1, arg1));
 impl_into_native_function!((A0, arg0), (A1, arg1), (A2, arg2));
 impl_into_native_function!((A0, arg0), (A1, arg1), (A2, arg2), (A3, arg3));
-impl_into_native_function!((A0, arg0), (A1, arg1), (A2, arg2), (A3, arg3), (A4, arg4));
-impl_into_native_function!((A0, arg0), (A1, arg1), (A2, arg2), (A3, arg3), (A4, arg4), (A5, arg5));
+impl_into_native_function!(
+    (A0, arg0),
+    (A1, arg1),
+    (A2, arg2),
+    (A3, arg3),
+    (A4, arg4)
+);
+impl_into_native_function!(
+    (A0, arg0),
+    (A1, arg1),
+    (A2, arg2),
+    (A3, arg3),
+    (A4, arg4),
+    (A5, arg5)
+);
 
 pub trait FunctionOutput {
     fn into_runtime_result(self) -> Result<Value, RuntimeError>;

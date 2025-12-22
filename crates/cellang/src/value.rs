@@ -1,15 +1,15 @@
 use crate::types::{Constant, Type, TypeName};
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use serde::ser::{SerializeMap, SerializeSeq};
+use base64::engine::general_purpose::STANDARD;
 use serde::Serialize;
+use serde::ser::{SerializeMap, SerializeSeq};
 use std::collections::BTreeMap;
 use std::fmt;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 
 /// Primary runtime value for CEL expressions.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub enum Value {
     Bool(bool),
     Int(i64),
@@ -22,6 +22,7 @@ pub enum Value {
     List(ListValue),
     Map(MapValue),
     Struct(StructValue),
+    #[default]
     Null,
 }
 
@@ -31,12 +32,6 @@ pub type List = ListValue;
 pub type Map = MapValue;
 /// Alias preserving the historical naming used by older versions of the crate.
 pub type Struct = StructValue;
-
-impl Default for Value {
-    fn default() -> Self {
-        Value::Null
-    }
-}
 
 impl Value {
     pub fn kind(&self) -> ValueKind {
@@ -76,7 +71,11 @@ impl Value {
                 let element_ty = list
                     .iter()
                     .map(|value| value.cel_type())
-                    .reduce(|left, right| if left == right { left } else { Type::Dyn })
+                    .reduce(
+                        |left, right| {
+                            if left == right { left } else { Type::Dyn }
+                        },
+                    )
                     .unwrap_or(Type::Dyn);
                 Type::list(element_ty)
             }
@@ -101,7 +100,7 @@ impl fmt::Display for Value {
         match self {
             Value::Bool(v) => write!(f, "{v}"),
             Value::Int(v) => write!(f, "{v}"),
-                Value::Uint(v) => write!(f, "{v}u"),
+            Value::Uint(v) => write!(f, "{v}u"),
             Value::Double(v) => write!(f, "{v}"),
             Value::String(v) => write!(f, "\"{v}\""),
             Value::Bytes(v) => write!(f, "b\"{}\"", STANDARD.encode(v)),
@@ -833,7 +832,10 @@ impl Key {
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ValueError {
     #[error("expected {expected}, got {actual}")]
-    UnexpectedType { expected: &'static str, actual: ValueKind },
+    UnexpectedType {
+        expected: &'static str,
+        actual: ValueKind,
+    },
     #[error("unsupported map key type: {0}")]
     InvalidMapKey(ValueKind),
     #[error("index {index} is out of bounds for length {len}")]

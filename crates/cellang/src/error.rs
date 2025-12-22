@@ -40,7 +40,7 @@ impl EnvError {
 pub struct RuntimeError {
     message: String,
     #[source]
-    source: Option<Box<dyn StdError + Send + Sync>>, 
+    source: Option<Box<dyn StdError + Send + Sync>>,
 }
 
 impl RuntimeError {
@@ -61,11 +61,7 @@ impl RuntimeError {
         }
     }
 
-    pub fn wrong_arity(
-        name: &str,
-        expected: usize,
-        actual: usize,
-    ) -> Self {
+    pub fn wrong_arity(name: &str, expected: usize, actual: usize) -> Self {
         RuntimeError::new(format!(
             "Function '{name}' expected {expected} arguments but received {actual}"
         ))
@@ -75,11 +71,7 @@ impl RuntimeError {
         RuntimeError::new(format!("Identifier '{name}' is not defined"))
     }
 
-    pub fn argument(
-        name: &str,
-        position: usize,
-        err: ValueError,
-    ) -> Self {
+    pub fn argument(name: &str, position: usize, err: ValueError) -> Self {
         RuntimeError::with_source(
             format!("Invalid argument {position} for function '{name}'"),
             err,
