@@ -10,7 +10,12 @@ readme = "README.md"
 keywords = ["cel", "expression", "language", "interpreter", "rust"]
 categories = ["development-tools", "compilers"]
 
+[features]
+default = []
+derive = ["cellang-macros"]
+
 [dependencies]
+cellang-macros = { path = "../cellang-macros", optional = true }
 serde = { version = "^1", features = ["derive"] }
 miette = { version = "^7" }
 regex = "^1"

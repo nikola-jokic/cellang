@@ -117,6 +117,7 @@ name = "cellang"
 version = "0.5.0"
 dependencies = [
  "base64",
+ "cellang-macros",
  "miette",
  "regex",
  "serde",
@@ -134,6 +135,15 @@ dependencies = [
  "miette",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "cellang-macros"
+version = "0.5.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

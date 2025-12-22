@@ -1,6 +1,7 @@
 #![deny(clippy::match_same_arms)]
 
 mod builtins;
+mod derive;
 pub mod env;
 pub mod error;
 pub mod interpreter;
@@ -18,3 +19,7 @@ pub use parser::*;
 pub use runtime::*;
 pub use types::*;
 pub use value::*;
+pub use derive::CelType;
+
+#[cfg(feature = "derive")]
+pub use cellang_macros::CelStruct;
