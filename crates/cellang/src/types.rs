@@ -1,9 +1,12 @@
 use crate::error::EnvError;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
 /// Identifier used to reference named types (structs/enums) within the environment metadata.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub struct TypeName(String);
 
 impl TypeName {
@@ -41,7 +44,7 @@ impl From<&TypeName> for TypeName {
 }
 
 /// High level CEL type metadata.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Type {
     Dyn,
     Null,
