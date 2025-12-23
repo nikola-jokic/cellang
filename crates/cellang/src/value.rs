@@ -623,7 +623,8 @@ where
     V: IntoValue,
 {
     fn into_value(self) -> Value {
-        let btree_map: BTreeMap<_, _> = self.into_iter()
+        let btree_map: BTreeMap<_, _> = self
+            .into_iter()
             .map(|(k, v)| (k.into(), v.into_value()))
             .collect();
         Value::Map(MapValue { entries: btree_map })

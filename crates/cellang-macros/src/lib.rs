@@ -359,16 +359,17 @@ fn map_type(ty: &Type) -> syn::Result<TokenStream2> {
                                 "BTreeMap<K, V> expects two type arguments",
                             )
                         })?;
-                        let key_ty = if let syn::GenericArgument::Type(ty) = key_arg
-                        {
-                            ty
-                        } else {
-                            return Err(syn::Error::new(
-                                key_arg.span(),
-                                "BTreeMap<K, V> expects concrete key type",
-                            ));
-                        };
-                        let value_ty = if let syn::GenericArgument::Type(ty) = value_arg
+                        let key_ty =
+                            if let syn::GenericArgument::Type(ty) = key_arg {
+                                ty
+                            } else {
+                                return Err(syn::Error::new(
+                                    key_arg.span(),
+                                    "BTreeMap<K, V> expects concrete key type",
+                                ));
+                            };
+                        let value_ty = if let syn::GenericArgument::Type(ty) =
+                            value_arg
                         {
                             ty
                         } else {
@@ -379,7 +380,9 @@ fn map_type(ty: &Type) -> syn::Result<TokenStream2> {
                         };
                         let key_tokens = map_type(key_ty)?;
                         let value_tokens = map_type(value_ty)?;
-                        Ok(quote! { cellang::types::Type::map(#key_tokens, #value_tokens) })
+                        Ok(
+                            quote! { cellang::types::Type::map(#key_tokens, #value_tokens) },
+                        )
                     }
                     _ => Err(syn::Error::new(
                         segment.ident.span(),

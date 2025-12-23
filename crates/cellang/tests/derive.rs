@@ -77,10 +77,7 @@ fn cel_struct_generates_metadata_and_conversions() {
     );
     match strct.fields.get("labels").expect("labels field missing") {
         Value::Map(map) => assert_eq!(map.len(), 1),
-        other => panic!(
-            "expected map for labels field, got {}",
-            other.kind()
-        ),
+        other => panic!("expected map for labels field, got {}", other.kind()),
     }
     let roundtrip = User::try_from_value(&value).unwrap();
     assert_eq!(roundtrip, user);
