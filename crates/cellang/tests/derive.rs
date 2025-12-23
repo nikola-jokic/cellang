@@ -1,10 +1,10 @@
 #![cfg(feature = "derive")]
 
-use std::collections::BTreeMap;
-
+use cellang::Env;
 use cellang::types::{NamedType, Type};
 use cellang::value::{IntoValue, TryFromValue, Value};
 use cellang::{CelStruct, Runtime};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, CelStruct)]
 #[cel(type = "example.Address", doc = "Address record")]
@@ -92,4 +92,15 @@ fn register_cel_type_reports_duplicates() {
         err.to_string().contains(User::CEL_TYPE_NAME),
         "expected duplicate name in error, got {err}"
     );
+}
+
+#[test]
+fn register_cel_type_into_env_builder() {
+    let mut builder = Env::builder();
+    User::register_cel_type(&mut builder).unwrap();
+    let env = builder.build();
+    let ty = env
+        .lookup_type(&TypeName::new(User::CEL_TYPE_NAME))
+        .expect("type registered in env");
+    assert!(matches!(ty, NamedType::Struct(_)));
 }

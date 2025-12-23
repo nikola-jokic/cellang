@@ -1,5 +1,5 @@
+use crate::env::CelTypeRegistrar;
 use crate::error::EnvError;
-use crate::runtime::RuntimeBuilder;
 use crate::types::{NamedType, Type};
 
 /// Trait implemented by structs that expose CEL type metadata.
@@ -12,7 +12,10 @@ pub trait CelType {
 
     fn cel_named_type() -> NamedType;
 
-    fn register_cel_type(builder: &mut RuntimeBuilder) -> Result<(), EnvError> {
-        builder.add_type(Self::cel_named_type()).map(|_| ())
+    fn register_cel_type<R>(registrar: &mut R) -> Result<(), EnvError>
+    where
+        R: CelTypeRegistrar,
+    {
+        registrar.register_type(Self::cel_named_type())
     }
 }

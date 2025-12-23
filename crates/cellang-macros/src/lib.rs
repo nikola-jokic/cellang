@@ -150,10 +150,16 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
                 cellang::types::NamedType::Struct(ty)
             }
 
-            fn register_cel_type(
-                builder: &mut cellang::runtime::RuntimeBuilder,
-            ) -> Result<(), cellang::error::EnvError> {
-                builder.add_type(Self::cel_named_type()).map(|_| ())
+            fn register_cel_type<R>(
+                registrar: &mut R,
+            ) -> Result<(), cellang::error::EnvError>
+            where
+                R: cellang::env::CelTypeRegistrar,
+            {
+                cellang::env::CelTypeRegistrar::register_type(
+                    registrar,
+                    Self::cel_named_type(),
+                )
             }
         }
 
@@ -168,10 +174,13 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
                 <Self as cellang::CelType>::cel_named_type()
             }
 
-            pub fn register_cel_type(
-                builder: &mut cellang::runtime::RuntimeBuilder,
-            ) -> Result<(), cellang::error::EnvError> {
-                <Self as cellang::CelType>::register_cel_type(builder)
+            pub fn register_cel_type<R>(
+                registrar: &mut R,
+            ) -> Result<(), cellang::error::EnvError>
+            where
+                R: cellang::env::CelTypeRegistrar,
+            {
+                <Self as cellang::CelType>::register_cel_type(registrar)
             }
         }
 

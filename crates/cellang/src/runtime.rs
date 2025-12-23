@@ -1,5 +1,5 @@
 use crate::builtins;
-use crate::env::{Env, EnvBuilder};
+use crate::env::{CelTypeRegistrar, Env, EnvBuilder};
 use crate::error::{EnvError, RuntimeError};
 use crate::types::{FunctionDecl, IdentDecl, NamedType};
 use crate::value::{IntoValue, ListValue, TryFromValue, Value, ValueError};
@@ -233,6 +233,12 @@ impl RuntimeBuilder {
 
     fn install_standard_library(&mut self) -> Result<(), RuntimeError> {
         builtins::register(self)
+    }
+}
+
+impl CelTypeRegistrar for RuntimeBuilder {
+    fn register_type(&mut self, ty: NamedType) -> Result<(), EnvError> {
+        self.add_type(ty).map(|_| ())
     }
 }
 
