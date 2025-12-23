@@ -1,6 +1,6 @@
 #![cfg(feature = "derive")]
 
-use cellang::Env;
+use cellang::{Env, TypeName};
 use cellang::types::{NamedType, Type};
 use cellang::value::{IntoValue, TryFromValue, Value};
 use cellang::{CelStruct, Runtime};
