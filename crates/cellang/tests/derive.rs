@@ -1,9 +1,9 @@
 #![cfg(feature = "derive")]
 
-use cellang::{Env, TypeName};
 use cellang::types::{NamedType, Type};
 use cellang::value::{IntoValue, TryFromValue, Value};
 use cellang::{CelStruct, Runtime};
+use cellang::{Env, TypeName};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, CelStruct)]
