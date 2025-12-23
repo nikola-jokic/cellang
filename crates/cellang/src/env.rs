@@ -1,3 +1,5 @@
+use crate::ast::{CompileError, TypedExpr};
+use crate::parser::Parser;
 use crate::EnvError;
 use crate::types::{
     FunctionDecl, IdentDecl, NamedType, TypeName, TypeRegistry,
@@ -40,6 +42,14 @@ impl Env {
 
     pub fn functions(&self) -> &BTreeMap<String, FunctionDecl> {
         &self.functions
+    }
+    
+    pub fn compile(&self, src: &str) -> Result<TypedExpr, CompileError> {
+        let mut parser = Parser::new(src);
+        let token_tree = parser.parse()?;
+        let typed = crate::ast::type_check(self, &token_tree)
+            .map_err(CompileError::from)?;
+        Ok(typed)
     }
 }
 
@@ -253,5 +263,14 @@ mod tests {
         let merged = derived.build();
         assert!(merged.lookup_function("size").is_some());
         assert!(merged.lookup_type(&scan.name).is_some());
+    }
+
+    #[test]
+    fn compile_returns_typed_ast() {
+        let mut builder = Env::builder();
+        builder.add_ident(IdentDecl::new("x", Type::Int)).unwrap();
+        let env = builder.build();
+        let typed = env.compile("x + 1").expect("compile result");
+        assert_eq!(typed.ty, Type::Int);
     }
 }

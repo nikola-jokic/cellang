@@ -2,6 +2,7 @@
 
 mod builtins;
 mod derive;
+pub mod ast;
 pub mod env;
 pub mod error;
 pub mod interpreter;
