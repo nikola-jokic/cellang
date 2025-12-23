@@ -1,10 +1,9 @@
+use crate::EnvError;
 use crate::types::{
     FunctionDecl, IdentDecl, NamedType, TypeName, TypeRegistry,
 };
 use std::collections::{BTreeMap, btree_map::Entry};
 use std::sync::Arc;
-
-use miette::Error;
 
 /// Immutable environment describing identifiers, functions and named types.
 #[derive(Clone, Debug)]
@@ -58,19 +57,38 @@ pub struct EnvBuilder {
     functions: BTreeMap<String, FunctionDecl>,
 }
 
+/// Abstraction over builders capable of accepting named CEL types.
+pub trait CelTypeRegistrar {
+    fn register_type(&mut self, ty: NamedType) -> Result<(), EnvError>;
+}
+
+impl CelTypeRegistrar for EnvBuilder {
+    fn register_type(&mut self, ty: NamedType) -> Result<(), EnvError> {
+        self.add_type(ty).map(|_| ())
+    }
+}
+
 impl EnvBuilder {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn add_type(&mut self, ty: NamedType) -> Result<&mut Self, Error> {
-        self.type_registry.register(ty)?;
+    pub fn add_type(&mut self, ty: NamedType) -> Result<&mut Self, EnvError> {
+        self.type_registry.register(ty).map_err(|e| {
+            EnvError::new(format!("Type registration error: {}", e))
+        })?;
         Ok(self)
     }
 
-    pub fn add_ident(&mut self, decl: IdentDecl) -> Result<&mut Self, Error> {
+    pub fn add_ident(
+        &mut self,
+        decl: IdentDecl,
+    ) -> Result<&mut Self, EnvError> {
         if self.identifiers.contains_key(&decl.name) {
-            miette::bail!("Identifier '{}' already declared", decl.name);
+            return Err(EnvError::new(format!(
+                "Identifier '{}' already declared",
+                decl.name
+            )));
         }
         self.identifiers.insert(decl.name.clone(), decl);
         Ok(self)
@@ -79,7 +97,7 @@ impl EnvBuilder {
     pub fn add_function(
         &mut self,
         mut decl: FunctionDecl,
-    ) -> Result<&mut Self, Error> {
+    ) -> Result<&mut Self, EnvError> {
         match self.functions.entry(decl.name.clone()) {
             Entry::Vacant(entry) => {
                 entry.insert(decl);
@@ -97,7 +115,7 @@ impl EnvBuilder {
         Ok(self)
     }
 
-    pub fn import_env(&mut self, env: &Env) -> Result<&mut Self, Error> {
+    pub fn import_env(&mut self, env: &Env) -> Result<&mut Self, EnvError> {
         for (_, ty) in env.types().iter() {
             self.type_registry.register(ty.clone())?;
         }
