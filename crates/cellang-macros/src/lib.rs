@@ -1,10 +1,10 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use syn::spanned::Spanned;
 use syn::{
-    parse_macro_input, Attribute, Data, DeriveInput, Expr, Fields, Ident,
-    LitStr, Type,
+    Attribute, Data, DeriveInput, Expr, Fields, Ident, LitStr, Type,
+    parse_macro_input,
 };
 
 #[proc_macro_derive(CelStruct, attributes(cel))]
@@ -53,14 +53,14 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
                 return Err(syn::Error::new(
                     data.struct_token.span,
                     "CelStruct expects a struct with named fields",
-                ))
+                ));
             }
         },
         _ => {
             return Err(syn::Error::new(
                 input.span(),
                 "CelStruct can only be derived for structs",
-            ))
+            ));
         }
     };
 
@@ -95,7 +95,9 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
             doc,
             ..
         } = info;
-        let doc_tokens = doc.as_ref().map(|doc| quote! { field = field.with_doc(#doc); });
+        let doc_tokens = doc
+            .as_ref()
+            .map(|doc| quote! { field = field.with_doc(#doc); });
         quote! {
             let mut field = cellang::types::FieldDecl::new(#ty_tokens);
             #doc_tokens
@@ -224,16 +226,13 @@ fn into_value_expr(ident: &Ident, ty: &Type) -> TokenStream2 {
 }
 
 fn vec_inner_type(ty: &Type) -> Option<&Type> {
-    if let Type::Path(path) = ty {
-        if let Some(segment) = path.path.segments.last() {
-            if segment.ident == "Vec" {
-                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                    if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
-                        return Some(inner);
-                    }
-                }
-            }
-        }
+    if let Type::Path(path) = ty
+        && let Some(segment) = path.path.segments.last()
+        && segment.ident == "Vec"
+        && let syn::PathArguments::AngleBracketed(args) = &segment.arguments
+        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+    {
+        return Some(inner);
     }
     None
 }
@@ -268,10 +267,12 @@ fn parse_struct_attrs(attrs: &[Attribute]) -> syn::Result<StructAttrs> {
             }
         })?;
     }
-    let type_name = type_name.ok_or_else(|| syn::Error::new(
-        Span::call_site(),
-        "missing #[cel(type = \"fully.qualified.Type\")] attribute",
-    ))?;
+    let type_name = type_name.ok_or_else(|| {
+        syn::Error::new(
+            Span::call_site(),
+            "missing #[cel(type = \"fully.qualified.Type\")] attribute",
+        )
+    })?;
     Ok(StructAttrs { type_name, doc })
 }
 
@@ -310,7 +311,10 @@ fn map_type(ty: &Type) -> syn::Result<TokenStream2> {
         Type::Reference(reference) => map_type(&reference.elem),
         Type::Path(path) => {
             let segment = path.path.segments.last().ok_or_else(|| {
-                syn::Error::new(path.span(), "expected a concrete type for field")
+                syn::Error::new(
+                    path.span(),
+                    "expected a concrete type for field",
+                )
             })?;
             let ident = segment.ident.to_string();
             match ident.as_str() {
@@ -325,7 +329,9 @@ fn map_type(ty: &Type) -> syn::Result<TokenStream2> {
                             args.args.first()
                         {
                             let inner_tokens = map_type(inner)?;
-                            Ok(quote! { cellang::types::Type::list(#inner_tokens) })
+                            Ok(
+                                quote! { cellang::types::Type::list(#inner_tokens) },
+                            )
                         } else {
                             Err(syn::Error::new(
                                 args.span(),

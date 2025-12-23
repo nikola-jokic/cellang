@@ -12,9 +12,7 @@ pub trait CelType {
 
     fn cel_named_type() -> NamedType;
 
-    fn register_cel_type(
-        builder: &mut RuntimeBuilder,
-    ) -> Result<(), EnvError> {
+    fn register_cel_type(builder: &mut RuntimeBuilder) -> Result<(), EnvError> {
         builder.add_type(Self::cel_named_type()).map(|_| ())
     }
 }

@@ -12,6 +12,7 @@ pub mod types;
 pub mod value;
 
 pub use crate::env::*;
+pub use derive::CelType;
 pub use error::*;
 pub use interpreter::*;
 pub use lexer::*;
@@ -19,7 +20,6 @@ pub use parser::*;
 pub use runtime::*;
 pub use types::*;
 pub use value::*;
-pub use derive::CelType;
 
 #[cfg(feature = "derive")]
 pub use cellang_macros::CelStruct;
