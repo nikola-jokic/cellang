@@ -3,7 +3,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use serde::Serialize;
 use serde::ser::{SerializeMap, SerializeSeq};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
@@ -607,6 +607,30 @@ impl IntoValue for StructValue {
     }
 }
 
+impl<K, V> IntoValue for BTreeMap<K, V>
+where
+    K: Into<Key>,
+    V: IntoValue,
+{
+    fn into_value(self) -> Value {
+        Value::Map(MapValue::from(self))
+    }
+}
+
+impl<K, V> IntoValue for HashMap<K, V>
+where
+    K: Into<Key>,
+    V: IntoValue,
+{
+    fn into_value(self) -> Value {
+        let btree_map: BTreeMap<_, _> = self
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into_value()))
+            .collect();
+        Value::Map(MapValue { entries: btree_map })
+    }
+}
+
 impl<T> IntoValue for Option<T>
 where
     T: IntoValue,
@@ -762,6 +786,27 @@ where
                     _ => Err(ValueError::InvalidMapKey(key.kind())),
                 })
                 .collect::<Result<BTreeMap<_, _>, _>>(),
+            _ => Err(ValueError::unexpected("map", value.kind())),
+        }
+    }
+}
+
+impl<T> TryFromValue for HashMap<String, T>
+where
+    T: TryFromValue,
+{
+    fn try_from_value(value: &Value) -> Result<Self, ValueError> {
+        match value {
+            Value::Map(map) => map
+                .iter()
+                .map(|(key, value)| match key {
+                    Key::String(name) => {
+                        let typed = T::try_from_value(value)?;
+                        Ok((name.clone(), typed))
+                    }
+                    _ => Err(ValueError::InvalidMapKey(key.kind())),
+                })
+                .collect::<Result<HashMap<_, _>, _>>(),
             _ => Err(ValueError::unexpected("map", value.kind())),
         }
     }

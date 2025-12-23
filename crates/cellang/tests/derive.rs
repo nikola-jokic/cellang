@@ -1,7 +1,9 @@
 #![cfg(feature = "derive")]
 
-use cellang::types::NamedType;
-use cellang::value::{IntoValue, TryFromValue};
+use std::collections::BTreeMap;
+
+use cellang::types::{NamedType, Type};
+use cellang::value::{IntoValue, TryFromValue, Value};
 use cellang::{CelStruct, Runtime};
 
 #[derive(Clone, Debug, PartialEq, CelStruct)]
@@ -18,6 +20,8 @@ struct User {
     address: Address,
     #[cel(rename = "is_active", doc = "Whether the user is active")]
     active: bool,
+    nickname: Option<String>,
+    labels: BTreeMap<String, Address>,
 }
 
 #[test]
@@ -37,14 +41,44 @@ fn cel_struct_generates_metadata_and_conversions() {
         Some("Whether the user is active"),
     );
 
+    let nickname_field = user_meta.fields.get("nickname").unwrap();
+    assert_eq!(nickname_field.ty, Type::String);
+
+    let labels_field = user_meta.fields.get("labels").unwrap();
+    assert_eq!(
+        labels_field.ty,
+        Type::map(Type::String, Address::cel_type()),
+    );
+
     let user = User {
         name: "Ada".into(),
         address: Address {
             city: "London".into(),
         },
         active: true,
+        nickname: None,
+        labels: BTreeMap::from([(
+            "home".to_string(),
+            Address {
+                city: "London".into(),
+            },
+        )]),
     };
     let value = user.clone().into_value();
+    let Value::Struct(strct) = &value else {
+        panic!("expected struct value");
+    };
+    assert!(
+        strct
+            .fields
+            .get("nickname")
+            .expect("nickname field missing")
+            .is_null()
+    );
+    match strct.fields.get("labels").expect("labels field missing") {
+        Value::Map(map) => assert_eq!(map.len(), 1),
+        other => panic!("expected map for labels field, got {}", other.kind()),
+    }
     let roundtrip = User::try_from_value(&value).unwrap();
     assert_eq!(roundtrip, user);
 }

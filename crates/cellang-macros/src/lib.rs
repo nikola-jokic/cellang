@@ -344,16 +344,74 @@ fn map_type(ty: &Type) -> syn::Result<TokenStream2> {
                         "Vec<T> must specify the inner type",
                     )),
                 },
+                "BTreeMap" => match &segment.arguments {
+                    syn::PathArguments::AngleBracketed(args) => {
+                        let mut iter = args.args.iter();
+                        let key_arg = iter.next().ok_or_else(|| {
+                            syn::Error::new(
+                                args.span(),
+                                "BTreeMap<K, V> expects two type arguments",
+                            )
+                        })?;
+                        let value_arg = iter.next().ok_or_else(|| {
+                            syn::Error::new(
+                                args.span(),
+                                "BTreeMap<K, V> expects two type arguments",
+                            )
+                        })?;
+                        let key_ty =
+                            if let syn::GenericArgument::Type(ty) = key_arg {
+                                ty
+                            } else {
+                                return Err(syn::Error::new(
+                                    key_arg.span(),
+                                    "BTreeMap<K, V> expects concrete key type",
+                                ));
+                            };
+                        let value_ty = if let syn::GenericArgument::Type(ty) =
+                            value_arg
+                        {
+                            ty
+                        } else {
+                            return Err(syn::Error::new(
+                                value_arg.span(),
+                                "BTreeMap<K, V> expects concrete value type",
+                            ));
+                        };
+                        let key_tokens = map_type(key_ty)?;
+                        let value_tokens = map_type(value_ty)?;
+                        Ok(
+                            quote! { cellang::types::Type::map(#key_tokens, #value_tokens) },
+                        )
+                    }
+                    _ => Err(syn::Error::new(
+                        segment.ident.span(),
+                        "BTreeMap<K, V> must specify key and value types",
+                    )),
+                },
+                "Option" => match &segment.arguments {
+                    syn::PathArguments::AngleBracketed(args) => {
+                        if let Some(syn::GenericArgument::Type(inner)) =
+                            args.args.first()
+                        {
+                            // Option<T> shares the same CEL type as T, but values may be null.
+                            map_type(inner)
+                        } else {
+                            Err(syn::Error::new(
+                                args.span(),
+                                "Option<T> expects a concrete type argument",
+                            ))
+                        }
+                    }
+                    _ => Err(syn::Error::new(
+                        segment.ident.span(),
+                        "Option<T> must specify the inner type",
+                    )),
+                },
                 "OffsetDateTime" => Ok(simple_type("Timestamp")),
                 "Duration" => Ok(simple_type("Duration")),
                 "Value" => Ok(simple_type("Dyn")),
-                other => {
-                    if other == "Option" {
-                        return Err(syn::Error::new(
-                            segment.ident.span(),
-                            "Option<T> is not supported in CelStruct derive",
-                        ));
-                    }
+                _other => {
                     let ty_tokens = path.to_token_stream();
                     Ok(quote! {
                         <#ty_tokens as cellang::CelType>::cel_type()
