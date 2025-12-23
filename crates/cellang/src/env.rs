@@ -1,6 +1,7 @@
-use crate::ast::{CompileError, TypedExpr};
-use crate::parser::Parser;
 use crate::EnvError;
+use crate::ast::TypedExpr;
+use crate::error::CompileError;
+use crate::parser::Parser;
 use crate::types::{
     FunctionDecl, IdentDecl, NamedType, TypeName, TypeRegistry,
 };
@@ -43,12 +44,11 @@ impl Env {
     pub fn functions(&self) -> &BTreeMap<String, FunctionDecl> {
         &self.functions
     }
-    
+
     pub fn compile(&self, src: &str) -> Result<TypedExpr, CompileError> {
         let mut parser = Parser::new(src);
         let token_tree = parser.parse()?;
-        let typed = crate::ast::type_check(self, &token_tree)
-            .map_err(CompileError::from)?;
+        let typed = crate::ast::type_check(self, &token_tree)?;
         Ok(typed)
     }
 }

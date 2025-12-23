@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 /// Identifier used to reference named types (structs/enums) within the environment metadata.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub struct TypeName(String);
 
 impl TypeName {

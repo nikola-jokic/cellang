@@ -102,3 +102,14 @@ impl From<SyntaxError> for RuntimeError {
         RuntimeError::with_source(error.to_string(), error)
     }
 }
+
+/// Describes failures that can occur while compiling CEL source into a typed AST.
+#[derive(Debug, Error, Diagnostic)]
+pub enum CompileError {
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Syntax(#[from] SyntaxError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Type(#[from] RuntimeError),
+}

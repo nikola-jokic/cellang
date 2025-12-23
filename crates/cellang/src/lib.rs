@@ -1,8 +1,8 @@
 #![deny(clippy::match_same_arms)]
 
+pub mod ast;
 mod builtins;
 mod derive;
-pub mod ast;
 pub mod env;
 pub mod error;
 pub mod interpreter;
@@ -13,6 +13,7 @@ pub mod types;
 pub mod value;
 
 pub use crate::env::*;
+pub use ast::*;
 pub use derive::CelType;
 pub use error::*;
 pub use interpreter::*;
