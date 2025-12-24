@@ -3,7 +3,8 @@ use crate::ast::TypedExpr;
 use crate::error::CompileError;
 use crate::parser::Parser;
 use crate::types::{
-    FunctionDecl, IdentDecl, NamedType, TypeName, TypeRegistry,
+    FunctionDecl, IdentDecl, NamedType, OverloadDecl, Type, TypeName,
+    TypeRegistry,
 };
 use std::collections::{BTreeMap, btree_map::Entry};
 use std::sync::Arc;
@@ -60,11 +61,21 @@ impl Default for Env {
 }
 
 /// Builder used to incrementally assemble environments.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct EnvBuilder {
     type_registry: TypeRegistry,
     identifiers: BTreeMap<String, IdentDecl>,
     functions: BTreeMap<String, FunctionDecl>,
+}
+
+impl Default for EnvBuilder {
+    fn default() -> Self {
+        let mut builder = EnvBuilder::new_empty();
+        builder
+            .install_builtin_function_decls()
+            .expect("builtin declarations must register");
+        builder
+    }
 }
 
 /// Abstraction over builders capable of accepting named CEL types.
@@ -81,6 +92,14 @@ impl CelTypeRegistrar for EnvBuilder {
 impl EnvBuilder {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn new_empty() -> Self {
+        Self {
+            type_registry: TypeRegistry::new(),
+            identifiers: BTreeMap::new(),
+            functions: BTreeMap::new(),
+        }
     }
 
     pub fn add_type(&mut self, ty: NamedType) -> Result<&mut Self, EnvError> {
@@ -133,7 +152,14 @@ impl EnvBuilder {
             self.add_ident(decl.clone())?;
         }
         for decl in env.functions().values() {
-            self.add_function(decl.clone())?;
+            match self.functions.entry(decl.name.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(decl.clone());
+                }
+                Entry::Occupied(mut entry) => {
+                    merge_function_decl(entry.get_mut(), decl)?;
+                }
+            }
         }
         Ok(self)
     }
@@ -145,12 +171,177 @@ impl EnvBuilder {
             functions: Arc::new(self.functions),
         }
     }
+
+    fn install_builtin_function_decls(&mut self) -> Result<(), EnvError> {
+        for decl in builtin_function_decls() {
+            self.add_function(decl)?;
+        }
+        Ok(())
+    }
+}
+
+fn merge_function_decl(
+    existing: &mut FunctionDecl,
+    incoming: &FunctionDecl,
+) -> Result<(), EnvError> {
+    if existing.doc.is_none() {
+        existing.doc = incoming.doc.clone();
+    }
+    for overload in &incoming.overloads {
+        if let Some(current) = existing
+            .overloads
+            .iter()
+            .find(|item| item.id == overload.id)
+        {
+            if current != overload {
+                return Err(EnvError::new(format!(
+                    "Function '{}' overload id '{}' conflicts with existing declaration",
+                    existing.name, overload.id
+                )));
+            }
+            continue;
+        }
+        existing.overloads.push(overload.clone());
+    }
+    Ok(())
+}
+
+fn builtin_function_decls() -> Vec<FunctionDecl> {
+    vec![
+        builtin_size_decl(),
+        builtin_contains_decl(),
+        builtin_string_binary_decl("startsWith"),
+        builtin_string_binary_decl("endsWith"),
+        builtin_string_binary_decl("matches"),
+        builtin_unary_decl("type", Type::String),
+        builtin_unary_decl("string", Type::String),
+        builtin_unary_decl("int", Type::Int),
+        builtin_unary_decl("uint", Type::Uint),
+        builtin_unary_decl("timestamp", Type::Timestamp),
+        builtin_unary_decl("duration", Type::Duration),
+    ]
+}
+
+fn builtin_size_decl() -> FunctionDecl {
+    let mut decl = FunctionDecl::new("size");
+    for (label, ty) in [
+        ("string", Type::String),
+        ("bytes", Type::Bytes),
+        ("list", Type::list(Type::Dyn)),
+        ("map", Type::map(Type::Dyn, Type::Dyn)),
+    ] {
+        push_overload(
+            &mut decl,
+            format!("size_{label}_function"),
+            vec![ty.clone()],
+            Type::Int,
+        );
+        push_method_overload(
+            &mut decl,
+            format!("size_{label}_method"),
+            ty,
+            Vec::new(),
+            Type::Int,
+        );
+    }
+    decl
+}
+
+fn builtin_contains_decl() -> FunctionDecl {
+    let mut decl = FunctionDecl::new("contains");
+    for (label, ty) in [("string", Type::String), ("bytes", Type::Bytes)] {
+        push_overload(
+            &mut decl,
+            format!("contains_{label}_function"),
+            vec![ty.clone(), ty.clone()],
+            Type::Bool,
+        );
+        let method_arg = ty.clone();
+        push_method_overload(
+            &mut decl,
+            format!("contains_{label}_method"),
+            ty,
+            vec![method_arg],
+            Type::Bool,
+        );
+    }
+    decl
+}
+
+fn builtin_string_binary_decl(name: &str) -> FunctionDecl {
+    let mut decl = FunctionDecl::new(name);
+    push_overload(
+        &mut decl,
+        format!("{name}_string_function"),
+        vec![Type::String, Type::String],
+        Type::Bool,
+    );
+    push_method_overload(
+        &mut decl,
+        format!("{name}_string_method"),
+        Type::String,
+        vec![Type::String],
+        Type::Bool,
+    );
+    decl
+}
+
+fn builtin_unary_decl(name: &str, result: Type) -> FunctionDecl {
+    let mut decl = FunctionDecl::new(name);
+    push_overload(&mut decl, format!("{name}_value"), vec![Type::Dyn], result);
+    decl
+}
+
+fn push_overload(
+    decl: &mut FunctionDecl,
+    id: String,
+    args: Vec<Type>,
+    result: Type,
+) {
+    decl.add_overload(OverloadDecl::new(id, args, result))
+        .expect("builtin declaration must register");
+}
+
+fn push_method_overload(
+    decl: &mut FunctionDecl,
+    id: String,
+    receiver: Type,
+    args: Vec<Type>,
+    result: Type,
+) {
+    decl.add_overload(
+        OverloadDecl::new(id, args, result).with_receiver(receiver),
+    )
+    .expect("builtin declaration must register");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::types::{FieldDecl, OverloadDecl, StructType, Type};
+
+    #[test]
+    fn default_env_contains_builtins() {
+        let env = Env::builder().build();
+        for name in [
+            "size",
+            "contains",
+            "startsWith",
+            "endsWith",
+            "matches",
+            "type",
+            "string",
+            "int",
+            "uint",
+            "timestamp",
+            "duration",
+        ] {
+            assert!(
+                env.lookup_function(name).is_some(),
+                "expected builtin function '{name}' to be registered"
+            );
+        }
+    }
 
     fn build_scan_type() -> StructType {
         let mut scan = StructType::new("acme.Scan");

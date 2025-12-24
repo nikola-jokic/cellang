@@ -244,6 +244,12 @@ pub struct TypeRegistry {
 }
 
 impl TypeRegistry {
+    pub fn new() -> Self {
+        Self {
+            types: BTreeMap::new(),
+        }
+    }
+
     pub fn register(&mut self, ty: NamedType) -> Result<(), EnvError> {
         let name = ty.name().clone();
         if self.types.contains_key(&name) {
