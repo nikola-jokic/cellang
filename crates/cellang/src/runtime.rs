@@ -1,6 +1,7 @@
 use crate::builtins;
 use crate::env::{CelTypeRegistrar, Env, EnvBuilder};
 use crate::error::{EnvError, RuntimeError};
+use crate::macros::MacroRegistry;
 use crate::types::{FunctionDecl, IdentDecl, NamedType};
 use crate::value::{IntoValue, ListValue, TryFromValue, Value, ValueError};
 use std::collections::BTreeMap;
@@ -36,6 +37,10 @@ impl Runtime {
 
     pub fn functions(&self) -> &BTreeMap<String, NativeFunction> {
         self.functions.as_ref()
+    }
+
+    pub fn macros(&self) -> &MacroRegistry {
+        self.env.macros()
     }
 
     pub fn child_builder(&self) -> RuntimeBuilder {
@@ -223,6 +228,14 @@ impl RuntimeBuilder {
         Ok(self)
     }
 
+    pub fn macros(&self) -> &MacroRegistry {
+        self.env_builder.macros()
+    }
+
+    pub fn macros_mut(&mut self) -> &mut MacroRegistry {
+        self.env_builder.macros_mut()
+    }
+
     pub fn build(self) -> Runtime {
         Runtime {
             env: self.env_builder.build(),
@@ -405,5 +418,22 @@ mod tests {
             .eval("'foobar'.startsWith('bar')")
             .expect("startsWith to work");
         assert_eq!(negative, Value::Bool(false));
+    }
+
+    #[test]
+    fn evaluates_standard_macros() {
+        let mut builder = Runtime::builder();
+        builder.set_variable("roles", ListValue::from(vec!["admin", "viewer"]));
+        let runtime = builder.build();
+
+        let exists = runtime
+            .eval("roles.exists(role, role == 'admin')")
+            .expect("exists macro to evaluate");
+        assert_eq!(exists, Value::Bool(true));
+
+        let all = runtime
+            .eval("roles.all(role, role == 'admin')")
+            .expect("all macro to evaluate");
+        assert_eq!(all, Value::Bool(false));
     }
 }

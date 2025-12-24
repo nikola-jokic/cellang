@@ -1,6 +1,7 @@
 use crate::EnvError;
 use crate::ast::TypedExpr;
 use crate::error::CompileError;
+use crate::macros::MacroRegistry;
 use crate::parser::Parser;
 use crate::types::{
     FunctionDecl, IdentDecl, NamedType, OverloadDecl, Type, TypeName,
@@ -15,6 +16,7 @@ pub struct Env {
     type_registry: Arc<TypeRegistry>,
     identifiers: Arc<BTreeMap<String, IdentDecl>>,
     functions: Arc<BTreeMap<String, FunctionDecl>>,
+    macros: Arc<MacroRegistry>,
 }
 
 impl Env {
@@ -46,6 +48,10 @@ impl Env {
         &self.functions
     }
 
+    pub fn macros(&self) -> &MacroRegistry {
+        &self.macros
+    }
+
     pub fn compile(&self, src: &str) -> Result<TypedExpr, CompileError> {
         let mut parser = Parser::new(src);
         let token_tree = parser.parse()?;
@@ -66,6 +72,7 @@ pub struct EnvBuilder {
     type_registry: TypeRegistry,
     identifiers: BTreeMap<String, IdentDecl>,
     functions: BTreeMap<String, FunctionDecl>,
+    macros: MacroRegistry,
 }
 
 impl Default for EnvBuilder {
@@ -99,6 +106,7 @@ impl EnvBuilder {
             type_registry: TypeRegistry::new(),
             identifiers: BTreeMap::new(),
             functions: BTreeMap::new(),
+            macros: MacroRegistry::standard(),
         }
     }
 
@@ -144,6 +152,19 @@ impl EnvBuilder {
         Ok(self)
     }
 
+    pub fn macros(&self) -> &MacroRegistry {
+        &self.macros
+    }
+
+    pub fn macros_mut(&mut self) -> &mut MacroRegistry {
+        &mut self.macros
+    }
+
+    pub fn set_macros(&mut self, registry: MacroRegistry) -> &mut Self {
+        self.macros = registry;
+        self
+    }
+
     pub fn import_env(&mut self, env: &Env) -> Result<&mut Self, EnvError> {
         for (_, ty) in env.types().iter() {
             self.type_registry.register(ty.clone())?;
@@ -161,6 +182,7 @@ impl EnvBuilder {
                 }
             }
         }
+        self.macros.merge(env.macros());
         Ok(self)
     }
 
@@ -169,6 +191,7 @@ impl EnvBuilder {
             type_registry: Arc::new(self.type_registry),
             identifiers: Arc::new(self.identifiers),
             functions: Arc::new(self.functions),
+            macros: Arc::new(self.macros),
         }
     }
 
@@ -318,6 +341,8 @@ fn push_method_overload(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::ExprKind;
+    use crate::macros::ComprehensionKind;
     use crate::types::{FieldDecl, OverloadDecl, StructType, Type};
 
     #[test]
@@ -454,6 +479,30 @@ mod tests {
         let merged = derived.build();
         assert!(merged.lookup_function("size").is_some());
         assert!(merged.lookup_type(&scan.name).is_some());
+    }
+
+    #[test]
+    fn compile_supports_standard_macros() {
+        let mut builder = Env::builder();
+        builder
+            .add_ident(IdentDecl::new("roles", Type::list(Type::String)))
+            .unwrap();
+        let env = builder.build();
+
+        let typed = env
+            .compile("roles.exists(role, role == 'admin')")
+            .expect("macro compilation");
+
+        assert_eq!(typed.ty, Type::Bool);
+        match typed.expr {
+            ExprKind::MacroComprehension {
+                comprehension, var, ..
+            } => {
+                assert_eq!(comprehension, ComprehensionKind::Exists);
+                assert_eq!(var, "role");
+            }
+            other => panic!("expected macro comprehension, got {other:?}"),
+        }
     }
 
     #[test]
