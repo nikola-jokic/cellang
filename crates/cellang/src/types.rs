@@ -65,6 +65,30 @@ pub enum Type {
     TypeParam(String),
 }
 
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Dyn => write!(f, "dyn"),
+            Type::Null => write!(f, "null"),
+            Type::Type => write!(f, "type"),
+            Type::Bool => write!(f, "bool"),
+            Type::Int => write!(f, "int"),
+            Type::Uint => write!(f, "uint"),
+            Type::Double => write!(f, "double"),
+            Type::String => write!(f, "string"),
+            Type::Bytes => write!(f, "bytes"),
+            Type::Timestamp => write!(f, "timestamp"),
+            Type::Duration => write!(f, "duration"),
+            Type::Any => write!(f, "any"),
+            Type::List(elem) => write!(f, "list<{}>", elem),
+            Type::Map(key, value) => write!(f, "map<{}, {}>", key, value),
+            Type::Struct(name) => write!(f, "struct {}", name),
+            Type::Enum(name) => write!(f, "enum {}", name),
+            Type::TypeParam(name) => write!(f, "type_param {}", name),
+        }
+    }
+}
+
 impl Type {
     pub fn list(element: Type) -> Self {
         Type::List(Box::new(element))

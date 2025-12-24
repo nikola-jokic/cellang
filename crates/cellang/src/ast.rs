@@ -2,10 +2,10 @@ use crate::env::Env;
 use crate::error::RuntimeError;
 use crate::parser::{Atom, Op, TokenTree};
 use crate::types::{FunctionDecl, NamedType, OverloadDecl, Type, TypeName};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Fully typed expression tree produced after semantic analysis.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TypedExpr {
     pub ty: Type,
     pub expr: ExprKind,
@@ -18,7 +18,7 @@ impl TypedExpr {
 }
 
 /// Logical structure of a typed AST node.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ExprKind {
     Literal(LiteralValue),
@@ -67,7 +67,7 @@ pub enum ExprKind {
 }
 
 /// Describes how a field is accessed (static `foo.bar` vs dynamic `foo[field]`).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "accessor", rename_all = "snake_case")]
 pub enum FieldAccessor {
     Static { name: String },
@@ -75,14 +75,14 @@ pub enum FieldAccessor {
 }
 
 /// Key/value pair inside a typed map literal.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MapEntry {
     pub key: TypedExpr,
     pub value: TypedExpr,
 }
 
 /// Literal payloads captured inside [`ExprKind::Literal`].
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "literal", content = "value", rename_all = "snake_case")]
 pub enum LiteralValue {
     Bool(bool),
@@ -95,7 +95,7 @@ pub enum LiteralValue {
 }
 
 /// Supported unary operators.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnaryOp {
     Not,
@@ -103,7 +103,7 @@ pub enum UnaryOp {
 }
 
 /// Supported binary operators.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BinaryOp {
     Add,
@@ -1104,5 +1104,28 @@ mod tests {
         let tree = parser.parse().expect("parse");
         let err = type_check(&env, &tree).expect_err("type error");
         assert!(err.to_string().contains("Identifier 'missing'"));
+    }
+
+    #[test]
+    fn typed_expr_serialization() {
+        let expr = TypedExpr::new(
+            Type::Int,
+            ExprKind::Binary {
+                op: BinaryOp::Add,
+                left: Box::new(TypedExpr::new(
+                    Type::Int,
+                    ExprKind::Literal(LiteralValue::Int(1)),
+                )),
+                right: Box::new(TypedExpr::new(
+                    Type::Int,
+                    ExprKind::Literal(LiteralValue::Int(2)),
+                )),
+            },
+        );
+        let serialized =
+            serde_json::to_string(&expr).expect("serialize typed expr");
+        let deserialized: TypedExpr =
+            serde_json::from_str(&serialized).expect("deserialize typed expr");
+        assert_eq!(expr, deserialized);
     }
 }
