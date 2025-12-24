@@ -649,6 +649,19 @@ where
     }
 }
 
+impl<T> IntoValue for Vec<T>
+where
+    T: IntoValue,
+{
+    fn into_value(self) -> Value {
+        let mut list = ListValue::new();
+        for item in self {
+            list.push(item);
+        }
+        Value::List(list)
+    }
+}
+
 impl<T> IntoValue for Option<T>
 where
     T: IntoValue,
