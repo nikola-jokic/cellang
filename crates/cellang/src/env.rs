@@ -188,8 +188,10 @@ fn merge_function_decl(
         existing.doc = incoming.doc.clone();
     }
     for overload in &incoming.overloads {
-        if let Some(current) =
-            existing.overloads.iter().find(|item| item.id == overload.id)
+        if let Some(current) = existing
+            .overloads
+            .iter()
+            .find(|item| item.id == overload.id)
         {
             if current != overload {
                 return Err(EnvError::new(format!(
@@ -286,12 +288,7 @@ fn builtin_string_binary_decl(name: &str) -> FunctionDecl {
 
 fn builtin_unary_decl(name: &str, result: Type) -> FunctionDecl {
     let mut decl = FunctionDecl::new(name);
-    push_overload(
-        &mut decl,
-        format!("{name}_value"),
-        vec![Type::Dyn],
-        result,
-    );
+    push_overload(&mut decl, format!("{name}_value"), vec![Type::Dyn], result);
     decl
 }
 
@@ -301,8 +298,7 @@ fn push_overload(
     args: Vec<Type>,
     result: Type,
 ) {
-    decl
-        .add_overload(OverloadDecl::new(id, args, result))
+    decl.add_overload(OverloadDecl::new(id, args, result))
         .expect("builtin declaration must register");
 }
 
@@ -313,9 +309,10 @@ fn push_method_overload(
     args: Vec<Type>,
     result: Type,
 ) {
-    decl
-        .add_overload(OverloadDecl::new(id, args, result).with_receiver(receiver))
-        .expect("builtin declaration must register");
+    decl.add_overload(
+        OverloadDecl::new(id, args, result).with_receiver(receiver),
+    )
+    .expect("builtin declaration must register");
 }
 
 #[cfg(test)]
