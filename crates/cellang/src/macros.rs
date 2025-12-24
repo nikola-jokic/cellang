@@ -219,7 +219,6 @@ fn parse_comprehension<'src>(
             4 => (Some(&args[2]), Some(&args[3])),
             _ => unreachable!(),
         },
-        ComprehensionKind::Filter => (Some(&args[2]), None),
         _ => (Some(&args[2]), None),
     };
 
