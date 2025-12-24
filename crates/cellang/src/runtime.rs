@@ -386,15 +386,6 @@ where
     }
 }
 
-impl<T> FunctionOutput for Vec<T>
-where
-    T: IntoValue,
-{
-    fn into_runtime_result(self) -> Result<Value, RuntimeError> {
-        Ok(Value::List(ListValue::from(self)))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
