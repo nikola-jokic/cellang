@@ -428,6 +428,24 @@ impl fmt::Display for Key {
     }
 }
 
+impl From<&Key> for Value {
+    fn from(key: &Key) -> Self {
+        match key {
+            Key::Bool(value) => Value::Bool(*value),
+            Key::Int(value) => Value::Int(*value),
+            Key::Uint(value) => Value::Uint(*value),
+            Key::String(value) => Value::String(value.clone()),
+            Key::Bytes(value) => Value::Bytes(value.clone()),
+        }
+    }
+}
+
+impl From<Key> for Value {
+    fn from(key: Key) -> Self {
+        Value::from(&key)
+    }
+}
+
 impl From<&str> for Key {
     fn from(value: &str) -> Self {
         Key::String(value.to_string())

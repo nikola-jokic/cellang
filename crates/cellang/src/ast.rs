@@ -1,5 +1,6 @@
 use crate::env::Env;
 use crate::error::RuntimeError;
+use crate::macros::{self, ComprehensionKind, MacroInvocation};
 use crate::parser::{Atom, Op, TokenTree};
 use crate::types::{FunctionDecl, NamedType, OverloadDecl, Type, TypeName};
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,29 @@ pub struct TypedExpr {
 impl TypedExpr {
     fn new(ty: Type, expr: ExprKind) -> Self {
         Self { ty, expr }
+    }
+}
+
+#[derive(Default)]
+struct TypeScope {
+    bindings: Vec<(String, Type)>,
+}
+
+impl TypeScope {
+    fn push(&mut self, name: impl Into<String>, ty: Type) {
+        self.bindings.push((name.into(), ty));
+    }
+
+    fn pop(&mut self) {
+        self.bindings.pop();
+    }
+
+    fn lookup(&self, name: &str) -> Option<&Type> {
+        self.bindings
+            .iter()
+            .rev()
+            .find(|(binding, _)| binding == name)
+            .map(|(_, ty)| ty)
     }
 }
 
@@ -63,6 +87,17 @@ pub enum ExprKind {
     },
     Dyn {
         expr: Box<TypedExpr>,
+    },
+    MacroHas {
+        target: Box<TypedExpr>,
+        field: String,
+    },
+    MacroComprehension {
+        comprehension: ComprehensionKind,
+        range: Box<TypedExpr>,
+        var: String,
+        predicate: Option<Box<TypedExpr>>,
+        transform: Option<Box<TypedExpr>>,
     },
 }
 
@@ -128,25 +163,31 @@ pub fn type_check<'src>(
     env: &Env,
     node: &TokenTree<'src>,
 ) -> Result<TypedExpr, RuntimeError> {
-    infer_expr(env, node)
+    let mut scope = TypeScope::default();
+    infer_expr(env, &mut scope, node)
 }
 
 fn infer_expr<'src>(
     env: &Env,
+    scope: &mut TypeScope,
     node: &TokenTree<'src>,
 ) -> Result<TypedExpr, RuntimeError> {
     match node {
-        TokenTree::Atom(atom) => infer_atom(env, atom),
-        TokenTree::Cons(op, args) => infer_cons(env, *op, args),
+        TokenTree::Atom(atom) => infer_atom(env, scope, atom),
+        TokenTree::Cons(op, args) => infer_cons(env, scope, *op, args),
         TokenTree::Call {
             func,
             args,
             is_method,
-        } => infer_call(env, func, args, *is_method),
+        } => infer_call(env, scope, func, args, *is_method),
     }
 }
 
-fn infer_atom(env: &Env, atom: &Atom<'_>) -> Result<TypedExpr, RuntimeError> {
+fn infer_atom(
+    env: &Env,
+    scope: &mut TypeScope,
+    atom: &Atom<'_>,
+) -> Result<TypedExpr, RuntimeError> {
     let expr = match atom {
         Atom::Bool(value) => TypedExpr::new(
             Type::Bool,
@@ -176,6 +217,14 @@ fn infer_atom(env: &Env, atom: &Atom<'_>) -> Result<TypedExpr, RuntimeError> {
             TypedExpr::new(Type::Null, ExprKind::Literal(LiteralValue::Null))
         }
         Atom::Ident(name) => {
+            if let Some(local) = scope.lookup(name) {
+                return Ok(TypedExpr::new(
+                    local.clone(),
+                    ExprKind::Ident {
+                        name: (*name).to_string(),
+                    },
+                ));
+            }
             let decl = env
                 .lookup_ident(name)
                 .ok_or_else(|| RuntimeError::missing_identifier(name))?;
@@ -192,13 +241,14 @@ fn infer_atom(env: &Env, atom: &Atom<'_>) -> Result<TypedExpr, RuntimeError> {
 
 fn infer_cons(
     env: &Env,
+    scope: &mut TypeScope,
     op: Op,
     args: &[TokenTree<'_>],
 ) -> Result<TypedExpr, RuntimeError> {
     match op {
         Op::Group => {
             debug_assert_eq!(args.len(), 1);
-            let expr = infer_expr(env, &args[0])?;
+            let expr = infer_expr(env, scope, &args[0])?;
             let ty = expr.ty.clone();
             Ok(TypedExpr::new(
                 ty,
@@ -207,11 +257,11 @@ fn infer_cons(
                 },
             ))
         }
-        Op::List => infer_list_literal(env, args),
-        Op::Map => infer_map_literal(env, args),
+        Op::List => infer_list_literal(env, scope, args),
+        Op::Map => infer_map_literal(env, scope, args),
         Op::Dyn => {
             debug_assert_eq!(args.len(), 1);
-            let expr = infer_expr(env, &args[0])?;
+            let expr = infer_expr(env, scope, &args[0])?;
             Ok(TypedExpr::new(
                 Type::Dyn,
                 ExprKind::Dyn {
@@ -221,7 +271,7 @@ fn infer_cons(
         }
         Op::Not => {
             debug_assert_eq!(args.len(), 1);
-            let expr = infer_expr(env, &args[0])?;
+            let expr = infer_expr(env, scope, &args[0])?;
             expect_boolean(&expr.ty, "logical not")?;
             Ok(TypedExpr::new(
                 Type::Bool,
@@ -233,7 +283,7 @@ fn infer_cons(
         }
         Op::Minus => {
             if args.len() == 1 {
-                let expr = infer_expr(env, &args[0])?;
+                let expr = infer_expr(env, scope, &args[0])?;
                 let result_ty = numeric_unary_result(&expr.ty, "unary minus")?;
                 Ok(TypedExpr::new(
                     result_ty,
@@ -244,8 +294,8 @@ fn infer_cons(
                 ))
             } else {
                 debug_assert_eq!(args.len(), 2);
-                let left = infer_expr(env, &args[0])?;
-                let right = infer_expr(env, &args[1])?;
+                let left = infer_expr(env, scope, &args[0])?;
+                let right = infer_expr(env, scope, &args[1])?;
                 let ty = numeric_binary_result(
                     &left.ty,
                     &right.ty,
@@ -256,15 +306,15 @@ fn infer_cons(
         }
         Op::Plus => {
             debug_assert_eq!(args.len(), 2);
-            let left = infer_expr(env, &args[0])?;
-            let right = infer_expr(env, &args[1])?;
+            let left = infer_expr(env, scope, &args[0])?;
+            let right = infer_expr(env, scope, &args[1])?;
             let ty = infer_addition_type(&left.ty, &right.ty)?;
             Ok(make_binary(BinaryOp::Add, ty, left, right))
         }
         Op::Multiply => {
             debug_assert_eq!(args.len(), 2);
-            let left = infer_expr(env, &args[0])?;
-            let right = infer_expr(env, &args[1])?;
+            let left = infer_expr(env, scope, &args[0])?;
+            let right = infer_expr(env, scope, &args[1])?;
             let ty = numeric_binary_result(
                 &left.ty,
                 &right.ty,
@@ -274,8 +324,8 @@ fn infer_cons(
         }
         Op::Devide => {
             debug_assert_eq!(args.len(), 2);
-            let left = infer_expr(env, &args[0])?;
-            let right = infer_expr(env, &args[1])?;
+            let left = infer_expr(env, scope, &args[0])?;
+            let right = infer_expr(env, scope, &args[1])?;
             let ty = numeric_binary_result(
                 &left.ty,
                 &right.ty,
@@ -285,8 +335,8 @@ fn infer_cons(
         }
         Op::Mod => {
             debug_assert_eq!(args.len(), 2);
-            let left = infer_expr(env, &args[0])?;
-            let right = infer_expr(env, &args[1])?;
+            let left = infer_expr(env, scope, &args[0])?;
+            let right = infer_expr(env, scope, &args[1])?;
             let ty = numeric_binary_result(
                 &left.ty,
                 &right.ty,
@@ -296,36 +346,36 @@ fn infer_cons(
         }
         Op::And => {
             debug_assert_eq!(args.len(), 2);
-            let left = infer_expr(env, &args[0])?;
-            let right = infer_expr(env, &args[1])?;
+            let left = infer_expr(env, scope, &args[0])?;
+            let right = infer_expr(env, scope, &args[1])?;
             expect_boolean(&left.ty, "logical and")?;
             expect_boolean(&right.ty, "logical and")?;
             Ok(make_binary(BinaryOp::And, Type::Bool, left, right))
         }
         Op::Or => {
             debug_assert_eq!(args.len(), 2);
-            let left = infer_expr(env, &args[0])?;
-            let right = infer_expr(env, &args[1])?;
+            let left = infer_expr(env, scope, &args[0])?;
+            let right = infer_expr(env, scope, &args[1])?;
             expect_boolean(&left.ty, "logical or")?;
             expect_boolean(&right.ty, "logical or")?;
             Ok(make_binary(BinaryOp::Or, Type::Bool, left, right))
         }
         Op::EqualEqual => {
             debug_assert_eq!(args.len(), 2);
-            let left = infer_expr(env, &args[0])?;
-            let right = infer_expr(env, &args[1])?;
+            let left = infer_expr(env, scope, &args[0])?;
+            let right = infer_expr(env, scope, &args[1])?;
             Ok(make_binary(BinaryOp::Equal, Type::Bool, left, right))
         }
         Op::NotEqual => {
             debug_assert_eq!(args.len(), 2);
-            let left = infer_expr(env, &args[0])?;
-            let right = infer_expr(env, &args[1])?;
+            let left = infer_expr(env, scope, &args[0])?;
+            let right = infer_expr(env, scope, &args[1])?;
             Ok(make_binary(BinaryOp::NotEqual, Type::Bool, left, right))
         }
         Op::Less | Op::LessEqual | Op::Greater | Op::GreaterEqual => {
             debug_assert_eq!(args.len(), 2);
-            let left = infer_expr(env, &args[0])?;
-            let right = infer_expr(env, &args[1])?;
+            let left = infer_expr(env, scope, &args[0])?;
+            let right = infer_expr(env, scope, &args[1])?;
             ensure_comparable(&left.ty, &right.ty, op)?;
             let bop = match op {
                 Op::Less => BinaryOp::Less,
@@ -338,10 +388,10 @@ fn infer_cons(
         }
         Op::IfTernary => {
             debug_assert_eq!(args.len(), 3);
-            let condition = infer_expr(env, &args[0])?;
+            let condition = infer_expr(env, scope, &args[0])?;
             expect_boolean(&condition.ty, "ternary condition")?;
-            let then_branch = infer_expr(env, &args[1])?;
-            let else_branch = infer_expr(env, &args[2])?;
+            let then_branch = infer_expr(env, scope, &args[1])?;
+            let else_branch = infer_expr(env, scope, &args[2])?;
             let ty =
                 unify_types(then_branch.ty.clone(), else_branch.ty.clone())?;
             Ok(TypedExpr::new(
@@ -355,15 +405,15 @@ fn infer_cons(
         }
         Op::In => {
             debug_assert_eq!(args.len(), 2);
-            infer_in_operator(env, &args[0], &args[1])
+            infer_in_operator(env, scope, &args[0], &args[1])
         }
         Op::Index => {
             debug_assert_eq!(args.len(), 2);
-            infer_index_access(env, &args[0], &args[1])
+            infer_index_access(env, scope, &args[0], &args[1])
         }
         Op::Field => {
             debug_assert_eq!(args.len(), 2);
-            infer_field_access(env, &args[0], &args[1])
+            infer_field_access(env, scope, &args[0], &args[1])
         }
         Op::Var | Op::For | Op::While | Op::Call => Err(RuntimeError::new(
             format!("Operator '{op:?}' is not supported in this context"),
@@ -373,6 +423,7 @@ fn infer_cons(
 
 fn infer_list_literal(
     env: &Env,
+    scope: &mut TypeScope,
     args: &[TokenTree<'_>],
 ) -> Result<TypedExpr, RuntimeError> {
     if args.is_empty() {
@@ -386,7 +437,7 @@ fn infer_list_literal(
     let mut element_ty = None;
     let mut elements = Vec::with_capacity(args.len());
     for expr in args {
-        let typed = infer_expr(env, expr)?;
+        let typed = infer_expr(env, scope, expr)?;
         element_ty = match element_ty {
             Some(current) => Some(unify_types(current, typed.ty.clone())?),
             None => Some(typed.ty.clone()),
@@ -402,6 +453,7 @@ fn infer_list_literal(
 
 fn infer_map_literal(
     env: &Env,
+    scope: &mut TypeScope,
     args: &[TokenTree<'_>],
 ) -> Result<TypedExpr, RuntimeError> {
     if !args.len().is_multiple_of(2) {
@@ -421,8 +473,8 @@ fn infer_map_literal(
     let mut value_ty = None;
     let mut entries = Vec::with_capacity(args.len() / 2);
     for chunk in args.chunks(2) {
-        let key = infer_expr(env, &chunk[0])?;
-        let value = infer_expr(env, &chunk[1])?;
+        let key = infer_expr(env, scope, &chunk[0])?;
+        let value = infer_expr(env, scope, &chunk[1])?;
         key_ty = match key_ty {
             Some(current) => Some(unify_types(current, key.ty.clone())?),
             None => Some(key.ty.clone()),
@@ -441,15 +493,16 @@ fn infer_map_literal(
 
 fn infer_field_access(
     env: &Env,
+    scope: &mut TypeScope,
     target_expr: &TokenTree<'_>,
     field_expr: &TokenTree<'_>,
 ) -> Result<TypedExpr, RuntimeError> {
-    let target = infer_expr(env, target_expr)?;
+    let target = infer_expr(env, scope, target_expr)?;
     let accessor = if let Some(name) = static_field_name(field_expr) {
         FieldAccessor::Static { name }
     } else {
         FieldAccessor::Dynamic {
-            expr: Box::new(infer_expr(env, field_expr)?),
+            expr: Box::new(infer_expr(env, scope, field_expr)?),
         }
     };
     let ty = match (&target.ty, &accessor) {
@@ -498,11 +551,12 @@ fn infer_field_access(
 
 fn infer_index_access(
     env: &Env,
+    scope: &mut TypeScope,
     target_expr: &TokenTree<'_>,
     index_expr: &TokenTree<'_>,
 ) -> Result<TypedExpr, RuntimeError> {
-    let target = infer_expr(env, target_expr)?;
-    let index = infer_expr(env, index_expr)?;
+    let target = infer_expr(env, scope, target_expr)?;
+    let index = infer_expr(env, scope, index_expr)?;
     let ty = match &target.ty {
         ty if is_dyn_like(ty) => Type::Dyn,
         Type::List(element) => {
@@ -555,11 +609,12 @@ fn infer_index_access(
 
 fn infer_in_operator(
     env: &Env,
+    scope: &mut TypeScope,
     needle_expr: &TokenTree<'_>,
     haystack_expr: &TokenTree<'_>,
 ) -> Result<TypedExpr, RuntimeError> {
-    let needle = infer_expr(env, needle_expr)?;
-    let haystack = infer_expr(env, haystack_expr)?;
+    let needle = infer_expr(env, scope, needle_expr)?;
+    let haystack = infer_expr(env, scope, haystack_expr)?;
     match &haystack.ty {
         Type::List(element) => {
             if !is_assignable(element, &needle.ty) && !is_dyn_like(&needle.ty) {
@@ -610,6 +665,7 @@ fn infer_in_operator(
 
 fn infer_call(
     env: &Env,
+    scope: &mut TypeScope,
     func: &TokenTree<'_>,
     args: &[TokenTree<'_>],
     is_method: bool,
@@ -617,6 +673,11 @@ fn infer_call(
     let name = resolve_function_name(func).ok_or_else(|| {
         RuntimeError::new("function calls must reference an identifier")
     })?;
+    if let Some(invocation) =
+        macros::detect_macro_call(env.macros(), &name, args, is_method)?
+    {
+        return infer_macro_call(env, scope, invocation);
+    }
     let decl = env.lookup_function(&name).ok_or_else(|| {
         RuntimeError::new(format!(
             "Function '{name}' is not declared in the environment"
@@ -624,7 +685,7 @@ fn infer_call(
     })?;
     let typed_args = args
         .iter()
-        .map(|expr| infer_expr(env, expr))
+        .map(|expr| infer_expr(env, scope, expr))
         .collect::<Result<Vec<_>, _>>()?;
     let arg_types = typed_args
         .iter()
@@ -645,6 +706,154 @@ fn infer_call(
         name,
         format_type_list(&arg_types)
     )))
+}
+
+fn infer_macro_call(
+    env: &Env,
+    scope: &mut TypeScope,
+    invocation: MacroInvocation<'_>,
+) -> Result<TypedExpr, RuntimeError> {
+    match invocation {
+        MacroInvocation::Has { target, field } => {
+            infer_has_macro(env, scope, target, field)
+        }
+        MacroInvocation::Comprehension {
+            kind,
+            range,
+            var,
+            predicate,
+            transform,
+        } => infer_comprehension_macro(
+            env, scope, kind, range, var, predicate, transform,
+        ),
+    }
+}
+
+fn infer_has_macro(
+    env: &Env,
+    scope: &mut TypeScope,
+    target_expr: &TokenTree<'_>,
+    field: &str,
+) -> Result<TypedExpr, RuntimeError> {
+    let target = infer_expr(env, scope, target_expr)?;
+    match &target.ty {
+        ty if is_dyn_like(ty) => {}
+        Type::Struct(name) => {
+            struct_field_type(env, name, field)?;
+        }
+        Type::Map(key_ty, _) => {
+            if !is_assignable(&Type::String, key_ty) && !is_dyn_like(key_ty) {
+                return Err(RuntimeError::new(format!(
+                    "has() macro requires string-compatible map keys but found {}",
+                    describe_type(key_ty)
+                )));
+            }
+        }
+        Type::Null => {
+            return Err(RuntimeError::new(
+                "has() macro cannot operate on null values",
+            ));
+        }
+        other => {
+            return Err(RuntimeError::new(format!(
+                "has() macro is not supported for values of kind {}",
+                describe_type(other)
+            )));
+        }
+    }
+    Ok(TypedExpr::new(
+        Type::Bool,
+        ExprKind::MacroHas {
+            target: Box::new(target),
+            field: field.to_string(),
+        },
+    ))
+}
+
+fn infer_comprehension_macro(
+    env: &Env,
+    scope: &mut TypeScope,
+    kind: ComprehensionKind,
+    range_expr: &TokenTree<'_>,
+    var: &str,
+    predicate_expr: Option<&TokenTree<'_>>,
+    transform_expr: Option<&TokenTree<'_>>,
+) -> Result<TypedExpr, RuntimeError> {
+    let range = infer_expr(env, scope, range_expr)?;
+    let macro_name = comprehension_name(kind);
+    let binder_ty = macro_binder_type(macro_name, &range.ty)?;
+
+    scope.push(var, binder_ty.clone());
+    let predicate_result: Result<Option<Box<TypedExpr>>, RuntimeError> =
+        predicate_expr
+            .map(|expr| {
+                let typed = infer_expr(env, scope, expr)?;
+                expect_boolean(
+                    &typed.ty,
+                    &format!("{macro_name}() predicate"),
+                )?;
+                Ok(Box::new(typed))
+            })
+            .transpose();
+    let transform_result: Result<Option<Box<TypedExpr>>, RuntimeError> =
+        transform_expr
+            .map(|expr| infer_expr(env, scope, expr).map(Box::new))
+            .transpose();
+    scope.pop();
+
+    let predicate = predicate_result?;
+    let transform = transform_result?;
+
+    let result_ty = match kind {
+        ComprehensionKind::All
+        | ComprehensionKind::Exists
+        | ComprehensionKind::ExistsOne => Type::Bool,
+        ComprehensionKind::Map => {
+            let transform =
+                transform.as_ref().expect("map macro transform validated");
+            Type::list(transform.ty.clone())
+        }
+        ComprehensionKind::Filter => Type::list(binder_ty.clone()),
+    };
+
+    Ok(TypedExpr::new(
+        result_ty,
+        ExprKind::MacroComprehension {
+            comprehension: kind,
+            range: Box::new(range),
+            var: var.to_string(),
+            predicate,
+            transform,
+        },
+    ))
+}
+
+fn macro_binder_type(
+    macro_name: &str,
+    ty: &Type,
+) -> Result<Type, RuntimeError> {
+    match ty {
+        Type::List(element) => Ok((**element).clone()),
+        Type::Map(key, _) => Ok((**key).clone()),
+        other if is_dyn_like(other) => Ok(Type::Dyn),
+        Type::Null => Err(RuntimeError::new(format!(
+            "Macro '{macro_name}' cannot operate on null values",
+        ))),
+        other => Err(RuntimeError::new(format!(
+            "Macro '{macro_name}' expects a list or map but found {}",
+            describe_type(other)
+        ))),
+    }
+}
+
+fn comprehension_name(kind: ComprehensionKind) -> &'static str {
+    match kind {
+        ComprehensionKind::All => "all",
+        ComprehensionKind::Exists => "exists",
+        ComprehensionKind::ExistsOne => "exists_one",
+        ComprehensionKind::Map => "map",
+        ComprehensionKind::Filter => "filter",
+    }
 }
 
 fn resolve_function_name(expr: &TokenTree<'_>) -> Option<String> {
