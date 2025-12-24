@@ -143,7 +143,7 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
                 cellang::types::Type::struct_type(Self::CEL_TYPE_NAME)
             }
 
-            fn cel_named_type() -> cellang::types::NamedType {
+            fn cel_named_type(&self) -> cellang::types::NamedType {
                 let mut ty = cellang::types::StructType::new(Self::CEL_TYPE_NAME);
                 #doc_tokens
                 #(#struct_fields)*
@@ -151,6 +151,7 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
             }
 
             fn register_cel_type<R>(
+                &self,
                 registrar: &mut R,
             ) -> Result<(), cellang::error::EnvError>
             where
@@ -160,27 +161,6 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
                     registrar,
                     Self::cel_named_type(),
                 )
-            }
-        }
-
-        impl #name {
-            pub const CEL_TYPE_NAME: &'static str = <Self as cellang::CelType>::CEL_TYPE_NAME;
-
-            pub fn cel_type() -> cellang::types::Type {
-                <Self as cellang::CelType>::cel_type()
-            }
-
-            pub fn cel_named_type() -> cellang::types::NamedType {
-                <Self as cellang::CelType>::cel_named_type()
-            }
-
-            pub fn register_cel_type<R>(
-                registrar: &mut R,
-            ) -> Result<(), cellang::error::EnvError>
-            where
-                R: cellang::env::CelTypeRegistrar,
-            {
-                <Self as cellang::CelType>::register_cel_type(registrar)
             }
         }
 

@@ -10,12 +10,12 @@ pub trait CelType {
         Type::struct_type(Self::CEL_TYPE_NAME)
     }
 
-    fn cel_named_type() -> NamedType;
+    fn cel_named_type(&self) -> NamedType;
 
-    fn register_cel_type<R>(registrar: &mut R) -> Result<(), EnvError>
+    fn register_cel_type<R>(&self, registrar: &mut R) -> Result<(), EnvError>
     where
         R: CelTypeRegistrar,
     {
-        registrar.register_type(Self::cel_named_type())
+        registrar.register_type(self.cel_named_type())
     }
 }

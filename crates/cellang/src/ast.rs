@@ -692,10 +692,9 @@ fn matches_overload(
             } else {
                 return false;
             }
+        } else if method_receiver.is_some() {
+            (None, arg_types)
         } else {
-            if method_receiver.is_some() {
-                return false;
-            }
             (None, method_args)
         };
 
