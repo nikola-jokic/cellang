@@ -996,7 +996,9 @@ mod tests {
     #[test]
     fn evaluates_arithmetic_with_variables() {
         let mut builder = Runtime::builder();
-        builder.set_variable("x", Value::Int(6));
+        builder
+            .set_variable("x", Value::Int(6))
+            .expect("variable to set");
         let runtime = builder.build();
         let result = eval(&runtime, "x * 2 + 1").expect("expression evaluates");
         assert_eq!(result, Value::Int(13));
@@ -1036,7 +1038,9 @@ mod tests {
         let mut user = StructValue::new("example.User");
         user.set_field("name", "Ada Lovelace");
         user.set_field("active", true);
-        builder.set_variable("user", Value::Struct(user));
+        builder
+            .set_variable("user", Value::Struct(user))
+            .expect("user variable to set");
         builder.build()
     }
 }

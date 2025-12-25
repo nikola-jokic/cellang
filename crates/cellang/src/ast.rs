@@ -2,7 +2,10 @@ use crate::env::Env;
 use crate::error::RuntimeError;
 use crate::macros::{self, ComprehensionKind, MacroInvocation};
 use crate::parser::{Atom, Op, TokenTree};
-use crate::types::{FunctionDecl, NamedType, OverloadDecl, Type, TypeName};
+use crate::types::{
+    FunctionDecl, NamedType, OverloadDecl, Type, TypeName, is_assignable,
+    is_dyn_like,
+};
 use serde::{Deserialize, Serialize};
 
 /// Fully typed expression tree produced after semantic analysis.
@@ -1130,10 +1133,6 @@ fn is_numeric_type(ty: &Type) -> bool {
     matches!(ty, Type::Int | Type::Uint | Type::Double)
 }
 
-fn is_dyn_like(ty: &Type) -> bool {
-    matches!(ty, Type::Dyn | Type::Any | Type::TypeParam(_))
-}
-
 fn describe_type(ty: &Type) -> String {
     match ty {
         Type::Dyn => "dyn".into(),
@@ -1201,25 +1200,6 @@ fn merge_numeric_types(left: &Type, right: &Type) -> Option<Type> {
         | (Type::Uint, Type::Int)
         | (Type::Int, Type::Uint) => Some(Type::Double),
         _ => None,
-    }
-}
-
-fn is_assignable(expected: &Type, actual: &Type) -> bool {
-    if expected == actual {
-        return true;
-    }
-    if is_dyn_like(expected) || is_dyn_like(actual) {
-        return true;
-    }
-    match (expected, actual) {
-        (Type::List(a), Type::List(b)) => is_assignable(a, b),
-        (Type::Map(ka, va), Type::Map(kb, vb)) => {
-            is_assignable(ka, kb) && is_assignable(va, vb)
-        }
-        (Type::Struct(a), Type::Struct(b)) | (Type::Enum(a), Type::Enum(b)) => {
-            a == b
-        }
-        _ => false,
     }
 }
 
