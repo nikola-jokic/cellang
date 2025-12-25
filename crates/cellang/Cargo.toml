@@ -16,7 +16,7 @@ derive = ["cellang-macros"]
 
 [dependencies]
 cellang-macros = { path = "../cellang-macros", optional = true }
-serde = { version = "^1", features = ["derive"] }
+serde = { version = "^1", features = ["derive", "rc"] }
 miette = { version = "^7" }
 regex = "^1"
 time = { version = "^0.3", features = ["serde", "formatting", "parsing"] }

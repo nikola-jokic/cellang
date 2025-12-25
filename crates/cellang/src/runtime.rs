@@ -3,7 +3,7 @@ use crate::env::{CelTypeRegistrar, Env, EnvBuilder};
 use crate::error::{EnvError, RuntimeError};
 use crate::macros::MacroRegistry;
 use crate::types::{FunctionDecl, IdentDecl, NamedType};
-use crate::value::{IntoValue, ListValue, TryFromValue, Value, ValueError};
+use crate::value::{IntoValue, TryFromValue, Value, ValueError};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -388,6 +388,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::ListValue;
+
     use super::*;
 
     #[test]
