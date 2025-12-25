@@ -71,7 +71,7 @@ mod example {
         decl.add_overload(
             OverloadDecl::new(
                 "user_has_role_string",
-                vec![User::cel_type(), Type::String],
+                vec![Type::String],
                 Type::Bool,
             )
             .with_receiver(User::cel_type()),
