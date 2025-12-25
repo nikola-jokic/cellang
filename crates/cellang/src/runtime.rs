@@ -2,7 +2,7 @@ use crate::builtins;
 use crate::env::{CelTypeRegistrar, Env, EnvBuilder};
 use crate::error::{EnvError, RuntimeError};
 use crate::macros::MacroRegistry;
-use crate::types::{FunctionDecl, IdentDecl, NamedType};
+use crate::types::{FunctionDecl, IdentDecl, NamedType, is_assignable};
 use crate::value::{IntoValue, TryFromValue, Value, ValueError};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -173,24 +173,30 @@ impl RuntimeBuilder {
         &mut self,
         name: impl Into<String>,
         value: V,
-    ) -> &mut Self
+    ) -> Result<&mut Self, RuntimeError>
     where
         V: IntoValue,
     {
-        self.variables.insert(name.into(), value.into_value());
-        self
+        let name = name.into();
+        let value = value.into_value();
+        self.validate_variable_type(&name, &value)?;
+        self.variables.insert(name, value);
+        Ok(self)
     }
 
-    pub fn set_variables<I, K, V>(&mut self, entries: I) -> &mut Self
+    pub fn set_variables<I, K, V>(
+        &mut self,
+        entries: I,
+    ) -> Result<&mut Self, RuntimeError>
     where
         I: IntoIterator<Item = (K, V)>,
         K: Into<String>,
         V: IntoValue,
     {
         for (key, value) in entries {
-            self.set_variable(key, value);
+            self.set_variable(key, value)?;
         }
-        self
+        Ok(self)
     }
 
     pub fn register_function<F, Args, Out>(
@@ -226,6 +232,24 @@ impl RuntimeBuilder {
         }
         self.functions.insert(name, handler);
         Ok(self)
+    }
+
+    fn validate_variable_type(
+        &self,
+        name: &str,
+        value: &Value,
+    ) -> Result<(), RuntimeError> {
+        if let Some(decl) = self.env_builder.lookup_ident(name) {
+            let actual = value.cel_type();
+            if !is_assignable(&decl.ty, &actual) {
+                return Err(RuntimeError::new(format!(
+                    "Variable '{name}' expects type {expected} but received {actual}",
+                    expected = decl.ty,
+                    actual = actual,
+                )));
+            }
+        }
+        Ok(())
     }
 
     pub fn macros(&self) -> &MacroRegistry {
@@ -389,6 +413,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::ListValue;
+    use crate::types::{IdentDecl, Type};
 
     use super::*;
 
@@ -416,7 +441,9 @@ mod tests {
     #[test]
     fn evaluates_standard_macros() {
         let mut builder = Runtime::builder();
-        builder.set_variable("roles", ListValue::from(vec!["admin", "viewer"]));
+        builder
+            .set_variable("roles", ListValue::from(vec!["admin", "viewer"]))
+            .expect("variable to set");
         let runtime = builder.build();
 
         let exists = runtime
@@ -428,5 +455,20 @@ mod tests {
             .eval("roles.all(role, role == 'admin')")
             .expect("all macro to evaluate");
         assert_eq!(all, Value::Bool(false));
+    }
+
+    #[test]
+    fn set_variable_respects_declared_types() {
+        let mut builder = Runtime::builder();
+        builder
+            .add_ident(IdentDecl::new("x", Type::Int))
+            .expect("ident to register");
+
+        builder
+            .set_variable("x", 42_i64)
+            .expect("value matches declared type");
+
+        let err = builder.set_variable("x", "oops");
+        assert!(err.is_err());
     }
 }

@@ -260,7 +260,7 @@ fn print_ast(source: &str, format: Format) -> Result<(), Error> {
 fn evaluate(expr: &str, env_path: &Path, format: Format) -> Result<(), Error> {
     let entries = load_env_variables(env_path)?;
     let mut builder = Runtime::builder();
-    builder.set_variables(entries);
+    builder.set_variables(entries)?;
     let runtime = builder.build();
     let value = runtime.eval(expr)?;
     format.print(&value);

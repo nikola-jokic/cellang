@@ -8,7 +8,7 @@ fn main() -> Result<()> {
     assert_eq!(value, Value::Int(7));
 
     let mut child = runtime.child_builder();
-    child.set_variable("x", 2_i64);
+        child.set_variable("x", 2_i64)?;
     let runtime = child.build();
     let value = cellang::eval(&runtime, "x >= 2")?;
     assert_eq!(value, Value::Bool(true));

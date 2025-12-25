@@ -161,6 +161,10 @@ impl EnvBuilder {
         &mut self.macros
     }
 
+    pub fn lookup_ident(&self, name: &str) -> Option<&IdentDecl> {
+        self.identifiers.get(name)
+    }
+
     pub fn set_macros(&mut self, registry: MacroRegistry) -> &mut Self {
         self.macros = registry;
         self

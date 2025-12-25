@@ -110,6 +110,29 @@ impl Type {
     }
 }
 
+pub fn is_dyn_like(ty: &Type) -> bool {
+    matches!(ty, Type::Dyn | Type::Any | Type::TypeParam(_))
+}
+
+pub fn is_assignable(expected: &Type, actual: &Type) -> bool {
+    if expected == actual {
+        return true;
+    }
+    if is_dyn_like(expected) || is_dyn_like(actual) {
+        return true;
+    }
+    match (expected, actual) {
+        (Type::List(a), Type::List(b)) => is_assignable(a, b),
+        (Type::Map(ka, va), Type::Map(kb, vb)) => {
+            is_assignable(ka, kb) && is_assignable(va, vb)
+        }
+        (Type::Struct(a), Type::Struct(b)) | (Type::Enum(a), Type::Enum(b)) => {
+            a == b
+        }
+        _ => false,
+    }
+}
+
 /// Metadata describing a single field on a struct type declaration.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FieldDecl {

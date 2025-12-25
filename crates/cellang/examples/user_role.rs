@@ -22,16 +22,16 @@ mod example {
     pub fn run() -> Result<()> {
         let mut builder = Runtime::builder();
         register_user_schema(&mut builder)?;
-        builder.set_variable("users", load_users());
+        builder.set_variable("users", load_users())?;
         builder.register_function("has_role", has_role)?;
 
-        builder.set_variable("role", "admin");
+        builder.set_variable("role", "admin")?;
         let runtime = builder.build();
         let is_admin = runtime.eval("users[0].has_role(role)")?;
         assert_eq!(is_admin, Value::Bool(true));
 
         let mut scoped = runtime.child_builder();
-        scoped.set_variable("role", "user");
+        scoped.set_variable("role", "user")?;
         let scoped = scoped.build();
         let is_user = scoped.eval("users[1].has_role(role)")?;
         assert_eq!(is_user, Value::Bool(true));

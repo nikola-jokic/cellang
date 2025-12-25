@@ -31,7 +31,7 @@ fn main() -> Result<()> {
     assert_eq!(value, expected);
 
     let mut scoped = runtime.child_builder();
-    scoped.set_variable("x", "a,b,c");
+    scoped.set_variable("x", "a,b,c")?;
     let scoped = scoped.build();
     let via_variable = scoped.eval("x.split(',')")?;
     assert_eq!(via_variable, expected);
