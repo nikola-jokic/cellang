@@ -7,7 +7,7 @@ use crate::types::{
     FunctionDecl, IdentDecl, NamedType, OverloadDecl, Type, TypeName,
     TypeRegistry,
 };
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, btree_map::Entry};
 use std::sync::Arc;
 
@@ -514,7 +514,7 @@ mod tests {
         let typed = env.compile("x + 1").expect("compile result");
         assert_eq!(typed.ty, Type::Int);
     }
-    
+
     #[test]
     fn env_serialization() {
         let mut builder = Env::builder();
