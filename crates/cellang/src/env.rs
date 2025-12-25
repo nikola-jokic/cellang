@@ -7,11 +7,12 @@ use crate::types::{
     FunctionDecl, IdentDecl, NamedType, OverloadDecl, Type, TypeName,
     TypeRegistry,
 };
+use serde::{Serialize, Deserialize};
 use std::collections::{BTreeMap, btree_map::Entry};
 use std::sync::Arc;
 
 /// Immutable environment describing identifiers, functions and named types.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Env {
     type_registry: Arc<TypeRegistry>,
     identifiers: Arc<BTreeMap<String, IdentDecl>>,
@@ -512,5 +513,19 @@ mod tests {
         let env = builder.build();
         let typed = env.compile("x + 1").expect("compile result");
         assert_eq!(typed.ty, Type::Int);
+    }
+    
+    #[test]
+    fn env_serialization() {
+        let mut builder = Env::builder();
+        builder.add_ident(IdentDecl::new("x", Type::Int)).unwrap();
+        let env = builder.build();
+
+        let serialized = serde_json::to_string(&env).expect("serialize env");
+        let deserialized: Env =
+            serde_json::from_str(&serialized).expect("deserialize env");
+
+        let ident = deserialized.lookup_ident("x").expect("lookup ident");
+        assert_eq!(ident.ty, Type::Int);
     }
 }

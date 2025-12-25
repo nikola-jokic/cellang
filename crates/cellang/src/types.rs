@@ -7,6 +7,7 @@ use std::fmt;
 #[derive(
     Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
+#[serde(transparent)]
 pub struct TypeName(String);
 
 impl TypeName {
@@ -45,6 +46,8 @@ impl From<&TypeName> for TypeName {
 
 /// High level CEL type metadata.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "definition")]
+#[serde(rename_all = "snake_case")]
 pub enum Type {
     Dyn,
     Null,
@@ -108,7 +111,7 @@ impl Type {
 }
 
 /// Metadata describing a single field on a struct type declaration.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FieldDecl {
     pub ty: Type,
     pub doc: Option<String>,
@@ -126,7 +129,7 @@ impl FieldDecl {
 }
 
 /// Struct/Message type descriptor equivalent to CEL-GO's `DeclType`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StructType {
     pub name: TypeName,
     pub doc: Option<String>,
@@ -165,7 +168,7 @@ impl StructType {
 }
 
 /// Enum constant metadata.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnumValue {
     pub name: String,
     pub number: i32,
@@ -188,7 +191,7 @@ impl EnumValue {
 }
 
 /// Enum type descriptor.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnumType {
     pub name: TypeName,
     pub doc: Option<String>,
@@ -222,7 +225,9 @@ impl EnumType {
 }
 
 /// Wrapper around supported named type descriptors.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "definition")]
+#[serde(rename_all = "snake_case")]
 pub enum NamedType {
     Struct(StructType),
     Enum(EnumType),
@@ -238,7 +243,7 @@ impl NamedType {
 }
 
 /// Registry of named types available inside the environment.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeRegistry {
     types: BTreeMap<TypeName, NamedType>,
 }
@@ -271,7 +276,9 @@ impl TypeRegistry {
 }
 
 /// Subset of CEL constants supported at declaration time.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value")]
+#[serde(rename_all = "snake_case")]
 pub enum Constant {
     Bool(bool),
     Int(i64),
@@ -283,7 +290,7 @@ pub enum Constant {
 }
 
 /// Identifier declaration metadata.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IdentDecl {
     pub name: String,
     pub ty: Type,
@@ -313,7 +320,7 @@ impl IdentDecl {
 }
 
 /// Function overload metadata.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OverloadDecl {
     pub id: String,
     pub args: Vec<Type>,
@@ -345,7 +352,7 @@ impl OverloadDecl {
 }
 
 /// Function declaration containing one or more overloads.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FunctionDecl {
     pub name: String,
     pub doc: Option<String>,

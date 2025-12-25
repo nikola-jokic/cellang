@@ -3,7 +3,8 @@ use crate::parser::{Atom, Op, TokenTree};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MacroKind {
     Has,
     All,
@@ -13,7 +14,7 @@ pub enum MacroKind {
     Filter,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MacroRegistry {
     enabled: BTreeSet<MacroKind>,
 }
