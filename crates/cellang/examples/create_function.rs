@@ -1,3 +1,4 @@
+use cellang::types::{FunctionDecl, OverloadDecl, Type};
 use cellang::{ListValue, Runtime, RuntimeError, Value};
 use miette::Result;
 
@@ -23,6 +24,7 @@ fn split(
 
 fn main() -> Result<()> {
     let mut builder = Runtime::builder();
+    builder.add_function_decl(split_decl())?;
     builder.register_function("split", split)?;
     let runtime = builder.build();
 
@@ -37,4 +39,25 @@ fn main() -> Result<()> {
     assert_eq!(via_variable, expected);
 
     Ok(())
+}
+
+fn split_decl() -> FunctionDecl {
+    let mut decl = FunctionDecl::new("split");
+    let list_string = Type::list(Type::String);
+    decl.add_overload(OverloadDecl::new(
+        "string_split_function",
+        vec![Type::String, Type::String],
+        list_string.clone(),
+    ))
+    .expect("split function overload");
+    decl.add_overload(
+        OverloadDecl::new(
+            "string_split_method",
+            vec![Type::String],
+            list_string,
+        )
+        .with_receiver(Type::String),
+    )
+    .expect("split method overload");
+    decl
 }

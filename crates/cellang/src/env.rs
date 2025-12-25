@@ -165,6 +165,10 @@ impl EnvBuilder {
         self.identifiers.get(name)
     }
 
+    pub fn lookup_function(&self, name: &str) -> Option<&FunctionDecl> {
+        self.functions.get(name)
+    }
+
     pub fn set_macros(&mut self, registry: MacroRegistry) -> &mut Self {
         self.macros = registry;
         self

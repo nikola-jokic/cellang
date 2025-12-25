@@ -2,7 +2,9 @@ use crate::builtins;
 use crate::env::{CelTypeRegistrar, Env, EnvBuilder};
 use crate::error::{EnvError, RuntimeError};
 use crate::macros::MacroRegistry;
-use crate::types::{FunctionDecl, IdentDecl, NamedType, is_assignable};
+use crate::types::{
+    FunctionDecl, IdentDecl, NamedType, OverloadDecl, is_assignable,
+};
 use crate::value::{IntoValue, TryFromValue, Value, ValueError};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -208,8 +210,8 @@ impl RuntimeBuilder {
         F: IntoNativeFunction<Args, Out>,
     {
         let name = name.into();
-        let native = function.into_native(name.clone());
-        self.insert_function(name, native)
+        let (native, arity) = function.into_native(name.clone());
+        self.insert_function(name, native, arity)
     }
 
     pub fn register_native_function(
@@ -217,14 +219,31 @@ impl RuntimeBuilder {
         name: impl Into<String>,
         function: NativeFunction,
     ) -> Result<&mut Self, RuntimeError> {
-        self.insert_function(name.into(), function)
+        self.insert_function(name.into(), function, None)
     }
 
     fn insert_function(
         &mut self,
         name: String,
         handler: NativeFunction,
+        arity: Option<usize>,
     ) -> Result<&mut Self, RuntimeError> {
+        let decl = self.env_builder.lookup_function(&name).ok_or_else(|| {
+            RuntimeError::new(format!(
+                "Function '{name}' is not declared; register a FunctionDecl first",
+            ))
+        })?;
+        if let Some(expected) = arity
+            && !decl
+                .overloads
+                .iter()
+                .any(|overload| overload_arity(overload) == expected)
+        {
+            let allowed = declared_arities(decl);
+            return Err(RuntimeError::new(format!(
+                "Function '{name}' does not have an overload accepting {expected} arguments (declared: {allowed})",
+            )));
+        }
         if self.functions.contains_key(&name) {
             return Err(RuntimeError::new(format!(
                 "Function '{name}' is already registered",
@@ -251,7 +270,6 @@ impl RuntimeBuilder {
         }
         Ok(())
     }
-
     pub fn macros(&self) -> &MacroRegistry {
         self.env_builder.macros()
     }
@@ -279,13 +297,32 @@ impl CelTypeRegistrar for RuntimeBuilder {
     }
 }
 
+fn overload_arity(overload: &OverloadDecl) -> usize {
+    overload.args.len() + if overload.receiver.is_some() { 1 } else { 0 }
+}
+
+fn declared_arities(decl: &FunctionDecl) -> String {
+    let mut counts = decl
+        .overloads
+        .iter()
+        .map(overload_arity)
+        .collect::<Vec<_>>();
+    counts.sort_unstable();
+    counts.dedup();
+    counts
+        .into_iter()
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 pub trait IntoNativeFunction<Args, Out> {
-    fn into_native(self, name: String) -> NativeFunction;
+    fn into_native(self, name: String) -> (NativeFunction, Option<usize>);
 }
 
 impl IntoNativeFunction<(), Value> for NativeFunction {
-    fn into_native(self, _name: String) -> NativeFunction {
-        self
+    fn into_native(self, _name: String) -> (NativeFunction, Option<usize>) {
+        (self, None)
     }
 }
 
@@ -294,9 +331,9 @@ where
     F: Fn() -> R + Send + Sync + 'static,
     R: FunctionOutput,
 {
-    fn into_native(self, name: String) -> NativeFunction {
+    fn into_native(self, name: String) -> (NativeFunction, Option<usize>) {
         let fname = name.clone();
-        Arc::new(move |ctx| {
+        let handler: NativeFunction = Arc::new(move |ctx: &CallContext<'_>| {
             if !ctx.args.is_empty() {
                 return Err(RuntimeError::wrong_arity(
                     &fname,
@@ -306,7 +343,8 @@ where
             }
             let result = self();
             result.into_runtime_result()
-        })
+        });
+        (handler, Some(0))
     }
 }
 
@@ -318,15 +356,16 @@ macro_rules! impl_into_native_function {
             R: FunctionOutput,
             $($param: TryFromValue,)+
         {
-            fn into_native(self, name: String) -> NativeFunction {
+            fn into_native(self, name: String) -> (NativeFunction, Option<usize>) {
                 let fname = name.clone();
-                Arc::new(move |ctx| {
-                    const EXPECTED: usize = impl_into_native_function!(@count $(($param, $var)),+);
+                const EXPECTED: usize = impl_into_native_function!(@count $(($param, $var)),+);
+                let handler: NativeFunction = Arc::new(move |ctx: &CallContext<'_>| {
                     if ctx.args.len() != EXPECTED {
                         return Err(RuntimeError::wrong_arity(&fname, EXPECTED, ctx.args.len()));
                     }
                     impl_into_native_function!(@convert ctx, fname, self, [$(($param, $var)),+])
-                })
+                });
+                (handler, Some(EXPECTED))
             }
         }
     };
@@ -413,7 +452,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::ListValue;
-    use crate::types::{IdentDecl, Type};
+    use crate::types::{FunctionDecl, IdentDecl, OverloadDecl, Type};
 
     use super::*;
 
@@ -470,5 +509,47 @@ mod tests {
 
         let err = builder.set_variable("x", "oops");
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn register_function_requires_declaration() {
+        let mut builder = Runtime::builder();
+        let err = builder.register_function("custom", |v: i64| v);
+        assert!(err.is_err());
+
+        let mut decl = FunctionDecl::new("custom");
+        decl.add_overload(OverloadDecl::new(
+            "custom_int",
+            vec![Type::Int],
+            Type::Int,
+        ))
+        .expect("overload");
+        builder
+            .add_function_decl(decl)
+            .expect("function decl to register");
+
+        builder
+            .register_function("custom", |v: i64| v)
+            .expect("function to register once declaration exists");
+    }
+
+    #[test]
+    fn register_function_validates_arity() {
+        let mut builder = Runtime::builder();
+        let mut decl = FunctionDecl::new("adder");
+        decl.add_overload(OverloadDecl::new(
+            "adder_int",
+            vec![Type::Int, Type::Int],
+            Type::Int,
+        ))
+        .expect("overload");
+        builder.add_function_decl(decl).expect("decl to register");
+
+        let err = builder.register_function("adder", |value: i64| value);
+        assert!(err.is_err());
+
+        builder
+            .register_function("adder", |lhs: i64, rhs: i64| lhs + rhs)
+            .expect("matching arity should register");
     }
 }
