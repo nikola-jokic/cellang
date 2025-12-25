@@ -10,15 +10,57 @@ use thiserror::Error;
 #[diagnostic(code(cellang::syntax_error))]
 pub struct SyntaxError {
     #[source_code]
-    pub source_code: String,
+    source_code: String,
 
     #[label("this")]
-    pub span: SourceSpan,
+    span: SourceSpan,
 
-    pub message: String,
+    message: String,
 
     #[help]
-    pub help: Option<String>,
+    help: Option<String>,
+}
+
+impl SyntaxError {
+    /// Creates a new syntax error capturing the offending source span.
+    pub fn new(
+        source_code: impl Into<String>,
+        span: SourceSpan,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_code: source_code.into(),
+            span,
+            message: message.into(),
+            help: None,
+        }
+    }
+
+    /// Provides an optional help hint for diagnostics.
+    pub fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
+    }
+
+    /// Full source text used to produce the diagnostic.
+    pub fn source_text(&self) -> &str {
+        &self.source_code
+    }
+
+    /// Span pointing at the offending location.
+    pub fn span(&self) -> &SourceSpan {
+        &self.span
+    }
+
+    /// Human readable error message.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Optional help hint associated with the diagnostic.
+    pub fn help_text(&self) -> Option<&str> {
+        self.help.as_deref()
+    }
 }
 
 /// Describes semantic/environment validation failures (duplicate identifiers,
