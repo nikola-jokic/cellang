@@ -36,7 +36,7 @@ impl Token<'_> {
     /// let escaped = r#"Hello\nWorld\u0021"#;
     ///
     /// let unescaped = Token::unescape_bytes(escaped);
-    /// assert_eq!(unescaped, b"Hello\nWorld!");
+    /// assert_eq!(unescaped.as_ref(), b"Hello\nWorld!");
     /// ```
     pub fn unescape_bytes(s: &str) -> Cow<'_, [u8]> {
         let out = unescape(s);
