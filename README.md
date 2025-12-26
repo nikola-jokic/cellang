@@ -35,6 +35,17 @@ done
 
 or run directly with `cargo run --example <name>` for interactive experimentation.
 
+### Example overview
+
+| Example | Highlights |
+| --- | --- |
+| `simple` | Basic expression evaluation, child runtimes, and scalar values. |
+| `create_function` | Registering function declarations plus native Rust implementations. |
+| `concurrency` | Sharing a runtime builder across threads for parallel evaluation. |
+| `user_role_derive` | Using the `derive` feature to expose Rust structs and methods to CEL. |
+| `comprehensions` | Practical use of CEL macros like `exists`, `filter`, `map`, and `all`. |
+| `env_snapshot` | Building, serializing, and rehydrating a reusable environment snapshot. |
+
 ## CLI
 
 The `cellang-cli` crate exposes a developer-friendly command line interface for inspecting CEL programs.
