@@ -31,7 +31,8 @@ pub struct MacroRegistry {
 }
 
 impl MacroRegistry {
-    pub fn standard() -> Self {
+    /// Creates a new MacroRegistry with all macros enabled.
+    pub fn new() -> Self {
         let mut registry = MacroRegistry::default();
         registry.enable(MacroKind::Has);
         registry.enable(MacroKind::All);
@@ -41,19 +42,30 @@ impl MacroRegistry {
         registry.enable(MacroKind::Filter);
         registry
     }
+    
+    /// Creates a new MacroRegistry with no macros enabled.
+    pub fn empty() -> Self {
+        MacroRegistry {
+            enabled: BTreeSet::new(),
+        }
+    }
 
+    /// Enables a macro of the given kind.
     pub fn enable(&mut self, kind: MacroKind) {
         self.enabled.insert(kind);
     }
 
+    /// Disables a macro of the given kind.
     pub fn disable(&mut self, kind: MacroKind) {
         self.enabled.remove(&kind);
     }
 
+    /// Checks if a macro of the given kind is enabled.
     pub fn is_enabled(&self, kind: MacroKind) -> bool {
         self.enabled.contains(&kind)
     }
 
+    /// Merges another MacroRegistry into this one, enabling any macros that are
     pub fn merge(&mut self, other: &MacroRegistry) {
         for kind in &other.enabled {
             self.enabled.insert(*kind);
