@@ -16,9 +16,28 @@ pub struct Token<'src> {
 }
 
 impl Token<'_> {
+    /// Unescape a string literal. Unescaping is done according to the CEL specification.
+    /// Example:
+    /// ```rust
+    /// use cellang::lexer::Token;
+    /// let escaped = r#"Hello\nWorld\u0021"#;
+    ///
+    /// let unescaped = Token::unescape(escaped);
+    /// assert_eq!(unescaped, "Hello\nWorld!");
+    /// ```
     pub fn unescape(s: &str) -> Cow<'_, str> {
         unescape(s)
     }
+
+    /// Unescape a byte string literal. Unescaping is done according to the CEL specification.
+    /// Example:
+    /// ```rust
+    /// use cellang::lexer::Token;
+    /// let escaped = r#"Hello\nWorld\u0021"#;
+    ///
+    /// let unescaped = Token::unescape_bytes(escaped);
+    /// assert_eq!(unescaped.as_ref(), b"Hello\nWorld!");
+    /// ```
     pub fn unescape_bytes(s: &str) -> Cow<'_, [u8]> {
         let out = unescape(s);
         Cow::Owned(out.as_bytes().to_vec())

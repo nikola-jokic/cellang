@@ -21,38 +21,47 @@ pub struct Env {
 }
 
 impl Env {
+    /// Creates a new environment builder.
     pub fn builder() -> EnvBuilder {
         EnvBuilder::default()
     }
 
+    /// Looks up an identifier declaration by name.
     pub fn lookup_ident(&self, name: &str) -> Option<&IdentDecl> {
         self.identifiers.get(name)
     }
 
+    /// Looks up a function declaration by name.
     pub fn lookup_function(&self, name: &str) -> Option<&FunctionDecl> {
         self.functions.get(name)
     }
 
+    /// Looks up a named type by its type name.
     pub fn lookup_type(&self, name: &TypeName) -> Option<&NamedType> {
         self.type_registry.get(name)
     }
 
+    /// Returns the type registry associated with the environment.
     pub fn types(&self) -> &TypeRegistry {
         &self.type_registry
     }
 
+    /// Returns all identifier declarations in the environment.
     pub fn idents(&self) -> &BTreeMap<String, IdentDecl> {
         &self.identifiers
     }
 
+    /// Returns all function declarations in the environment.
     pub fn functions(&self) -> &BTreeMap<String, FunctionDecl> {
         &self.functions
     }
 
+    /// Returns the macro registry associated with the environment.
     pub fn macros(&self) -> &MacroRegistry {
         &self.macros
     }
 
+    /// Compiles the given CEL source code into a typed AST using this environment.
     pub fn compile(&self, src: &str) -> Result<TypedExpr, CompileError> {
         let mut parser = Parser::new(src);
         let token_tree = parser.parse()?;
@@ -78,10 +87,11 @@ pub struct EnvBuilder {
 
 impl Default for EnvBuilder {
     fn default() -> Self {
-        let mut builder = EnvBuilder::new_empty();
+        let mut builder = EnvBuilder::empty();
         builder
             .install_builtin_function_decls()
             .expect("builtin declarations must register");
+        builder.install_builtin_macros();
         builder
     }
 }
@@ -98,19 +108,22 @@ impl CelTypeRegistrar for EnvBuilder {
 }
 
 impl EnvBuilder {
+    /// Creates a new environment builder, with built-in functions and macros.
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn new_empty() -> Self {
+    /// Creates a new empty environment builder without built-in functions or macros.
+    pub fn empty() -> Self {
         Self {
             type_registry: TypeRegistry::new(),
             identifiers: BTreeMap::new(),
             functions: BTreeMap::new(),
-            macros: MacroRegistry::standard(),
+            macros: MacroRegistry::empty(),
         }
     }
 
+    /// Adds a named type to the environment being built.
     pub fn add_type(&mut self, ty: NamedType) -> Result<&mut Self, EnvError> {
         self.type_registry.register(ty).map_err(|e| {
             EnvError::new(format!("Type registration error: {}", e))
@@ -118,6 +131,7 @@ impl EnvBuilder {
         Ok(self)
     }
 
+    /// Adds an identifier declaration to the environment being built.
     pub fn add_ident(
         &mut self,
         decl: IdentDecl,
@@ -132,6 +146,7 @@ impl EnvBuilder {
         Ok(self)
     }
 
+    /// Adds a function declaration to the environment being built.
     pub fn add_function(
         &mut self,
         mut decl: FunctionDecl,
@@ -153,48 +168,66 @@ impl EnvBuilder {
         Ok(self)
     }
 
+    /// Returns the macro registry being built.
     pub fn macros(&self) -> &MacroRegistry {
         &self.macros
     }
 
+    /// Returns a mutable reference to the macro registry being built.
     pub fn macros_mut(&mut self) -> &mut MacroRegistry {
         &mut self.macros
     }
 
+    /// Looks up an identifier declaration by name.
     pub fn lookup_ident(&self, name: &str) -> Option<&IdentDecl> {
         self.identifiers.get(name)
     }
 
+    /// Looks up a function declaration by name.
     pub fn lookup_function(&self, name: &str) -> Option<&FunctionDecl> {
         self.functions.get(name)
     }
 
+    /// Sets the macro registry for the environment being built.
     pub fn set_macros(&mut self, registry: MacroRegistry) -> &mut Self {
         self.macros = registry;
         self
     }
 
+    /// Imports all types, identifiers and functions from the given environment.
     pub fn import_env(&mut self, env: &Env) -> Result<&mut Self, EnvError> {
         for (_, ty) in env.types().iter() {
-            self.type_registry.register(ty.clone())?;
+            self.add_type(ty.clone())?;
         }
         for decl in env.idents().values() {
             self.add_ident(decl.clone())?;
         }
         for decl in env.functions().values() {
-            match self.functions.entry(decl.name.clone()) {
-                Entry::Vacant(entry) => {
-                    entry.insert(decl.clone());
-                }
-                Entry::Occupied(mut entry) => {
-                    merge_function_decl(entry.get_mut(), decl)?;
-                }
-            }
+            self.merge_function_shared(decl)?;
         }
         self.macros.merge(env.macros());
         Ok(self)
     }
 
+    /// Imports all entries from an owned environment, reusing allocations when possible.
+    pub fn import_env_owned(
+        &mut self,
+        env: Env,
+    ) -> Result<&mut Self, EnvError> {
+        let Env {
+            type_registry,
+            identifiers,
+            functions,
+            macros,
+        } = env;
+        self.absorb_type_registry(type_registry)?;
+        self.absorb_identifiers(identifiers)?;
+        self.absorb_functions(functions)?;
+        self.absorb_macros(macros);
+        Ok(self)
+    }
+
+    /// Builds the environment.
     pub fn build(self) -> Env {
         Env {
             type_registry: Arc::new(self.type_registry),
@@ -204,11 +237,109 @@ impl EnvBuilder {
         }
     }
 
+    fn absorb_type_registry(
+        &mut self,
+        registry: Arc<TypeRegistry>,
+    ) -> Result<(), EnvError> {
+        match Arc::try_unwrap(registry) {
+            Ok(inner) => {
+                for ty in inner.into_named_types() {
+                    self.add_type(ty)?;
+                }
+            }
+            Err(shared) => {
+                for (_, ty) in shared.as_ref().iter() {
+                    self.add_type(ty.clone())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn absorb_identifiers(
+        &mut self,
+        idents: Arc<BTreeMap<String, IdentDecl>>,
+    ) -> Result<(), EnvError> {
+        match Arc::try_unwrap(idents) {
+            Ok(map) => {
+                for decl in map.into_values() {
+                    self.add_ident(decl)?;
+                }
+            }
+            Err(shared) => {
+                for decl in shared.as_ref().values() {
+                    self.add_ident(decl.clone())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn absorb_functions(
+        &mut self,
+        functions: Arc<BTreeMap<String, FunctionDecl>>,
+    ) -> Result<(), EnvError> {
+        match Arc::try_unwrap(functions) {
+            Ok(map) => {
+                for decl in map.into_values() {
+                    self.merge_function_owned(decl)?;
+                }
+            }
+            Err(shared) => {
+                for decl in shared.as_ref().values() {
+                    self.merge_function_shared(decl)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn merge_function_shared(
+        &mut self,
+        decl: &FunctionDecl,
+    ) -> Result<(), EnvError> {
+        match self.functions.entry(decl.name.clone()) {
+            Entry::Vacant(entry) => {
+                entry.insert(decl.clone());
+            }
+            Entry::Occupied(mut entry) => {
+                merge_function_decl(entry.get_mut(), decl)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn merge_function_owned(
+        &mut self,
+        decl: FunctionDecl,
+    ) -> Result<(), EnvError> {
+        match self.functions.entry(decl.name.clone()) {
+            Entry::Vacant(entry) => {
+                entry.insert(decl);
+            }
+            Entry::Occupied(mut entry) => {
+                merge_function_decl_owned(entry.get_mut(), decl)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn absorb_macros(&mut self, macros: Arc<MacroRegistry>) {
+        match Arc::try_unwrap(macros) {
+            Ok(registry) => self.macros.merge(&registry),
+            Err(shared) => self.macros.merge(shared.as_ref()),
+        }
+    }
+
     fn install_builtin_function_decls(&mut self) -> Result<(), EnvError> {
         for decl in builtin_function_decls() {
             self.add_function(decl)?;
         }
         Ok(())
+    }
+
+    fn install_builtin_macros(&mut self) {
+        self.macros = MacroRegistry::new();
     }
 }
 
@@ -234,6 +365,32 @@ fn merge_function_decl(
             continue;
         }
         existing.overloads.push(overload.clone());
+    }
+    Ok(())
+}
+
+fn merge_function_decl_owned(
+    existing: &mut FunctionDecl,
+    mut incoming: FunctionDecl,
+) -> Result<(), EnvError> {
+    if existing.doc.is_none() {
+        existing.doc = incoming.doc.take();
+    }
+    for overload in incoming.overloads.drain(..) {
+        if let Some(current) = existing
+            .overloads
+            .iter()
+            .find(|item| item.id == overload.id)
+        {
+            if current != &overload {
+                return Err(EnvError::new(format!(
+                    "Function '{}' overload id '{}' conflicts with existing declaration",
+                    existing.name, overload.id
+                )));
+            }
+            continue;
+        }
+        existing.overloads.push(overload);
     }
     Ok(())
 }
@@ -488,6 +645,35 @@ mod tests {
         let merged = derived.build();
         assert!(merged.lookup_function("size").is_some());
         assert!(merged.lookup_type(&scan.name).is_some());
+    }
+
+    #[test]
+    fn merge_existing_env_owned() {
+        let scan = build_scan_type();
+        let mut base = Env::builder();
+        base.add_type(NamedType::Struct(scan.clone())).unwrap();
+        base.add_ident(IdentDecl::new("scan_total", Type::Int))
+            .unwrap();
+        base.add_function({
+            let mut func = FunctionDecl::new("scan_owned_status");
+            func.add_overload(OverloadDecl::new(
+                "scan_owned_status_struct",
+                vec![Type::struct_type(scan.name.clone())],
+                Type::Bool,
+            ))
+            .unwrap();
+            func
+        })
+        .unwrap();
+        let env = base.build();
+
+        let mut derived = Env::builder();
+        derived.import_env_owned(env).unwrap();
+        let merged = derived.build();
+
+        assert!(merged.lookup_type(&scan.name).is_some());
+        assert!(merged.lookup_ident("scan_total").is_some());
+        assert!(merged.lookup_function("scan_owned_status").is_some());
     }
 
     #[test]

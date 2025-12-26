@@ -5,12 +5,16 @@ use crate::runtime::{CallContext, Runtime};
 use crate::value::{Key, ListValue, MapValue, TryFromValue, Value, ValueError};
 use std::cmp::Ordering;
 
+/// Evaluates the given source string in the context of the provided runtime,
+/// returning the resulting value.
 pub fn eval(runtime: &Runtime, source: &str) -> Result<Value, RuntimeError> {
     let mut parser = Parser::new(source);
     let ast = parser.parse().map_err(RuntimeError::from)?;
     eval_ast(runtime, &ast)
 }
 
+/// Evaluates the given AST node in the context of the provided runtime,
+/// returning the resulting value.
 pub fn eval_ast<'src>(
     runtime: &Runtime,
     node: &TokenTree<'src>,

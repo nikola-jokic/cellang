@@ -16,6 +16,7 @@ pub struct Parser<'src> {
 }
 
 impl<'src> Parser<'src> {
+    /// Creates a new parser from the given input string.
     pub fn new(input: &'src str) -> Self {
         Self {
             input,

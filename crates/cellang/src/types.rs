@@ -296,6 +296,10 @@ impl TypeRegistry {
     pub fn iter(&self) -> impl Iterator<Item = (&TypeName, &NamedType)> {
         self.types.iter()
     }
+
+    pub fn into_named_types(self) -> impl Iterator<Item = NamedType> {
+        self.types.into_values()
+    }
 }
 
 /// Subset of CEL constants supported at declaration time.

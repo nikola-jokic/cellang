@@ -34,6 +34,7 @@ pub type Map = MapValue;
 pub type Struct = StructValue;
 
 impl Value {
+    /// Returns the kind of the value.
     pub fn kind(&self) -> ValueKind {
         match self {
             Value::Bool(_) => ValueKind::Bool,
@@ -51,10 +52,12 @@ impl Value {
         }
     }
 
+    /// Returns true if the value is null.
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)
     }
 
+    /// Returns the CEL type of the value.
     pub fn cel_type(&self) -> Type {
         match self {
             Value::Bool(_) => Type::Bool,
@@ -86,10 +89,12 @@ impl Value {
         }
     }
 
+    /// Attempts to convert the value into a typed rust value.
     pub fn try_as<T: TryFromValue>(&self) -> Result<T, ValueError> {
         T::try_from_value(self)
     }
 
+    /// Attempts to convert the value into a typed rust value, consuming self.
     pub fn try_into<T: TryFromValue>(self) -> Result<T, ValueError> {
         T::try_from_value(&self)
     }

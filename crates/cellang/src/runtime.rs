@@ -117,10 +117,23 @@ impl Default for RuntimeBuilder {
 }
 
 impl RuntimeBuilder {
+    /// Creates a new empty RuntimeBuilder, with default environment.
+    /// Default environment includes standard library macros and functions.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Creates a new empty RuntimeBuilder, without any types, identifiers or functions.
+    pub fn empty() -> Self {
+        RuntimeBuilder {
+            env_builder: EnvBuilder::empty(),
+            variables: BTreeMap::new(),
+            functions: BTreeMap::new(),
+        }
+    }
+
+    /// Creates a new RuntimeBuilder initialized from an existing Runtime.
+    /// It doesn't consume the runtime, allowing multiple builders to be created.
     pub fn from_runtime(runtime: &Runtime) -> Self {
         let mut env_builder = Env::builder();
         env_builder
@@ -137,6 +150,7 @@ impl RuntimeBuilder {
         }
     }
 
+    /// Imports all types, identifiers and functions from another environment.
     pub fn import_env(&mut self, env: &Env) -> Result<&mut Self, EnvError> {
         self.env_builder
             .import_env(env)
@@ -144,6 +158,19 @@ impl RuntimeBuilder {
         Ok(self)
     }
 
+    /// Imports all types, identifiers and functions from another environment,
+    /// taking ownership of it.
+    pub fn import_env_owned(
+        &mut self,
+        env: Env,
+    ) -> Result<&mut Self, EnvError> {
+        self.env_builder
+            .import_env_owned(env)
+            .map_err(|err| EnvError::new(err.to_string()))?;
+        Ok(self)
+    }
+
+    /// Adds a new named type to the environment.
     pub fn add_type(&mut self, ty: NamedType) -> Result<&mut Self, EnvError> {
         self.env_builder
             .add_type(ty)
@@ -151,6 +178,7 @@ impl RuntimeBuilder {
         Ok(self)
     }
 
+    /// Adds a new identifier declaration to the environment.
     pub fn add_ident(
         &mut self,
         ident: IdentDecl,
