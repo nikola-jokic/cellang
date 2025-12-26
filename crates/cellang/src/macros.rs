@@ -42,7 +42,7 @@ impl MacroRegistry {
         registry.enable(MacroKind::Filter);
         registry
     }
-
+    
     /// Creates a new MacroRegistry with no macros enabled.
     pub fn empty() -> Self {
         MacroRegistry {

@@ -28,7 +28,6 @@ impl Token<'_> {
     pub fn unescape(s: &str) -> Cow<'_, str> {
         unescape(s)
     }
-
     /// Unescape a byte string literal. Unescaping is done according to the CEL specification.
     /// Example:
     /// ```rust
