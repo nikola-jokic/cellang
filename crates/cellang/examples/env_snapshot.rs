@@ -1,15 +1,17 @@
-use cellang::types::{FieldDecl, FunctionDecl, IdentDecl, NamedType, OverloadDecl, StructType, Type};
+use cellang::types::{
+    FieldDecl, FunctionDecl, IdentDecl, NamedType, OverloadDecl, StructType,
+    Type,
+};
 use cellang::value::{ListValue, StructValue, Value};
 use cellang::{Env, Runtime};
 use miette::{IntoDiagnostic, Result};
 
 fn main() -> Result<()> {
-    let env_cache = serde_json::to_vec(&build_policy_env()).into_diagnostic()?;
+    let env_cache =
+        serde_json::to_vec(&build_policy_env()).into_diagnostic()?;
 
-    let scenarios = [
-        ("analytics", "write", true),
-        ("security", "delete", false),
-    ];
+    let scenarios =
+        [("analytics", "write", true), ("security", "delete", false)];
 
     for (owner, desired_access, expected) in scenarios {
         let env: Env = serde_json::from_slice(&env_cache).into_diagnostic()?;
@@ -61,15 +63,14 @@ fn build_policy_env() -> Env {
         .unwrap();
 
     builder.add_type(NamedType::Struct(resource)).unwrap();
-    builder.add_type(NamedType::Struct(request.clone())).unwrap();
+    builder
+        .add_type(NamedType::Struct(request.clone()))
+        .unwrap();
 
     builder
         .add_ident(
-            IdentDecl::new(
-                "request",
-                Type::struct_type(request.name.clone()),
-            )
-            .with_doc("Access request provided at evaluation time"),
+            IdentDecl::new("request", Type::struct_type(request.name.clone()))
+                .with_doc("Access request provided at evaluation time"),
         )
         .unwrap();
     builder

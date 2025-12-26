@@ -1,5 +1,5 @@
-use cellang::value::{IntoValue, ListValue, MapValue, Value};
 use cellang::Runtime;
+use cellang::value::{IntoValue, ListValue, MapValue, Value};
 use miette::Result;
 
 fn main() -> Result<()> {
@@ -7,7 +7,8 @@ fn main() -> Result<()> {
     builder.set_variable("assets", sample_assets())?;
     let runtime = builder.build();
 
-    let has_high_risk = runtime.eval("assets.exists(asset, asset.risk >= 75)")?;
+    let has_high_risk =
+        runtime.eval("assets.exists(asset, asset.risk >= 75)")?;
     assert_eq!(has_high_risk, Value::Bool(true));
 
     let prod_names = runtime.eval(
@@ -15,9 +16,8 @@ fn main() -> Result<()> {
     )?;
     assert_eq!(prod_names, vec!["scanner", "api"].into_value());
 
-    let all_positive = runtime.eval(
-        "assets.map(asset, asset.risk).all(risk, risk >= 0)",
-    )?;
+    let all_positive =
+        runtime.eval("assets.map(asset, asset.risk).all(risk, risk >= 0)")?;
     assert_eq!(all_positive, Value::Bool(true));
 
     Ok(())
