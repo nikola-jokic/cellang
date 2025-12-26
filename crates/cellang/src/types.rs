@@ -298,7 +298,7 @@ impl TypeRegistry {
     }
 
     pub fn into_named_types(self) -> impl Iterator<Item = NamedType> {
-        self.types.into_iter().map(|(_, ty)| ty)
+        self.types.into_values()
     }
 }
 

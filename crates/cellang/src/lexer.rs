@@ -21,20 +21,20 @@ impl Token<'_> {
     /// ```rust
     /// use cellang::lexer::Token;
     /// let escaped = r#"Hello\nWorld\u0021"#;
-    /// 
+    ///
     /// let unescaped = Token::unescape(escaped);
     /// assert_eq!(unescaped, "Hello\nWorld!");
     /// ```
     pub fn unescape(s: &str) -> Cow<'_, str> {
         unescape(s)
     }
-    
+
     /// Unescape a byte string literal. Unescaping is done according to the CEL specification.
     /// Example:
     /// ```rust
     /// use cellang::lexer::Token;
     /// let escaped = r#"Hello\nWorld\u0021"#;
-    /// 
+    ///
     /// let unescaped = Token::unescape_bytes(escaped);
     /// assert_eq!(unescaped, b"Hello\nWorld!");
     /// ```

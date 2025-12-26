@@ -210,7 +210,10 @@ impl EnvBuilder {
     }
 
     /// Imports all entries from an owned environment, reusing allocations when possible.
-    pub fn import_env_owned(&mut self, env: Env) -> Result<&mut Self, EnvError> {
+    pub fn import_env_owned(
+        &mut self,
+        env: Env,
+    ) -> Result<&mut Self, EnvError> {
         let Env {
             type_registry,
             identifiers,
@@ -223,7 +226,7 @@ impl EnvBuilder {
         self.absorb_macros(macros);
         Ok(self)
     }
-    
+
     /// Builds the environment.
     pub fn build(self) -> Env {
         Env {
@@ -649,21 +652,19 @@ mod tests {
         let scan = build_scan_type();
         let mut base = Env::builder();
         base.add_type(NamedType::Struct(scan.clone())).unwrap();
-        base
-            .add_ident(IdentDecl::new("scan_total", Type::Int))
+        base.add_ident(IdentDecl::new("scan_total", Type::Int))
             .unwrap();
-        base
-            .add_function({
-                let mut func = FunctionDecl::new("scan_owned_status");
-                func.add_overload(OverloadDecl::new(
-                    "scan_owned_status_struct",
-                    vec![Type::struct_type(scan.name.clone())],
-                    Type::Bool,
-                ))
-                .unwrap();
-                func
-            })
+        base.add_function({
+            let mut func = FunctionDecl::new("scan_owned_status");
+            func.add_overload(OverloadDecl::new(
+                "scan_owned_status_struct",
+                vec![Type::struct_type(scan.name.clone())],
+                Type::Bool,
+            ))
             .unwrap();
+            func
+        })
+        .unwrap();
         let env = base.build();
 
         let mut derived = Env::builder();
