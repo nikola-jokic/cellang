@@ -333,21 +333,17 @@ impl<'src> Lexer<'src> {
     ) -> Result<Token<'src>, SyntaxError> {
         match self.next() {
             Some(Ok(token)) if check(&token) => Ok(token),
-            Some(Ok(token)) => Err(SyntaxError {
-                source_code: self.whole.to_string(),
-                message: unexpected.to_string(),
-                help: None,
-                span: SourceSpan::new(token.offset.into(), token.span_len),
-            }),
+            Some(Ok(token)) => Err(SyntaxError::new(
+                self.whole.to_string(),
+                SourceSpan::new(token.offset.into(), token.span_len),
+                unexpected.to_string(),
+            )),
             Some(Err(e)) => Err(e),
-            None => Err(SyntaxError {
-                source_code: self.whole.to_string(),
-                message: format!(
-                    "Unexpected end of file, expected {unexpected}"
-                ),
-                help: None,
-                span: SourceSpan::new(self.byte.into(), 0),
-            }),
+            None => Err(SyntaxError::new(
+                self.whole.to_string(),
+                SourceSpan::new(self.byte.into(), 0),
+                format!("Unexpected end of file, expected {unexpected}"),
+            )),
         }
     }
 
@@ -450,17 +446,14 @@ impl<'src> Iterator for Lexer<'src> {
                         self.rest = &self.rest[1..];
                         return just(TokenType::And);
                     } else {
-                        return Some(Err(SyntaxError {
-                            source_code: self.whole.to_string(),
-                            span: SourceSpan::new(
-                                c_at.into(),
-                                self.byte - c_at,
-                            ),
-                            message: format!(
+                        return Some(Err(SyntaxError::new(
+                            self.whole.to_string(),
+                            SourceSpan::new(c_at.into(), self.byte - c_at),
+                            format!(
                                 "[line {line}] Error: Unexpected character: {c}"
                             ),
-                            help: Some("expected `&&`".to_string()),
-                        }));
+                        )
+                        .with_help("expected `&&`")));
                     }
                 }
                 '|' => {
@@ -469,17 +462,14 @@ impl<'src> Iterator for Lexer<'src> {
                         self.rest = &self.rest[1..];
                         return just(TokenType::Or);
                     } else {
-                        return Some(Err(SyntaxError {
-                            source_code: self.whole.to_string(),
-                            span: SourceSpan::new(
-                                c_at.into(),
-                                self.byte - c_at,
-                            ),
-                            message: format!(
+                        return Some(Err(SyntaxError::new(
+                            self.whole.to_string(),
+                            SourceSpan::new(c_at.into(), self.byte - c_at),
+                            format!(
                                 "[line {line}] Error: Unexpected character: {c}"
                             ),
-                            help: Some("expected `||`".to_string()),
-                        }));
+                        )
+                        .with_help("expected `||`")));
                     }
                 }
                 '0'..='9' => {
@@ -528,14 +518,13 @@ impl<'src> Iterator for Lexer<'src> {
                 c => {
                     let line = self.line;
 
-                    return Some(Err(SyntaxError {
-                        source_code: self.whole.to_string(),
-                        span: SourceSpan::new(c_at.into(), self.byte - c_at),
-                        message: format!(
+                    return Some(Err(SyntaxError::new(
+                        self.whole.to_string(),
+                        SourceSpan::new(c_at.into(), self.byte - c_at),
+                        format!(
                             "[line {line}] Error: Unexpected character: {c}"
                         ),
-                        help: None,
-                    }));
+                    )));
                 }
             };
 
@@ -714,17 +703,19 @@ impl<'src> Iterator for Lexer<'src> {
                         State::Nil => {
                             let line = self.line;
 
-                            return Some(Err(SyntaxError {
-                                source_code: self.whole.to_string(),
-                                span: SourceSpan::new(
-                                    c_at.into(),
-                                    self.byte - c_at,
-                                ),
-                                message: format!(
-                                    "[line {line}] Error: Unexpected character: {c}"
-                                ),
-                                help: Some("Expected a number".to_string()),
-                            }));
+                            return Some(Err(
+                                SyntaxError::new(
+                                    self.whole.to_string(),
+                                    SourceSpan::new(
+                                        c_at.into(),
+                                        self.byte - c_at,
+                                    ),
+                                    format!(
+                                        "[line {line}] Error: Unexpected character: {c}"
+                                    ),
+                                )
+                                .with_help("Expected a number"),
+                            ));
                         }
                         State::Dot | State::Exp => {
                             // unread the dot or exp
@@ -801,17 +792,14 @@ impl<'src> Iterator for Lexer<'src> {
                     let rest = &c_onwards[2..]; // ignore 0x
                     if rest.is_empty() {
                         let line = self.line;
-                        return Some(Err(SyntaxError {
-                            source_code: self.whole.to_string(),
-                            span: SourceSpan::new(
-                                c_at.into(),
-                                self.byte - c_at,
-                            ),
-                            message: format!(
+                        return Some(Err(SyntaxError::new(
+                            self.whole.to_string(),
+                            SourceSpan::new(c_at.into(), self.byte - c_at),
+                            format!(
                                 "[line {line}] Error: Unexpected character: {c}"
                             ),
-                            help: Some("Expected a number".to_string()),
-                        }));
+                        )
+                        .with_help("Expected a number")));
                     }
 
                     let mut end = 0;
@@ -884,12 +872,12 @@ fn scan_str(s: &str) -> Result<(usize, &str), SyntaxError> {
     assert!(s.starts_with(['"', '\'']));
 
     if s.len() < 2 {
-        return Err(SyntaxError {
-            source_code: s.to_string(),
-            span: SourceSpan::new(0.into(), s.len()),
-            message: "Unexpected end of file".to_string(),
-            help: Some("Expected a closing quote".to_string()),
-        });
+        return Err(SyntaxError::new(
+            s.to_string(),
+            SourceSpan::new(0.into(), s.len()),
+            "Unexpected end of file",
+        )
+        .with_help("Expected a closing quote"));
     }
 
     let mut chars = s.chars();
@@ -909,24 +897,24 @@ fn scan_str(s: &str) -> Result<(usize, &str), SyntaxError> {
         let c = match chars.next() {
             Some(c) => c,
             None => {
-                return Err(SyntaxError {
-                    source_code: s.to_string(),
-                    span: SourceSpan::new(0.into(), end),
-                    message: "Unexpected end of file".to_string(),
-                    help: Some("Expected a closing quote".to_string()),
-                });
+                return Err(SyntaxError::new(
+                    s.to_string(),
+                    SourceSpan::new(0.into(), end),
+                    "Unexpected end of file",
+                )
+                .with_help("Expected a closing quote"));
             }
         };
 
         end += c.len_utf8();
 
         if delim_n == 1 && matches!(c, '\r' | '\n') {
-            return Err(SyntaxError {
-                source_code: s[..end].to_string(),
-                span: SourceSpan::new((end - 1).into(), 1),
-                message: "Unexpected newline in string".to_string(),
-                help: Some("Unterminated string".to_string()),
-            });
+            return Err(SyntaxError::new(
+                s[..end].to_string(),
+                SourceSpan::new((end - 1).into(), 1),
+                "Unexpected newline in string",
+            )
+            .with_help("Unterminated string"));
         }
 
         // if it is a delimiter, check if it is the closing delimiter
@@ -948,12 +936,12 @@ fn scan_str(s: &str) -> Result<(usize, &str), SyntaxError> {
         let c = match chars.next() {
             Some(c) => c,
             None => {
-                return Err(SyntaxError {
-                    source_code: s.to_string(),
-                    span: SourceSpan::new(0.into(), end),
-                    message: "Unexpected end of file".to_string(),
-                    help: Some("Expected char after escape".to_string()),
-                });
+                return Err(SyntaxError::new(
+                    s.to_string(),
+                    SourceSpan::new(0.into(), end),
+                    "Unexpected end of file",
+                )
+                .with_help("Expected char after escape"));
             }
         };
         end += c.len_utf8();
@@ -1000,12 +988,12 @@ fn scan_str(s: &str) -> Result<(usize, &str), SyntaxError> {
                 end += 2;
             }
             _ => {
-                return Err(SyntaxError {
-                    source_code: s.to_string(),
-                    span: SourceSpan::new(0.into(), end),
-                    message: format!("Unexpected character: {c}"),
-                    help: Some("Expected a hex digit".to_string()),
-                });
+                return Err(SyntaxError::new(
+                    s.to_string(),
+                    SourceSpan::new(0.into(), end),
+                    format!("Unexpected character: {c}"),
+                )
+                .with_help("Expected a hex digit"));
             }
         }
     }
@@ -1013,12 +1001,12 @@ fn scan_str(s: &str) -> Result<(usize, &str), SyntaxError> {
 
 fn read_str_raw(s: &str) -> Result<(usize, &str), SyntaxError> {
     if s.len() < 2 {
-        return Err(SyntaxError {
-            source_code: s.to_string(),
-            span: SourceSpan::new(0.into(), s.len()),
-            message: "Unexpected end of file".to_string(),
-            help: Some("Expected a closing quote".to_string()),
-        });
+        return Err(SyntaxError::new(
+            s.to_string(),
+            SourceSpan::new(0.into(), s.len()),
+            "Unexpected end of file",
+        )
+        .with_help("Expected a closing quote"));
     }
 
     let take = if s.starts_with(r#"""""#) || s.starts_with("'''") {
@@ -1032,12 +1020,12 @@ fn read_str_raw(s: &str) -> Result<(usize, &str), SyntaxError> {
     let end = match rest.find(delim) {
         Some(end) => end,
         None => {
-            return Err(SyntaxError {
-                source_code: s.to_string(),
-                span: SourceSpan::new(0.into(), s.len()),
-                message: "Unexpected end of file".to_string(),
-                help: Some("Expected a closing quote".to_string()),
-            });
+            return Err(SyntaxError::new(
+                s.to_string(),
+                SourceSpan::new(0.into(), s.len()),
+                "Unexpected end of file",
+            )
+            .with_help("Expected a closing quote"));
         }
     };
 
@@ -1063,22 +1051,22 @@ fn read_chars_tested(
         let c = match chars.next() {
             Some(c) => c,
             None => {
-                return Err(SyntaxError {
-                    source_code: buf.clone(),
-                    span: SourceSpan::new(0.into(), buf.len()),
-                    message: "Unexpected end of file".to_string(),
-                    help: Some(err_msg.to_string()),
-                });
+                return Err(SyntaxError::new(
+                    buf.clone(),
+                    SourceSpan::new(0.into(), buf.len()),
+                    "Unexpected end of file",
+                )
+                .with_help(err_msg.to_string()));
             }
         };
 
         if !test_fn(c) {
-            return Err(SyntaxError {
-                source_code: buf.clone(),
-                span: SourceSpan::new(0.into(), buf.len()),
-                message: format!("Unexpected character: {c}"),
-                help: Some(err_msg.to_string()),
-            });
+            return Err(SyntaxError::new(
+                buf.clone(),
+                SourceSpan::new(0.into(), buf.len()),
+                format!("Unexpected character: {c}"),
+            )
+            .with_help(err_msg.to_string()));
         }
 
         buf.push(c);

@@ -137,12 +137,12 @@ impl<'src> Parser<'src> {
             } => self.parse_list()?,
 
             token => {
-                return Err(SyntaxError {
-                    source_code: self.input.to_string(),
-                    span: SourceSpan::new(token.offset.into(), token.span_len),
-                    message: format!("Unexpected token: {:?}", token),
-                    help: Some("Expected an expression".to_string()),
-                });
+                return Err(SyntaxError::new(
+                    self.input.to_string(),
+                    SourceSpan::new(token.offset.into(), token.span_len),
+                    format!("Unexpected token: {:?}", token),
+                )
+                .with_help("Expected an expression"));
             }
         };
 
@@ -156,100 +156,98 @@ impl<'src> Parser<'src> {
                     .expect_err("checked Err above"));
             }
 
-            let op =
-                match op.map(|res| res.as_ref().expect("handled Err above")) {
-                    None
-                    | Some(Token {
-                        ty:
-                            TokenType::RightParen
-                            | TokenType::RightBracket
-                            | TokenType::RightBrace
-                            | TokenType::Comma
-                            | TokenType::Colon
-                            | TokenType::Semicolon,
-                        ..
-                    }) => break,
-                    Some(Token {
-                        ty: TokenType::LeftParen,
-                        ..
-                    }) => Op::Call,
-                    Some(Token {
-                        ty: TokenType::LeftBracket,
-                        ..
-                    }) => Op::Index,
-                    Some(Token {
-                        ty: TokenType::Dot, ..
-                    }) => Op::Field,
-                    Some(Token {
-                        ty: TokenType::Minus,
-                        ..
-                    }) => Op::Minus,
-                    Some(Token {
-                        ty: TokenType::Plus,
-                        ..
-                    }) => Op::Plus,
-                    Some(Token {
-                        ty: TokenType::Star,
-                        ..
-                    }) => Op::Multiply,
-                    Some(Token {
-                        ty: TokenType::Percent,
-                        ..
-                    }) => Op::Mod,
-                    Some(Token {
-                        ty: TokenType::NotEqual,
-                        ..
-                    }) => Op::NotEqual,
-                    Some(Token {
-                        ty: TokenType::In, ..
-                    }) => Op::In,
-                    Some(Token {
-                        ty: TokenType::EqualEqual,
-                        ..
-                    }) => Op::EqualEqual,
-                    Some(Token {
-                        ty: TokenType::LessEqual,
-                        ..
-                    }) => Op::LessEqual,
-                    Some(Token {
-                        ty: TokenType::GreaterEqual,
-                        ..
-                    }) => Op::GreaterEqual,
-                    Some(Token {
-                        ty: TokenType::Less,
-                        ..
-                    }) => Op::Less,
-                    Some(Token {
-                        ty: TokenType::Greater,
-                        ..
-                    }) => Op::Greater,
-                    Some(Token {
-                        ty: TokenType::Slash,
-                        ..
-                    }) => Op::Devide,
-                    Some(Token {
-                        ty: TokenType::And, ..
-                    }) => Op::And,
-                    Some(Token {
-                        ty: TokenType::Or, ..
-                    }) => Op::Or,
-                    Some(Token {
-                        ty: TokenType::QuestionMark,
-                        ..
-                    }) => Op::IfTernary,
+            let op = match op
+                .map(|res| res.as_ref().expect("handled Err above"))
+            {
+                None
+                | Some(Token {
+                    ty:
+                        TokenType::RightParen
+                        | TokenType::RightBracket
+                        | TokenType::RightBrace
+                        | TokenType::Comma
+                        | TokenType::Colon
+                        | TokenType::Semicolon,
+                    ..
+                }) => break,
+                Some(Token {
+                    ty: TokenType::LeftParen,
+                    ..
+                }) => Op::Call,
+                Some(Token {
+                    ty: TokenType::LeftBracket,
+                    ..
+                }) => Op::Index,
+                Some(Token {
+                    ty: TokenType::Dot, ..
+                }) => Op::Field,
+                Some(Token {
+                    ty: TokenType::Minus,
+                    ..
+                }) => Op::Minus,
+                Some(Token {
+                    ty: TokenType::Plus,
+                    ..
+                }) => Op::Plus,
+                Some(Token {
+                    ty: TokenType::Star,
+                    ..
+                }) => Op::Multiply,
+                Some(Token {
+                    ty: TokenType::Percent,
+                    ..
+                }) => Op::Mod,
+                Some(Token {
+                    ty: TokenType::NotEqual,
+                    ..
+                }) => Op::NotEqual,
+                Some(Token {
+                    ty: TokenType::In, ..
+                }) => Op::In,
+                Some(Token {
+                    ty: TokenType::EqualEqual,
+                    ..
+                }) => Op::EqualEqual,
+                Some(Token {
+                    ty: TokenType::LessEqual,
+                    ..
+                }) => Op::LessEqual,
+                Some(Token {
+                    ty: TokenType::GreaterEqual,
+                    ..
+                }) => Op::GreaterEqual,
+                Some(Token {
+                    ty: TokenType::Less,
+                    ..
+                }) => Op::Less,
+                Some(Token {
+                    ty: TokenType::Greater,
+                    ..
+                }) => Op::Greater,
+                Some(Token {
+                    ty: TokenType::Slash,
+                    ..
+                }) => Op::Devide,
+                Some(Token {
+                    ty: TokenType::And, ..
+                }) => Op::And,
+                Some(Token {
+                    ty: TokenType::Or, ..
+                }) => Op::Or,
+                Some(Token {
+                    ty: TokenType::QuestionMark,
+                    ..
+                }) => Op::IfTernary,
 
-                    Some(token) => {
-                        return Err(SyntaxError {
-                            source_code: self.input.to_string(),
-                            span: SourceSpan::new(
-                                token.offset.into(),
-                                token.span_len,
-                            ),
-                            message: format!("Unexpected token: {:?}", token),
-                            help: Some("Expected an operator".to_string()),
-                        });
-                    }
-                };
+                Some(token) => {
+                    return Err(SyntaxError::new(
+                        self.input.to_string(),
+                        SourceSpan::new(token.offset.into(), token.span_len),
+                        format!("Unexpected token: {:?}", token),
+                    )
+                    .with_help("Expected an operator"));
+                }
+            };
 
             if let Some((l_bp, ())) = postfix_binding_power(op) {
                 if l_bp < min_bp {
@@ -753,7 +751,7 @@ mod tests {
         expected_slice: &str,
         report: &Report,
     ) {
-        let span = err.span;
+        let span = err.span();
         let offset: usize = span.offset();
         assert_eq!(
             offset, expected_offset,
@@ -764,7 +762,7 @@ mod tests {
             expected_slice.len(),
             "unexpected span len: {report:?}"
         );
-        let fragment = &err.source_code[offset..offset + span.len()];
+        let fragment = &err.source_text()[offset..offset + span.len()];
         assert_eq!(
             fragment, expected_slice,
             "unexpected source slice: {report:?}"
@@ -1418,9 +1416,9 @@ mod tests {
         let report = Report::new(err.clone());
         assert_span_matches(&err, 0, "&", &report);
         assert!(
-            err.message.contains("Unexpected character"),
+            err.message().contains("Unexpected character"),
             "unexpected message: {}; {report:?}",
-            err.message
+            err.message()
         );
     }
 
@@ -1429,7 +1427,7 @@ mod tests {
         let input = "(";
         let mut parser = Parser::new(input);
         let err = parser.parse().expect_err("expected missing closing paren");
-        let span = err.span;
+        let span = err.span();
         let offset: usize = span.offset();
         assert_eq!(
             offset,
@@ -1449,9 +1447,9 @@ mod tests {
         let report = Report::new(err.clone());
         assert_span_matches(&err, "1 + (1".len(), "abc", &report);
         assert!(
-            err.message.contains("Unexpected token"),
+            err.message().contains("Unexpected token"),
             "unexpected message: {}; {report:?}",
-            err.message
+            err.message()
         );
     }
 }
