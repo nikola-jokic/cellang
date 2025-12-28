@@ -307,15 +307,19 @@ impl<'src> Parser<'src> {
                                             .collect(),
                                         is_method: true,
                                     }
+                                } else if args.is_empty() {
+                                    args.insert(0, lhs);
+                                    TokenTree::Call {
+                                        func,
+                                        args,
+                                        is_method: true,
+                                    }
                                 } else {
                                     let access = args.remove(0);
-                                    args.insert(
-                                        0,
-                                        TokenTree::Cons(
-                                            Op::Field,
-                                            vec![lhs, access],
-                                        ),
+                                    let receiver = Self::attach_method_receiver(
+                                        lhs, access,
                                     );
+                                    args.insert(0, receiver);
                                     TokenTree::Call {
                                         func,
                                         args,
@@ -323,7 +327,7 @@ impl<'src> Parser<'src> {
                                     }
                                 }
                             }
-                            rhs => TokenTree::Cons(op, vec![lhs, rhs]),
+                            rhs => Self::chain_field_access(lhs, rhs),
                         }
                     }
                     _ => {
@@ -339,6 +343,66 @@ impl<'src> Parser<'src> {
         }
 
         Ok(lhs)
+    }
+
+    fn attach_method_receiver(
+        lhs: TokenTree<'src>,
+        receiver: TokenTree<'src>,
+    ) -> TokenTree<'src> {
+        match receiver {
+            TokenTree::Call {
+                func,
+                args,
+                is_method: false,
+            } => TokenTree::Call {
+                func,
+                args: std::iter::once(lhs).chain(args).collect(),
+                is_method: true,
+            },
+            TokenTree::Call {
+                func,
+                mut args,
+                is_method: true,
+            } => {
+                if args.is_empty() {
+                    args.insert(0, lhs);
+                    TokenTree::Call {
+                        func,
+                        args,
+                        is_method: true,
+                    }
+                } else {
+                    let nested = args.remove(0);
+                    let updated = Self::attach_method_receiver(lhs, nested);
+                    args.insert(0, updated);
+                    TokenTree::Call {
+                        func,
+                        args,
+                        is_method: true,
+                    }
+                }
+            }
+            other => Self::chain_field_access(lhs, other),
+        }
+    }
+
+    fn chain_field_access(
+        lhs: TokenTree<'src>,
+        rhs: TokenTree<'src>,
+    ) -> TokenTree<'src> {
+        let mut acc = lhs;
+        let mut current = rhs;
+        loop {
+            current = match current {
+                TokenTree::Cons(Op::Field, mut nodes) if nodes.len() == 2 => {
+                    let next = nodes.remove(0);
+                    let rest = nodes.remove(0);
+                    acc = TokenTree::Cons(Op::Field, vec![acc, next]);
+                    rest
+                }
+                other => return TokenTree::Cons(Op::Field, vec![acc, other]),
+            };
+        }
     }
 
     fn parse_map(&mut self) -> Result<TokenTree<'src>, SyntaxError> {
@@ -802,14 +866,14 @@ mod tests {
             TokenTree::Cons(
                 Op::Field,
                 vec![
-                    TokenTree::Atom(Atom::Ident("foo")),
                     TokenTree::Cons(
                         Op::Field,
                         vec![
+                            TokenTree::Atom(Atom::Ident("foo")),
                             TokenTree::Atom(Atom::Ident("bar")),
-                            TokenTree::Atom(Atom::Ident("baz")),
                         ]
-                    )
+                    ),
+                    TokenTree::Atom(Atom::Ident("baz")),
                 ]
             )
         );
@@ -833,7 +897,7 @@ mod tests {
                                 ],
                             ),
                             TokenTree::Atom(Atom::Int(0)),
-                        ]
+                        ],
                     ),
                     TokenTree::Atom(Atom::Ident("baz")),
                 ]
@@ -899,6 +963,44 @@ mod tests {
                 is_method: true,
             }
         );
+    }
+
+    #[test]
+    fn test_method_call_chain() {
+        let input = "foo.bar().baz()";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        let want = TokenTree::Call {
+            func: Box::new(TokenTree::Atom(Atom::Ident("baz"))),
+            args: vec![TokenTree::Call {
+                func: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
+                args: vec![TokenTree::Atom(Atom::Ident("foo"))],
+                is_method: true,
+            }],
+            is_method: true,
+        };
+        assert_eq!(tree, want);
+    }
+
+    #[test]
+    fn test_long_method_chain() {
+        let input = "foo.bar().baz().qux()";
+        let mut parser = Parser::new(input);
+        let tree = parser.parse().unwrap();
+        let want = TokenTree::Call {
+            func: Box::new(TokenTree::Atom(Atom::Ident("qux"))),
+            args: vec![TokenTree::Call {
+                func: Box::new(TokenTree::Atom(Atom::Ident("baz"))),
+                args: vec![TokenTree::Call {
+                    func: Box::new(TokenTree::Atom(Atom::Ident("bar"))),
+                    args: vec![TokenTree::Atom(Atom::Ident("foo"))],
+                    is_method: true,
+                }],
+                is_method: true,
+            }],
+            is_method: true,
+        };
+        assert_eq!(tree, want);
     }
 
     #[test]
@@ -1322,14 +1424,14 @@ mod tests {
         let want = TokenTree::Cons(
             Op::Field,
             vec![
-                TokenTree::Atom(Atom::Ident("foo")),
                 TokenTree::Cons(
                     Op::Field,
                     vec![
+                        TokenTree::Atom(Atom::Ident("foo")),
                         TokenTree::Atom(Atom::Ident("bar")),
-                        TokenTree::Atom(Atom::Ident("baz")),
                     ],
                 ),
+                TokenTree::Atom(Atom::Ident("baz")),
             ],
         );
 
@@ -1347,14 +1449,14 @@ mod tests {
             args: vec![TokenTree::Cons(
                 Op::Field,
                 vec![
-                    TokenTree::Atom(Atom::Ident("foo")),
                     TokenTree::Cons(
                         Op::Field,
                         vec![
-                            TokenTree::Atom(Atom::Ident("bar")),
                             TokenTree::Atom(Atom::Ident("foo")),
+                            TokenTree::Atom(Atom::Ident("bar")),
                         ],
                     ),
+                    TokenTree::Atom(Atom::Ident("foo")),
                 ],
             )],
             is_method: true,

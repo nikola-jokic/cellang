@@ -995,7 +995,7 @@ fn ensure_arity(
 mod tests {
     use super::*;
     use crate::runtime::Runtime;
-    use crate::value::{StructValue, Value};
+    use crate::value::{IntoValue, ListValue, MapValue, StructValue, Value};
 
     #[test]
     fn evaluates_arithmetic_with_variables() {
@@ -1037,6 +1037,32 @@ mod tests {
         );
     }
 
+    #[test]
+    fn comprehension_macros_allow_function_calls() {
+        let runtime = runtime_with_assets();
+
+        let has_high_risk =
+            eval(&runtime, "exists(assets, asset, asset.risk >= 75)")
+                .expect("exists() macro should evaluate");
+        assert_eq!(has_high_risk, Value::Bool(true));
+
+        let prod_names = eval(&runtime, "map(assets, asset, asset.name)")
+            .expect("map() macro should evaluate");
+        assert_eq!(prod_names, vec!["scanner", "api", "etl"].into_value());
+
+        let filtered =
+            eval(&runtime, "filter(assets, asset, asset.risk >= 75)")
+                .expect("filter() macro should evaluate");
+        assert_eq!(
+            filtered,
+            Value::List(ListValue::from(vec![asset(
+                "scanner",
+                80,
+                &["prod", "pci"],
+            )])),
+        );
+    }
+
     fn runtime_with_user() -> Runtime {
         let mut builder = Runtime::builder();
         let mut user = StructValue::new("example.User");
@@ -1046,5 +1072,32 @@ mod tests {
             .set_variable("user", Value::Struct(user))
             .expect("user variable to set");
         builder.build()
+    }
+
+    fn runtime_with_assets() -> Runtime {
+        let mut builder = Runtime::builder();
+        builder
+            .set_variable("assets", sample_assets())
+            .expect("assets variable to set");
+        builder.build()
+    }
+
+    fn sample_assets() -> Value {
+        Value::List(ListValue::from(vec![
+            asset("scanner", 80, &["prod", "pci"]),
+            asset("api", 65, &["prod"]),
+            asset("etl", 40, &["batch"]),
+        ]))
+    }
+
+    fn asset(name: &str, risk: i64, tags: &[&str]) -> Value {
+        let mut record = MapValue::new();
+        record.insert("name", name);
+        record.insert("risk", risk);
+        record.insert(
+            "tags",
+            ListValue::from(tags.iter().copied().collect::<Vec<_>>()),
+        );
+        Value::Map(record)
     }
 }
