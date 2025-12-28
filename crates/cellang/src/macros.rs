@@ -113,9 +113,7 @@ pub fn detect_macro_call<'src>(
                 ComprehensionKind::All,
                 name,
                 args,
-                is_method,
                 ExpectedArity::Fixed(3),
-                true,
             )?)
         }
         "exists" if registry.is_enabled(MacroKind::Exists) => {
@@ -123,9 +121,7 @@ pub fn detect_macro_call<'src>(
                 ComprehensionKind::Exists,
                 name,
                 args,
-                is_method,
                 ExpectedArity::Fixed(3),
-                true,
             )?)
         }
         "exists_one" if registry.is_enabled(MacroKind::ExistsOne) => {
@@ -133,9 +129,7 @@ pub fn detect_macro_call<'src>(
                 ComprehensionKind::ExistsOne,
                 name,
                 args,
-                is_method,
                 ExpectedArity::Fixed(3),
-                true,
             )?)
         }
         "map" if registry.is_enabled(MacroKind::Map) => {
@@ -143,9 +137,7 @@ pub fn detect_macro_call<'src>(
                 ComprehensionKind::Map,
                 name,
                 args,
-                is_method,
                 ExpectedArity::Either(3, 4),
-                true,
             )?)
         }
         "filter" if registry.is_enabled(MacroKind::Filter) => {
@@ -153,9 +145,7 @@ pub fn detect_macro_call<'src>(
                 ComprehensionKind::Filter,
                 name,
                 args,
-                is_method,
                 ExpectedArity::Fixed(3),
-                true,
             )?)
         }
         _ => None,
@@ -205,16 +195,8 @@ fn parse_comprehension<'src>(
     kind: ComprehensionKind,
     macro_name: &str,
     args: &'src [TokenTree<'src>],
-    is_method: bool,
     arity: ExpectedArity,
-    require_method: bool,
 ) -> Result<MacroInvocation<'src>, RuntimeError> {
-    if require_method && !is_method {
-        return Err(RuntimeError::new(format!(
-            "Macro '{macro_name}' must be invoked using receiver call syntax"
-        )));
-    }
-
     let len_ok = match arity {
         ExpectedArity::Fixed(size) => args.len() == size,
         ExpectedArity::Either(a, b) => args.len() == a || args.len() == b,
