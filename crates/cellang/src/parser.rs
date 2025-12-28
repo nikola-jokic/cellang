@@ -327,7 +327,7 @@ impl<'src> Parser<'src> {
                                     }
                                 }
                             }
-                            rhs => TokenTree::Cons(op, vec![lhs, rhs]),
+                            rhs => Self::chain_field_access(lhs, rhs),
                         }
                     }
                     _ => {
@@ -382,7 +382,26 @@ impl<'src> Parser<'src> {
                     }
                 }
             }
-            other => TokenTree::Cons(Op::Field, vec![lhs, other]),
+            other => Self::chain_field_access(lhs, other),
+        }
+    }
+
+    fn chain_field_access(
+        lhs: TokenTree<'src>,
+        rhs: TokenTree<'src>,
+    ) -> TokenTree<'src> {
+        let mut acc = lhs;
+        let mut current = rhs;
+        loop {
+            current = match current {
+                TokenTree::Cons(Op::Field, mut nodes) if nodes.len() == 2 => {
+                    let next = nodes.remove(0);
+                    let rest = nodes.remove(0);
+                    acc = TokenTree::Cons(Op::Field, vec![acc, next]);
+                    rest
+                }
+                other => return TokenTree::Cons(Op::Field, vec![acc, other]),
+            };
         }
     }
 
@@ -847,14 +866,14 @@ mod tests {
             TokenTree::Cons(
                 Op::Field,
                 vec![
-                    TokenTree::Atom(Atom::Ident("foo")),
                     TokenTree::Cons(
                         Op::Field,
                         vec![
+                            TokenTree::Atom(Atom::Ident("foo")),
                             TokenTree::Atom(Atom::Ident("bar")),
-                            TokenTree::Atom(Atom::Ident("baz")),
                         ]
-                    )
+                    ),
+                    TokenTree::Atom(Atom::Ident("baz")),
                 ]
             )
         );
@@ -878,7 +897,7 @@ mod tests {
                                 ],
                             ),
                             TokenTree::Atom(Atom::Int(0)),
-                        ]
+                        ],
                     ),
                     TokenTree::Atom(Atom::Ident("baz")),
                 ]
@@ -1405,14 +1424,14 @@ mod tests {
         let want = TokenTree::Cons(
             Op::Field,
             vec![
-                TokenTree::Atom(Atom::Ident("foo")),
                 TokenTree::Cons(
                     Op::Field,
                     vec![
+                        TokenTree::Atom(Atom::Ident("foo")),
                         TokenTree::Atom(Atom::Ident("bar")),
-                        TokenTree::Atom(Atom::Ident("baz")),
                     ],
                 ),
+                TokenTree::Atom(Atom::Ident("baz")),
             ],
         );
 
@@ -1430,14 +1449,14 @@ mod tests {
             args: vec![TokenTree::Cons(
                 Op::Field,
                 vec![
-                    TokenTree::Atom(Atom::Ident("foo")),
                     TokenTree::Cons(
                         Op::Field,
                         vec![
-                            TokenTree::Atom(Atom::Ident("bar")),
                             TokenTree::Atom(Atom::Ident("foo")),
+                            TokenTree::Atom(Atom::Ident("bar")),
                         ],
                     ),
+                    TokenTree::Atom(Atom::Ident("foo")),
                 ],
             )],
             is_method: true,
