@@ -2,13 +2,18 @@ use crate::error::RuntimeError;
 use crate::runtime::{Runtime, RuntimeBuilder};
 use crate::value::{ListValue, MapValue, Value};
 use serde_json::Value as JsonValue;
-use serde_wasm_bindgen::{from_value as from_js_value, to_value as to_js_value};
+use serde_wasm_bindgen::{
+    from_value as from_js_value, to_value as to_js_value,
+};
 use wasm_bindgen::prelude::*;
 
 /// Evaluates a CEL expression using a fresh runtime instantiated from the
 /// provided JSON variables.
 #[wasm_bindgen(js_name = "evaluateExpression")]
-pub fn evaluate_expression(source: &str, env: JsValue) -> Result<JsValue, JsValue> {
+pub fn evaluate_expression(
+    source: &str,
+    env: JsValue,
+) -> Result<JsValue, JsValue> {
     let runtime = build_runtime(env)?;
     eval_with_runtime(&runtime, source)
 }
@@ -53,7 +58,10 @@ fn build_runtime(env: JsValue) -> Result<Runtime, JsValue> {
     Ok(builder.build())
 }
 
-fn eval_with_runtime(runtime: &Runtime, source: &str) -> Result<JsValue, JsValue> {
+fn eval_with_runtime(
+    runtime: &Runtime,
+    source: &str,
+) -> Result<JsValue, JsValue> {
     let value = runtime
         .eval(source)
         .map_err(|err| JsValue::from(err.to_string()))?;
@@ -64,7 +72,9 @@ fn decode_env(env: JsValue) -> Result<Option<JsonValue>, JsValue> {
     if env.is_undefined() || env.is_null() {
         return Ok(None);
     }
-    from_js_value(env).map(Some).map_err(|err| JsValue::from(err.to_string()))
+    from_js_value(env)
+        .map(Some)
+        .map_err(|err| JsValue::from(err.to_string()))
 }
 
 fn inject_variables(
@@ -97,7 +107,8 @@ fn json_to_value(value: JsonValue) -> Value {
             .unwrap_or(Value::Null),
         JsonValue::String(text) => Value::String(text),
         JsonValue::Array(items) => {
-            let converted = items.into_iter().map(json_to_value).collect::<Vec<_>>();
+            let converted =
+                items.into_iter().map(json_to_value).collect::<Vec<_>>();
             Value::List(ListValue::from(converted))
         }
         JsonValue::Object(map) => {
@@ -122,11 +133,13 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test;
 
     fn js_env(value: serde_json::Value) -> JsValue {
-        serde_wasm_bindgen::to_value(&value).expect("env serialization succeeds")
+        serde_wasm_bindgen::to_value(&value)
+            .expect("env serialization succeeds")
     }
 
     fn to_json(value: JsValue) -> serde_json::Value {
-        serde_wasm_bindgen::from_value(value).expect("js value converts to json")
+        serde_wasm_bindgen::from_value(value)
+            .expect("js value converts to json")
     }
 
     #[wasm_bindgen_test]
@@ -135,24 +148,29 @@ mod tests {
             "user": { "age": 34 }
         }));
 
-        let result = evaluate_expression("user.age + 1", env).expect("evaluation succeeds");
+        let result = evaluate_expression("user.age + 1", env)
+            .expect("evaluation succeeds");
         assert_eq!(to_json(result), json!(35));
     }
 
     #[wasm_bindgen_test]
     fn child_runtime_merges_variables() {
-        let runtime = WasmRuntime::new(js_env(json!({ "base": 10 }))).expect("runtime builds");
+        let runtime = WasmRuntime::new(js_env(json!({ "base": 10 })))
+            .expect("runtime builds");
         let child = runtime
             .with_variables(js_env(json!({ "offset": 5 })))
             .expect("child runtime builds");
 
-        let result = child.evaluate("base + offset").expect("evaluation succeeds");
+        let result = child
+            .evaluate("base + offset")
+            .expect("evaluation succeeds");
         assert_eq!(to_json(result), json!(15));
     }
 
     #[wasm_bindgen_test]
     fn rejects_non_object_environment() {
-        let err = WasmRuntime::new(js_env(json!(5))).expect_err("non-object env fails");
+        let err = WasmRuntime::new(js_env(json!(5)))
+            .expect_err("non-object env fails");
         let message = err.as_string().expect("error is string");
         assert!(message.contains("Environment must be a JSON object"));
     }
