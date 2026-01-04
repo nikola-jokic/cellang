@@ -11,7 +11,6 @@ pub struct Token<'src> {
     pub origin: &'src str,
     pub offset: usize,
     pub span_len: usize,
-    pub line: usize,
     pub ty: TokenType,
 }
 
@@ -294,7 +293,6 @@ pub struct Lexer<'src> {
     whole: &'src str,
     rest: &'src str,
     byte: usize,
-    line: usize,
     peeked: Option<Result<Token<'src>, SyntaxError>>,
 }
 
@@ -305,7 +303,6 @@ impl<'src> Lexer<'src> {
             whole: input,
             rest: input,
             byte: 0,
-            line: 1,
             peeked: None,
         }
     }
@@ -396,11 +393,9 @@ impl<'src> Iterator for Lexer<'src> {
                 OrEqual(TokenType, TokenType),
             }
 
-            let line = self.line;
             let just = move |ty: TokenType| {
                 Some(Ok(Token {
                     ty,
-                    line,
                     offset: c_at,
                     span_len: c_str.len(),
                     origin: c_str,
@@ -449,9 +444,7 @@ impl<'src> Iterator for Lexer<'src> {
                         return Some(Err(SyntaxError::new(
                             self.whole.to_string(),
                             SourceSpan::new(c_at.into(), self.byte - c_at),
-                            format!(
-                                "[line {line}] Error: Unexpected character: {c}"
-                            ),
+                            format!("Error: Unexpected character: {c}"),
                         )
                         .with_help("expected `&&`")));
                     }
@@ -465,9 +458,7 @@ impl<'src> Iterator for Lexer<'src> {
                         return Some(Err(SyntaxError::new(
                             self.whole.to_string(),
                             SourceSpan::new(c_at.into(), self.byte - c_at),
-                            format!(
-                                "[line {line}] Error: Unexpected character: {c}"
-                            ),
+                            format!("Error: Unexpected character: {c}"),
                         )
                         .with_help("expected `||`")));
                     }
@@ -511,19 +502,14 @@ impl<'src> Iterator for Lexer<'src> {
                     _ => Started::Ident,
                 },
                 '\n' | '\r' => {
-                    self.line += 1;
                     continue;
                 }
                 c if c.is_whitespace() => continue,
                 c => {
-                    let line = self.line;
-
                     return Some(Err(SyntaxError::new(
                         self.whole.to_string(),
                         SourceSpan::new(c_at.into(), self.byte - c_at),
-                        format!(
-                            "[line {line}] Error: Unexpected character: {c}"
-                        ),
+                        format!("Error: Unexpected character: {c}"),
                     )));
                 }
             };
@@ -541,7 +527,6 @@ impl<'src> Iterator for Lexer<'src> {
                     } else {
                         Some(Ok(Token {
                             ty: TokenType::Slash,
-                            line: self.line,
                             offset: c_at,
                             span_len: self.byte - c_at,
                             origin: c_str,
@@ -558,7 +543,6 @@ impl<'src> Iterator for Lexer<'src> {
                     self.read_extra(extra_bytes);
                     Some(Ok(Token {
                         ty: TokenType::String,
-                        line: self.line,
                         offset: c_at,
                         span_len: self.byte - c_at,
                         origin: literal,
@@ -575,7 +559,6 @@ impl<'src> Iterator for Lexer<'src> {
                     self.read_extra(n);
                     Some(Ok(Token {
                         ty: TokenType::RawString,
-                        line: self.line,
                         offset: c_at,
                         span_len: self.byte - c_at,
                         origin: literal,
@@ -591,7 +574,6 @@ impl<'src> Iterator for Lexer<'src> {
                     self.read_extra(n);
                     Some(Ok(Token {
                         ty: TokenType::Bytes,
-                        line: self.line,
                         offset: c_at,
                         span_len: self.byte - c_at,
                         origin: literal,
@@ -609,7 +591,6 @@ impl<'src> Iterator for Lexer<'src> {
                     self.read_extra(extra_bytes);
                     Some(Ok(Token {
                         ty: TokenType::RawBytes,
-                        line: self.line,
                         offset: c_at,
                         span_len: self.byte - c_at,
                         origin: literal,
@@ -634,7 +615,6 @@ impl<'src> Iterator for Lexer<'src> {
                     if literal == "dyn" {
                         Some(Ok(Token {
                             ty: TokenType::Dyn,
-                            line: self.line,
                             offset: c_at,
                             span_len,
                             origin: literal,
@@ -642,7 +622,6 @@ impl<'src> Iterator for Lexer<'src> {
                     } else {
                         Some(Ok(Token {
                             ty,
-                            line: self.line,
                             offset: c_at,
                             span_len,
                             origin: literal,
@@ -701,21 +680,12 @@ impl<'src> Iterator for Lexer<'src> {
 
                     match state {
                         State::Nil => {
-                            let line = self.line;
-
-                            return Some(Err(
-                                SyntaxError::new(
-                                    self.whole.to_string(),
-                                    SourceSpan::new(
-                                        c_at.into(),
-                                        self.byte - c_at,
-                                    ),
-                                    format!(
-                                        "[line {line}] Error: Unexpected character: {c}"
-                                    ),
-                                )
-                                .with_help("Expected a number"),
-                            ));
+                            return Some(Err(SyntaxError::new(
+                                self.whole.to_string(),
+                                SourceSpan::new(c_at.into(), self.byte - c_at),
+                                format!("Error: Unexpected character: {c}"),
+                            )
+                            .with_help("Expected a number")));
                         }
                         State::Dot | State::Exp => {
                             // unread the dot or exp
@@ -726,7 +696,6 @@ impl<'src> Iterator for Lexer<'src> {
                                 ty: TokenType::Int(
                                     c_onwards[..read].parse().unwrap(),
                                 ),
-                                line: self.line,
                                 offset: c_at,
                                 span_len: self.byte - c_at,
                                 origin: &c_onwards[..read],
@@ -741,7 +710,6 @@ impl<'src> Iterator for Lexer<'src> {
                                 ty: TokenType::Int(
                                     c_onwards[..read].parse().unwrap(),
                                 ),
-                                line: self.line,
                                 offset: c_at,
                                 span_len: self.byte - c_at,
                                 origin: &c_onwards[..read],
@@ -754,7 +722,6 @@ impl<'src> Iterator for Lexer<'src> {
                                 ty: TokenType::Int(
                                     c_onwards[..index].parse().unwrap(),
                                 ),
-                                line: self.line,
                                 offset: c_at,
                                 span_len: self.byte - c_at,
                                 origin: &c_onwards[..index],
@@ -767,7 +734,6 @@ impl<'src> Iterator for Lexer<'src> {
                                 ty: TokenType::Uint(
                                     c_onwards[..index - 1].parse().unwrap(),
                                 ),
-                                line: self.line,
                                 offset: c_at,
                                 span_len: self.byte - c_at,
                                 origin: &c_onwards[..index],
@@ -780,7 +746,6 @@ impl<'src> Iterator for Lexer<'src> {
                                 ty: TokenType::Double(
                                     c_onwards[..index].parse().unwrap(),
                                 ),
-                                line: self.line,
                                 offset: c_at,
                                 span_len: self.byte - c_at,
                                 origin: &c_onwards[..index],
@@ -791,13 +756,10 @@ impl<'src> Iterator for Lexer<'src> {
                 Started::HexNumber => {
                     let rest = &c_onwards[2..]; // ignore 0x
                     if rest.is_empty() {
-                        let line = self.line;
                         return Some(Err(SyntaxError::new(
                             self.whole.to_string(),
                             SourceSpan::new(c_at.into(), self.byte - c_at),
-                            format!(
-                                "[line {line}] Error: Unexpected character: {c}"
-                            ),
+                            format!("Error: Unexpected character: {c}"),
                         )
                         .with_help("Expected a number")));
                     }
@@ -823,7 +785,6 @@ impl<'src> Iterator for Lexer<'src> {
                             ty: TokenType::Uint(
                                 u64::from_str_radix(&literal[2..], 16).unwrap(),
                             ),
-                            line: self.line,
                             offset: c_at,
                             span_len: self.byte - c_at,
                             origin: literal,
@@ -834,7 +795,6 @@ impl<'src> Iterator for Lexer<'src> {
                             ty: TokenType::Int(
                                 i64::from_str_radix(&literal[2..], 16).unwrap(),
                             ),
-                            line: self.line,
                             offset: c_at,
                             span_len: self.byte - c_at,
                             origin: literal,
@@ -848,7 +808,6 @@ impl<'src> Iterator for Lexer<'src> {
                         self.byte += 1;
                         Some(Ok(Token {
                             ty: or_else,
-                            line: self.line,
                             offset: c_at,
                             span_len: self.byte - c_at,
                             origin: span,
@@ -856,7 +815,6 @@ impl<'src> Iterator for Lexer<'src> {
                     } else {
                         Some(Ok(Token {
                             ty: token,
-                            line: self.line,
                             offset: c_at,
                             span_len: self.byte - c_at,
                             origin: c_str,
