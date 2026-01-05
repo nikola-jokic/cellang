@@ -1,3 +1,5 @@
+#![allow(unused_assignments)]
+
 use crate::value::ValueError;
 use miette::{Diagnostic, SourceSpan};
 use std::error::Error as StdError;
@@ -23,6 +25,7 @@ pub struct SyntaxError {
 
 impl SyntaxError {
     /// Creates a new syntax error capturing the offending source span.
+    #[allow(unused_assignments)]
     pub fn new(
         source_code: impl Into<String>,
         span: SourceSpan,
