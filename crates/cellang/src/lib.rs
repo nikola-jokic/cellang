@@ -12,6 +12,8 @@ pub mod parser;
 pub mod runtime;
 pub mod types;
 pub mod value;
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+pub mod wasm;
 
 pub use crate::env::*;
 pub use ast::*;
@@ -24,6 +26,8 @@ pub use parser::*;
 pub use runtime::*;
 pub use types::*;
 pub use value::*;
+#[cfg(all(feature = "wasm", target_arch = "wasm32"))]
+pub use wasm::*;
 
 #[cfg(feature = "derive")]
 pub use cellang_macros::CelStruct;
