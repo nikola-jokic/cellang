@@ -212,7 +212,6 @@ fn main() -> Result<(), Error> {
 struct LexToken {
     kind: String,
     lexeme: String,
-    line: usize,
     offset: usize,
     span_len: usize,
 }
@@ -222,7 +221,6 @@ impl<'src> From<Token<'src>> for LexToken {
         LexToken {
             kind: format!("{:?}", token.ty),
             lexeme: token.origin.to_string(),
-            line: token.line,
             offset: token.offset,
             span_len: token.span_len,
         }
