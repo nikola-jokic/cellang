@@ -134,3 +134,27 @@ fn build_runtime() -> miette::Result<cellang::Runtime> {
     Ok(builder.build())
 }
 ```
+
+## WebAssembly
+
+Cellang can be compiled to `wasm32-unknown-unknown` behind the optional `wasm` feature. The bindings in [src/wasm.rs](crates/cellang/src/wasm.rs) expose an `evaluateExpression` helper and a reusable `WasmRuntime` class. Build the WebAssembly artifact with:
+
+```bash
+cargo build -p cellang --features wasm --target wasm32-unknown-unknown
+```
+
+For projects that expect JavaScript glue code, run `wasm-pack build crates/cellang --features wasm --target web` to generate the `.wasm` binary plus the corresponding JS module. JavaScript callers can then evaluate expressions provided that the environment is a JSON-serializable object:
+
+```javascript
+import { evaluateExpression, WasmRuntime } from "cellang";
+
+const result = await evaluateExpression("users.exists(u, u == name)", {
+    users: ["alice", "bob"],
+    name: "alice",
+});
+
+const runtime = new WasmRuntime({ greeting: "hello" });
+const jsValue = runtime.evaluate("greeting.upperAscii() == 'HELLO'");
+```
+
+Both exports accept any value that `serde_wasm_bindgen` can convert (objects, arrays, scalars). Additional per-evaluation variables can be merged via `runtime.withVariables({...})`, which builds a scoped child runtime without mutating the original instance.

@@ -10,9 +10,13 @@ readme = "README.md"
 keywords = ["cel", "expression", "language", "interpreter", "rust"]
 categories = ["development-tools", "compilers"]
 
+[lib]
+crate-type = ["rlib", "cdylib"]
+
 [features]
 default = []
 derive = ["cellang-macros"]
+wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
 
 [dependencies]
 cellang-macros = { path = "../cellang-macros", optional = true }
@@ -22,13 +26,18 @@ regex = "^1"
 time = { version = "^0.3", features = ["serde", "formatting", "parsing"] }
 base64 = "^0.22"
 thiserror = "^2"
+serde_json = "^1"
+wasm-bindgen = { version = "^0.2.95", optional = true, features = ["spans"] }
+serde-wasm-bindgen = { version = "^0.6", optional = true }
 
 [dev-dependencies]
 miette = { version = "^7", features = ["fancy"] }
-serde_json = "^1"
 time = { version = "^0.3", features = [
     "serde",
     "formatting",
     "parsing",
     "macros",
 ] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "^0.3"
