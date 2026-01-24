@@ -2,16 +2,13 @@
 
 resolver = "2"
 
-members = [
-	"crates/cellang",
-	"crates/cellang-cli",
-	"crates/cellang-macros",
-]
+members = ["crates/cellang", "crates/cellang-cli", "crates/cellang-macros"]
 
 [workspace.package]
 version = "0.5.0"
 edition = "2024"
 license = "MIT"
+authors = ["Nikola Jokic <jokicnikola07@gmail.com>"]
 
 [profile.release]
 codegen-units = 1
