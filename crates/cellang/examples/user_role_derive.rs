@@ -30,11 +30,27 @@ mod example {
         let is_admin = runtime.eval("users[0].has_role(role)")?;
         assert_eq!(is_admin, Value::Bool(true));
 
+        let admin_names = runtime.eval(
+            "users.filter(user, user.has_role('admin')).map(user, user.name)",
+        )?;
+        assert_eq!(
+            admin_names,
+            Value::List(ListValue::from(vec!["Alice", "Charlie"])),
+        );
+
         let mut scoped = runtime.child_builder();
         scoped.set_variable("role", "user")?;
         let scoped = scoped.build();
         let is_user = scoped.eval("users[1].has_role(role)")?;
         assert_eq!(is_user, Value::Bool(true));
+
+        let everyone_has_roles =
+            scoped.eval("users.all(user, has(user.roles))")?;
+        assert_eq!(everyone_has_roles, Value::Bool(true));
+
+        let exactly_one_alice =
+            scoped.eval("users.exists_one(user, user.name == 'Alice')")?;
+        assert_eq!(exactly_one_alice, Value::Bool(true));
 
         Ok(())
     }

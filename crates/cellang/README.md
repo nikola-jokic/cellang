@@ -24,116 +24,64 @@ This library aims to be ergonomic without hiding the lower-level building blocks
 2. Evaluate expressions against that runtime (or child runtimes that inherit the same environment).
 
 ```rust
+use cellang::types::{FunctionDecl, OverloadDecl, Type};
 use cellang::{Runtime, Value};
 
 fn main() -> miette::Result<()> {
     let mut builder = Runtime::builder();
-    builder.set_variable("greeting", "Hello");
-    builder.set_variable("name", "World");
+    builder.set_variable("first_name", "Ada")?;
+    builder.set_variable("last_name", "Lovelace")?;
+    builder.set_variable("roles", vec!["admin", "analyst"])?;
 
-    builder.register_function("shout", |text: String| text.to_uppercase())?;
+    let mut decl = FunctionDecl::new("full_name");
+    decl.add_overload(OverloadDecl::new(
+        "full_name_string_string",
+        vec![Type::String, Type::String],
+        Type::String,
+    ))?;
+    builder.add_function_decl(decl)?;
+    builder.register_function("full_name", |first: String, last: String| {
+        format!("{first} {last}")
+    })?;
 
     let runtime = builder.build();
-    let value = runtime.eval("shout(greeting + ", " + name)")?;
-    assert_eq!(value, Value::String("HELLO, WORLD".into()));
+    let value = runtime.eval("full_name(first_name, last_name)")?;
+    assert_eq!(value, Value::String("Ada Lovelace".into()));
+
+    let is_admin = runtime.eval("'admin' in roles")?;
+    assert_eq!(is_admin, Value::Bool(true));
     Ok(())
 }
 ```
 
-### Advanced example
+## Runnable Examples
 
-The [user_role](./examples/user_role.rs) example demonstrates how to register structured data, declare CEL metadata, and surface strongly typed native functions:
+The examples in [examples](examples) are written as user documentation and are also executed by `cargo test`, so they stay in sync with the public API.
 
-```rust
-use cellang::runtime::RuntimeBuilder;
-use cellang::Runtime;
-use cellang::types::{FieldDecl, FunctionDecl, IdentDecl, NamedType, OverloadDecl, StructType, Type};
-use cellang::value::{IntoValue, StructValue, TryFromValue, Value, ValueError};
+Run all default-feature examples with:
 
-const USER_TYPE: &str = "example.User";
-const EXPRESSION: &str = "users[0].has_role(role)";
-
-fn main() -> miette::Result<()> {
-    let runtime = build_runtime()?;
-
-    let mut scoped = runtime.child_builder();
-    scoped.set_variable("role", "admin");
-    let scoped = scoped.build();
-
-    let result = scoped.eval(EXPRESSION)?;
-    assert_eq!(result, Value::Bool(true));
-    println!("{} => {}", EXPRESSION, result);
-    Ok(())
-}
-
-fn install_user_schema(builder: &mut RuntimeBuilder) -> miette::Result<()> {
-    let mut user = StructType::new(USER_TYPE);
-    user.add_field("name", FieldDecl::new(Type::String))?;
-    user.add_field("roles", FieldDecl::new(Type::list(Type::String)))?;
-    builder.add_type(NamedType::Struct(user))?;
-    builder.add_ident(IdentDecl::new("users", Type::list(Type::struct_type(USER_TYPE))))?;
-
-    let mut decl = FunctionDecl::new("has_role");
-    decl.add_overload(
-        OverloadDecl::new(
-            "user_has_role_string",
-            vec![Type::struct_type(USER_TYPE), Type::String],
-            Type::Bool,
-        )
-        .with_receiver(Type::struct_type(USER_TYPE)),
-    )?;
-    builder.add_function_decl(decl)?;
-    Ok(())
-}
-
-#[derive(Clone)]
-struct User {
-    name: String,
-    roles: Vec<String>,
-}
-
-impl IntoValue for User {
-    fn into_value(self) -> Value {
-        let mut value = StructValue::new(USER_TYPE);
-        value.set_field("name", self.name);
-        value.set_field("roles", self.roles);
-        Value::Struct(value)
-    }
-}
-
-impl TryFromValue for User {
-    fn try_from_value(value: &Value) -> Result<Self, ValueError> {
-        let Value::Struct(strct) = value else {
-            return Err(ValueError::Message("expected struct".into()));
-        };
-        Ok(Self {
-            name: String::try_from_value(strct.get("name").unwrap())?,
-            roles: Vec::<String>::try_from_value(strct.get("roles").unwrap())?,
-        })
-    }
-}
-
-fn has_role(user: User, role: String) -> bool {
-    user.roles.iter().any(|current| current == &role)
-}
-
-fn build_runtime() -> miette::Result<cellang::Runtime> {
-    let mut builder = Runtime::builder();
-    install_user_schema(&mut builder)?;
-    builder.register_function("has_role", has_role)?;
-    builder.set_variable("users", vec![
-        User {
-            name: "Alice".into(),
-            roles: vec!["admin".into()],
-        },
-        User {
-            name: "Bob".into(),
-            roles: vec!["user".into()],
-        },
-    ]);
-    Ok(builder.build())
-}
+```bash
+cargo test -p cellang --examples
 ```
+
+Run the derive-backed example with:
+
+```bash
+cargo test -p cellang --features derive --example user_role_derive
+```
+
+Good starting points:
+
+- [examples/getting_started.rs](examples/getting_started.rs) shows variables, scoped child runtimes, function declarations, native function registration, and error handling.
+- [examples/policy_rules.rs](examples/policy_rules.rs) shows map-backed request/resource data and policy expressions that can be owned outside Rust code.
+- [examples/typed_environment.rs](examples/typed_environment.rs) shows typed environment metadata, compile-time validation, typed AST serialization, and runtime evaluation.
+- [examples/create_function.rs](examples/create_function.rs) focuses on registering custom functions as both functions and receiver-style methods.
+- [examples/env_snapshot.rs](examples/env_snapshot.rs) shows serializing an `Env` so rule metadata can be cached and reused.
+- [examples/user_role_derive.rs](examples/user_role_derive.rs) shows the optional `derive` feature for structured data.
+
+### Advanced Examples
+
+For larger flows, prefer the checked examples over copying README snippets. [examples/typed_environment.rs](examples/typed_environment.rs) demonstrates explicit type metadata and compile-time rule validation, while [examples/user_role_derive.rs](examples/user_role_derive.rs) demonstrates the optional `derive` feature for strongly typed Rust structs.
 
 ## WebAssembly
 
