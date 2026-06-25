@@ -41,3 +41,49 @@ time = { version = "^0.3", features = [
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "^0.3"
+
+[[example]]
+name = "simple"
+test = true
+harness = false
+
+[[example]]
+name = "getting_started"
+test = true
+harness = false
+
+[[example]]
+name = "policy_rules"
+test = true
+harness = false
+
+[[example]]
+name = "typed_environment"
+test = true
+harness = false
+
+[[example]]
+name = "comprehensions"
+test = true
+harness = false
+
+[[example]]
+name = "concurrency"
+test = true
+harness = false
+
+[[example]]
+name = "create_function"
+test = true
+harness = false
+
+[[example]]
+name = "env_snapshot"
+test = true
+harness = false
+
+[[example]]
+name = "user_role_derive"
+required-features = ["derive"]
+test = true
+harness = false

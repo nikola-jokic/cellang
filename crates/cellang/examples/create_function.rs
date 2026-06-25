@@ -32,11 +32,29 @@ fn main() -> Result<()> {
     let value = runtime.eval("'a,b,c'.split(',')")?;
     assert_eq!(value, expected);
 
+    let as_function = runtime.eval("split('red|green|blue', '|')")?;
+    assert_eq!(
+        as_function,
+        Value::List(ListValue::from(vec!["red", "green", "blue"])),
+    );
+
+    let middle = runtime.eval("'red|green|blue'.split('|')[1]")?;
+    assert_eq!(middle, Value::String("green".to_string()));
+
+    let segment_count = runtime.eval("size('red|green|blue'.split('|'))")?;
+    assert_eq!(segment_count, Value::Int(3));
+
     let mut scoped = runtime.child_builder();
     scoped.set_variable("x", "a,b,c")?;
     let scoped = scoped.build();
     let via_variable = scoped.eval("x.split(',')")?;
     assert_eq!(via_variable, expected);
+
+    let err = scoped.eval("x.split('::')").expect_err("invalid delimiter");
+    assert!(
+        err.to_string().contains("single-character delimiter"),
+        "unexpected error: {err}",
+    );
 
     Ok(())
 }

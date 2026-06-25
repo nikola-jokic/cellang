@@ -28,7 +28,30 @@ fn main() -> Result<()> {
              request.resource.accesses.exists(access, access == desired_access)",
         )?;
         assert_eq!(decision, Value::Bool(expected));
+
+        let has_accesses = runtime.eval("has(request.resource.accesses)")?;
+        assert_eq!(has_accesses, Value::Bool(true));
+
+        let access_count = runtime.eval("size(request.resource.accesses)")?;
+        assert_eq!(access_count, Value::Int(2));
+
+        let request_type = runtime.eval("type(request)")?;
+        assert_eq!(
+            request_type,
+            Value::String("example.AccessRequest".to_string()),
+        );
     }
+
+    let env: Env = serde_json::from_slice(&env_cache).into_diagnostic()?;
+    let mut builder = Runtime::builder();
+    builder.import_env_owned(env)?;
+    builder.register_function("same_tenant", same_tenant)?;
+    builder.set_variable("request", request_value())?;
+    builder.set_variable("resource_owner", "analytics")?;
+    builder.set_variable("desired_access", "read")?;
+    let mismatched_access =
+        builder.build().eval("7 in request.resource.accesses")?;
+    assert_eq!(mismatched_access, Value::Bool(false));
 
     Ok(())
 }

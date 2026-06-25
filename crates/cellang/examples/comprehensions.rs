@@ -11,14 +11,31 @@ fn main() -> Result<()> {
         runtime.eval("assets.exists(asset, asset.risk >= 75)")?;
     assert_eq!(has_high_risk, Value::Bool(true));
 
+    let exactly_one_pci =
+        runtime.eval("assets.exists_one(asset, 'pci' in asset.tags)")?;
+    assert_eq!(exactly_one_pci, Value::Bool(true));
+
     let prod_names = runtime.eval(
         "assets.filter(asset, 'prod' in asset.tags).map(asset, asset.name)",
     )?;
     assert_eq!(prod_names, vec!["scanner", "api"].into_value());
 
+    let prod_risks = runtime.eval(
+        "assets.filter(asset, 'prod' in asset.tags).map(asset, asset.risk)",
+    )?;
+    assert_eq!(prod_risks, vec![80_i64, 65_i64].into_value());
+
     let all_positive =
         runtime.eval("assets.map(asset, asset.risk).all(risk, risk >= 0)")?;
     assert_eq!(all_positive, Value::Bool(true));
+
+    let no_critical_batch = runtime.eval(
+        "!assets.exists(asset, 'batch' in asset.tags && asset.risk >= 75)",
+    )?;
+    assert_eq!(no_critical_batch, Value::Bool(true));
+
+    let has_owner = runtime.eval("assets.all(asset, has(asset.owner))")?;
+    assert_eq!(has_owner, Value::Bool(true));
 
     Ok(())
 }
@@ -36,6 +53,7 @@ fn asset(name: &str, risk: i64, tags: &[&str]) -> Value {
     let mut record = MapValue::new();
     record.insert("name", name);
     record.insert("risk", risk);
+    record.insert("owner", "platform");
     record.insert(
         "tags",
         ListValue::from(tags.iter().copied().collect::<Vec<_>>()),
