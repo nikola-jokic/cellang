@@ -4,7 +4,7 @@ use miette::SourceSpan;
 use std::{borrow::Cow, collections::HashMap, sync::OnceLock};
 
 /// Token represents a single token in the source code.
-/// The token from the lexer is used by the parser to build the AST (or a TokenTree).
+/// The token from the lexer is used by the parser to build the syntax tree.
 /// It is up to the parser to decide how to use the token.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token<'src> {

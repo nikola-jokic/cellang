@@ -11,10 +11,31 @@ but is open-source and can be used by anyone.
 There is a great rust project called [CEL Interpreter](https://crates.io/crates/cel-interpreter) which I initially used.
 
 However, I found that the project is not flexible enough for my needs. I needed to be able to:
-- Inspect the AST of the program during validations
-- Add slightly more complex functions on types.
+- Inspect the syntax tree during parsing for IDE/LSP support
+- Add slightly more complex functions on types
+- Robust error recovery for incomplete expressions
 
 Therefore, the library exposes lower-level primitives that would allow you to do that.
+
+## Parser Architecture
+
+Cellang uses a **Rowan-based parser** with a clean semantic boundary:
+
+1. **Lexer** (`lexer`) - Tokenizes source text into a stream of tokens
+2. **Rowan Parser** (`parser::parse`) - Builds a lossless concrete syntax tree (CST)
+   - Preserves whitespace, comments, error tokens
+   - Supports error recovery for IDE/LSP workflows
+3. **HIR Lowering** (`parser::lower`) - Converts CST to high-level intermediate representation
+   - Strips away syntax noise (grouping parens, etc.)
+   - Owned data structure suitable for semantic analysis
+4. **Type Checking** (`parser::type_check`) - Validates types and builds typed expression graph
+5. **Interpreter** (`parser::eval`) - Evaluates expressions against a runtime
+
+**Note**: Existing code using nested module paths (`cellang::syntax::parser`, `cellang::hir::lower`, etc.) continues to work. Both canonical and compatibility paths coexist for additive migration.
+
+The separation between CST (syntax layer) and HIR (semantic layer) provides:
+- **CST**: Perfect for IDE tooling (preserves all source details, supports incremental parsing)
+- **HIR**: Perfect for semantic analysis (clean structure, no parser lifetimes)
 
 ## Getting started
 

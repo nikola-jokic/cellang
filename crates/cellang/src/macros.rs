@@ -1,5 +1,5 @@
 use crate::error::RuntimeError;
-use crate::parser::{Atom, Op, TokenTree};
+use crate::hir::expr::{Atom as HirAtom, Expr as HirExpr};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -31,7 +31,6 @@ pub struct MacroRegistry {
 }
 
 impl MacroRegistry {
-    /// Creates a new MacroRegistry with all macros enabled.
     pub fn new() -> Self {
         let mut registry = MacroRegistry::default();
         registry.enable(MacroKind::Has);
@@ -43,29 +42,24 @@ impl MacroRegistry {
         registry
     }
 
-    /// Creates a new MacroRegistry with no macros enabled.
     pub fn empty() -> Self {
         MacroRegistry {
             enabled: BTreeSet::new(),
         }
     }
 
-    /// Enables a macro of the given kind.
     pub fn enable(&mut self, kind: MacroKind) {
         self.enabled.insert(kind);
     }
 
-    /// Disables a macro of the given kind.
     pub fn disable(&mut self, kind: MacroKind) {
         self.enabled.remove(&kind);
     }
 
-    /// Checks if a macro of the given kind is enabled.
     pub fn is_enabled(&self, kind: MacroKind) -> bool {
         self.enabled.contains(&kind)
     }
 
-    /// Merges another MacroRegistry into this one, enabling any macros that are
     pub fn merge(&mut self, other: &MacroRegistry) {
         for kind in &other.enabled {
             self.enabled.insert(*kind);
@@ -83,35 +77,37 @@ pub enum ComprehensionKind {
     Filter,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum MacroInvocation<'src> {
+#[derive(Clone, Debug)]
+pub enum MacroInvocation {
     Has {
-        target: &'src TokenTree<'src>,
-        field: &'src str,
+        target: HirExpr,
+        field: String,
     },
     Comprehension {
         kind: ComprehensionKind,
-        range: &'src TokenTree<'src>,
-        var: &'src str,
-        predicate: Option<&'src TokenTree<'src>>,
-        transform: Option<&'src TokenTree<'src>>,
+        range: HirExpr,
+        var: String,
+        predicate: Option<HirExpr>,
+        transform: Option<HirExpr>,
     },
 }
 
-pub fn detect_macro_call<'src>(
+pub fn detect_macro_call(
     registry: &MacroRegistry,
-    name: &str,
-    args: &'src [TokenTree<'src>],
+    func: &HirExpr,
+    args: &[HirExpr],
     is_method: bool,
-) -> Result<Option<MacroInvocation<'src>>, RuntimeError> {
-    let invocation = match name {
+) -> Result<Option<MacroInvocation>, RuntimeError> {
+    let name = resolve_function_name(func)?;
+
+    let invocation = match name.as_str() {
         "has" if registry.is_enabled(MacroKind::Has) => {
             Some(parse_has_macro(args, is_method)?)
         }
         "all" if registry.is_enabled(MacroKind::All) => {
             Some(parse_comprehension(
                 ComprehensionKind::All,
-                name,
+                &name,
                 args,
                 ExpectedArity::Fixed(3),
             )?)
@@ -119,7 +115,7 @@ pub fn detect_macro_call<'src>(
         "exists" if registry.is_enabled(MacroKind::Exists) => {
             Some(parse_comprehension(
                 ComprehensionKind::Exists,
-                name,
+                &name,
                 args,
                 ExpectedArity::Fixed(3),
             )?)
@@ -127,7 +123,7 @@ pub fn detect_macro_call<'src>(
         "exists_one" if registry.is_enabled(MacroKind::ExistsOne) => {
             Some(parse_comprehension(
                 ComprehensionKind::ExistsOne,
-                name,
+                &name,
                 args,
                 ExpectedArity::Fixed(3),
             )?)
@@ -135,7 +131,7 @@ pub fn detect_macro_call<'src>(
         "map" if registry.is_enabled(MacroKind::Map) => {
             Some(parse_comprehension(
                 ComprehensionKind::Map,
-                name,
+                &name,
                 args,
                 ExpectedArity::Either(3, 4),
             )?)
@@ -143,7 +139,7 @@ pub fn detect_macro_call<'src>(
         "filter" if registry.is_enabled(MacroKind::Filter) => {
             Some(parse_comprehension(
                 ComprehensionKind::Filter,
-                name,
+                &name,
                 args,
                 ExpectedArity::Fixed(3),
             )?)
@@ -153,15 +149,28 @@ pub fn detect_macro_call<'src>(
     Ok(invocation)
 }
 
+fn resolve_function_name(expr: &HirExpr) -> Result<String, RuntimeError> {
+    match expr {
+        HirExpr::Atom(HirAtom::Ident(name)) => Ok(name.clone()),
+        HirExpr::Field { target, field } => {
+            let left = resolve_function_name(target)?;
+            Ok(format!("{}.{}", left, field))
+        }
+        _ => Err(RuntimeError::new(
+            "function calls must reference an identifier",
+        )),
+    }
+}
+
 enum ExpectedArity {
     Fixed(usize),
     Either(usize, usize),
 }
 
-fn parse_has_macro<'src>(
-    args: &'src [TokenTree<'src>],
+fn parse_has_macro(
+    args: &[HirExpr],
     is_method: bool,
-) -> Result<MacroInvocation<'src>, RuntimeError> {
+) -> Result<MacroInvocation, RuntimeError> {
     if is_method {
         return Err(RuntimeError::new(
             "has() macro must be invoked as a standalone function",
@@ -172,31 +181,23 @@ fn parse_has_macro<'src>(
             "has() macro expects a single field selection argument",
         ));
     }
-    let TokenTree::Cons(Op::Field, nodes) = &args[0] else {
+    let HirExpr::Field { target, field } = &args[0] else {
         return Err(RuntimeError::new(
             "has() macro argument must be a field selection",
         ));
     };
-    if nodes.len() != 2 {
-        return Err(RuntimeError::new("has() macro argument is malformed"));
-    }
-    let Some(field) = ident_name(&nodes[1]) else {
-        return Err(RuntimeError::new(
-            "has() macro field accessor must be an identifier",
-        ));
-    };
     Ok(MacroInvocation::Has {
-        target: &nodes[0],
-        field,
+        target: (**target).clone(),
+        field: field.clone(),
     })
 }
 
-fn parse_comprehension<'src>(
+fn parse_comprehension(
     kind: ComprehensionKind,
     macro_name: &str,
-    args: &'src [TokenTree<'src>],
+    args: &[HirExpr],
     arity: ExpectedArity,
-) -> Result<MacroInvocation<'src>, RuntimeError> {
+) -> Result<MacroInvocation, RuntimeError> {
     let len_ok = match arity {
         ExpectedArity::Fixed(size) => args.len() == size,
         ExpectedArity::Either(a, b) => args.len() == a || args.len() == b,
@@ -213,11 +214,11 @@ fn parse_comprehension<'src>(
     let binder_expr = args.get(1).ok_or_else(|| {
         RuntimeError::new("macro invocation missing iterator variable")
     })?;
-    let Some(var) = ident_name(binder_expr) else {
-        return Err(RuntimeError::new(format!(
+    let var = ident_name(binder_expr).ok_or_else(|| {
+        RuntimeError::new(format!(
             "Macro '{macro_name}' iterator variable must be an identifier"
-        )));
-    };
+        ))
+    })?;
 
     let (predicate, transform) = match kind {
         ComprehensionKind::Map => match args.len() {
@@ -242,16 +243,16 @@ fn parse_comprehension<'src>(
 
     Ok(MacroInvocation::Comprehension {
         kind,
-        range,
+        range: range.clone(),
         var,
-        predicate,
-        transform,
+        predicate: predicate.cloned(),
+        transform: transform.cloned(),
     })
 }
 
-fn ident_name<'src>(expr: &'src TokenTree<'src>) -> Option<&'src str> {
+fn ident_name(expr: &HirExpr) -> Option<String> {
     match expr {
-        TokenTree::Atom(Atom::Ident(name)) => Some(name),
+        HirExpr::Atom(HirAtom::Ident(name)) => Some(name.clone()),
         _ => None,
     }
 }

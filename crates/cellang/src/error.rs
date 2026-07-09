@@ -1,5 +1,6 @@
 #![allow(unused_assignments)]
 
+use crate::hir::LowerError;
 use crate::value::ValueError;
 use miette::{Diagnostic, SourceSpan};
 use std::error::Error as StdError;
@@ -148,6 +149,12 @@ impl From<SyntaxError> for RuntimeError {
     }
 }
 
+impl From<LowerError> for RuntimeError {
+    fn from(error: LowerError) -> Self {
+        RuntimeError::with_source(error.to_string(), error)
+    }
+}
+
 /// Describes failures that can occur while compiling CEL source into a typed AST.
 #[derive(Debug, Error, Diagnostic)]
 pub enum CompileError {
@@ -157,4 +164,6 @@ pub enum CompileError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Type(#[from] RuntimeError),
+    #[error(transparent)]
+    Lower(#[from] LowerError),
 }

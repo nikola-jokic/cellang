@@ -2,7 +2,6 @@ use crate::EnvError;
 use crate::ast::TypedExpr;
 use crate::error::CompileError;
 use crate::macros::MacroRegistry;
-use crate::parser::Parser;
 use crate::types::{
     FunctionDecl, IdentDecl, NamedType, OverloadDecl, Type, TypeName,
     TypeRegistry,
@@ -63,9 +62,8 @@ impl Env {
 
     /// Compiles the given CEL source code into a typed AST using this environment.
     pub fn compile(&self, src: &str) -> Result<TypedExpr, CompileError> {
-        let mut parser = Parser::new(src);
-        let token_tree = parser.parse()?;
-        let typed = crate::ast::type_check(self, &token_tree)?;
+        let hir_expr = crate::hir::lower_source(src)?;
+        let typed = crate::ast::type_check(self, &hir_expr)?;
         Ok(typed)
     }
 }
