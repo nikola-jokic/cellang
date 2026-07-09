@@ -83,8 +83,8 @@ fn canonical_eval_ast_compiles() {
 
 #[test]
 fn parse_lower_eval_parity_simple() {
-    use cellang::parser::eval;
     use cellang::Value;
+    use cellang::parser::eval;
 
     let runtime = Runtime::builder().build();
 
@@ -139,7 +139,8 @@ fn parse_lower_eval_parity_chaining() {
         .expect("set_variable failed");
     let runtime = builder.build();
 
-    let canonical_result = eval(&runtime, "users[0].name").expect("eval failed");
+    let canonical_result =
+        eval(&runtime, "users[0].name").expect("eval failed");
 
     assert_eq!(
         canonical_result,

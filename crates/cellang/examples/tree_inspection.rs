@@ -6,8 +6,7 @@
 //! Run with: cargo run --example tree_inspection
 
 use cellang::{
-    RuntimeError,
-    SyntaxKind,
+    RuntimeError, SyntaxKind,
     inspection::{node_at_offset, text_range},
     parser::{CelNode, parse},
 };

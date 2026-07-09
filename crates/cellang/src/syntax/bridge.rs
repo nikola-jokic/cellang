@@ -1,6 +1,6 @@
-use crate::lexer::TokenType;
 #[cfg(test)]
 use crate::lexer::Token;
+use crate::lexer::TokenType;
 use crate::syntax::SyntaxKind;
 
 /// Converts a lexer token kind into the corresponding Rowan syntax kind.
