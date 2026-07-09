@@ -23,29 +23,28 @@ cargo test --locked --all-features --all-targets
 cargo test --locked --all-features --doc
 ```
 
-Examples under `crates/cellang/examples` can be exercised via:
+Examples under `crates/cellang/examples` can be exercised from the workspace root via:
 
 ```bash
-cd crates/cellang
-for example in examples/*.rs; do \
+for example in crates/cellang/examples/*.rs; do \
  name=$(basename "${example%.rs}"); \
- cargo test --locked --all-features --example "$name"; \
+ cargo run --locked --all-features -p cellang --example "$name"; \
 done
 ```
 
-or run directly with `cargo run --example <name>` for interactive experimentation.
+or run directly with `cargo run -p cellang --example <name>` for interactive experimentation.
 
 ### Example overview
 
 | Example | Highlights |
 | --- | --- |
-| `simple` | Basic expression evaluation, child runtimes, and scalar values. |
-| `create_function` | Registering function declarations plus native Rust implementations. |
-| `concurrency` | Sharing a runtime builder across threads for parallel evaluation. |
-| `user_role_derive` | Using the `derive` feature to expose Rust structs and methods to CEL. |
-| `comprehensions` | Practical use of CEL macros like `exists`, `filter`, `map`, and `all`. |
-| `env_snapshot` | Building, serializing, and rehydrating a reusable environment snapshot. |
-| `tree_inspection` | Inspecting parsed syntax trees for IDE/LSP tooling, linters, and code analysis. |
+| [`simple`](./crates/cellang/examples/simple.rs) | Basic expression evaluation, child runtimes, and scalar values. |
+| [`create_function`](./crates/cellang/examples/create_function.rs) | Registering function declarations plus native Rust implementations. |
+| [`concurrency`](./crates/cellang/examples/concurrency.rs) | Sharing a runtime builder across threads for parallel evaluation. |
+| [`user_role_derive`](./crates/cellang/examples/user_role_derive.rs) | Using the `derive` feature to expose Rust structs and methods to CEL. |
+| [`comprehensions`](./crates/cellang/examples/comprehensions.rs) | Practical use of CEL macros like `exists`, `filter`, `map`, and `all`. |
+| [`env_snapshot`](./crates/cellang/examples/env_snapshot.rs) | Building, serializing, and rehydrating a reusable environment snapshot. |
+| [`tree_inspection`](./crates/cellang/examples/tree_inspection.rs) | Inspecting parsed syntax trees for IDE/LSP tooling, linters, and code analysis. |
 
 ## CLI
 
