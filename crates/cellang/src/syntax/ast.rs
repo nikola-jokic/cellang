@@ -369,7 +369,9 @@ impl MapNode {
     pub fn entries(&self) -> Vec<(CelNode, CelNode)> {
         let nodes: Vec<_> = self.0.children().collect();
         nodes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| (pair[0].clone(), pair[1].clone()))
             .collect()
     }

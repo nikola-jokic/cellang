@@ -26,9 +26,9 @@ cargo test --locked --all-features --doc
 Examples under `crates/cellang/examples` can be exercised from the workspace root via:
 
 ```bash
-for example in crates/cellang/examples/*.rs; do \
- name=$(basename "${example%.rs}"); \
- cargo run --locked --all-features -p cellang --example "$name"; \
+for example in crates/cellang/examples/*.rs; do
+ name=$(basename "${example%.rs}")
+ cargo run --locked --all-features -p cellang --example "$name"
 done
 ```
 

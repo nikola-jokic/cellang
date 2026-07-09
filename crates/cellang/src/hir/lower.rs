@@ -555,7 +555,9 @@ fn lower_map(node: &CelNode) -> Result<Expr, LowerError> {
     }
 
     let entries = flat
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| (pair[0].clone(), pair[1].clone()))
         .collect();
 
