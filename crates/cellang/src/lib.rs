@@ -1,10 +1,4 @@
-#![deny(clippy::match_same_arms)]
-
 //! # Cellang Parser Facade API Contract
-//!
-//! This crate exposes a unified parser facade at `cellang::parser` for intuitive access
-//! to the full parsing and evaluation pipeline. This contract defines the canonical API
-//! surface while preserving legacy paths for compatibility.
 //!
 //! ## Canonical API Contract
 //!
@@ -18,31 +12,6 @@
 //! | Type-check        | `cellang::parser::type_check`   | `fn type_check(env: &Env, expr: &Expr) -> Result<TypedExpr, RuntimeError>` | Type-check HIR expression against environment          |
 //! | Eval from source  | `cellang::parser::eval`         | `fn eval(runtime: &Runtime, source: &str) -> Result<Value, RuntimeError>`| Parse, lower, type-check, and evaluate source string     |
 //! | Eval HIR AST      | `cellang::parser::eval_ast`     | `fn eval_ast(runtime: &Runtime, expr: &Expr) -> Result<Value, RuntimeError>` | Evaluate HIR expression directly                    |
-//!
-//! ## Compatibility Paths
-//!
-//! Existing module paths remain available for **additive migration**:
-//!
-//! | **Canonical Path**              | **Compatibility Path(s)**           | **Status**      |
-//! |---------------------------------|-------------------------------------|-----------------|
-//! | `cellang::parser::parse`        | `cellang::syntax::parser::parse`    | ✅ Preserved    |
-//! | `cellang::parser::lower`        | `cellang::hir::lower`               | ✅ Preserved    |
-//! | `cellang::parser::lower_source` | `cellang::hir::lower_source`        | ✅ Preserved    |
-//! | `cellang::parser::type_check`   | `cellang::ast::type_check`          | ✅ Preserved    |
-//! | `cellang::parser::eval`         | `cellang::interpreter::eval`        | ✅ Preserved    |
-//! | `cellang::parser::eval_ast`     | `cellang::interpreter::eval_ast`    | ✅ Preserved    |
-//!
-//! ## Migration Strategy
-//!
-//! - **New code**: Use `cellang::parser::*` paths (canonical)
-//! - **Existing code**: Continue using nested module paths (compatibility)
-//! - **No breaking changes**: Both paths coexist indefinitely
-//!
-//! ## Implementation Status
-//!
-//! - ✅ Task 1: API contract defined (this documentation)
-//! - ⏳ Task 2: `cellang::parser` module implementation (pending)
-//! - ⏳ Task 3-8: CLI migration, tests, examples, docs (pending)
 
 pub mod ast;
 mod builtins;
@@ -90,15 +59,6 @@ pub mod wasm;
 /// let hir_expr = lower_source("users.size() > 0").unwrap();
 /// // ... inspect or transform HIR before evaluation
 /// ```
-///
-/// ## Compatibility
-///
-/// The underlying nested module paths remain available for existing code:
-/// - `cellang::syntax::parser::parse` ✅ still works
-/// - `cellang::hir::lower_source` ✅ still works
-/// - `cellang::interpreter::eval` ✅ still works
-///
-/// Both canonical and legacy paths coexist indefinitely for additive migration.
 pub mod parser {
     pub use crate::ast::type_check;
     pub use crate::hir::{Atom, BinaryOp, Expr, UnaryOp, lower, lower_source};
