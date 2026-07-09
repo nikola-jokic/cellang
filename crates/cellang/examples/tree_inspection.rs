@@ -6,13 +6,14 @@
 //! Run with: cargo run --example tree_inspection
 
 use cellang::{
+    RuntimeError,
     SyntaxKind,
     inspection::{node_at_offset, text_range},
     parser::{CelNode, parse},
 };
 use rowan::TextSize;
 
-fn main() -> Result<(), cellang::Error> {
+fn main() -> Result<(), RuntimeError> {
     println!("=== CEL Syntax Tree Inspection Examples ===\n");
 
     // Use Case 1: Basic Tree Traversal
@@ -34,13 +35,13 @@ fn main() -> Result<(), cellang::Error> {
 }
 
 /// Use Case 1: Parse an expression and walk the entire syntax tree
-fn basic_tree_traversal() -> Result<(), cellang::Error> {
+fn basic_tree_traversal() -> Result<(), RuntimeError> {
     println!("--- Use Case 1: Basic Tree Traversal ---");
 
     let source = "users.filter(u, u.age > 18).map(u, u.name)";
     println!("Source: {}\n", source);
 
-    let green = parse(source)?;
+    let green = parse(source).map_err(|err| RuntimeError::new(err.message))?;
     let root = CelNode::new_root(green);
 
     println!("Tree structure (depth-first):");
@@ -69,14 +70,14 @@ fn walk_tree(node: &CelNode, depth: usize) -> Vec<(usize, CelNode)> {
 }
 
 /// Use Case 2: Simulate LSP hover - find node at cursor position
-fn lsp_hover_simulation() -> Result<(), cellang::Error> {
+fn lsp_hover_simulation() -> Result<(), RuntimeError> {
     println!("--- Use Case 2: LSP Hover Simulation ---");
 
     let source = "users[0].name.startsWith('A')";
     println!("Source: {}", source);
     println!("        ^------- (simulating cursor at offset 8: 'name')");
 
-    let green = parse(source)?;
+    let green = parse(source).map_err(|err| RuntimeError::new(err.message))?;
     let root = CelNode::new_root(green);
 
     let offset = TextSize::from(8); // cursor on 'name'
@@ -99,13 +100,13 @@ fn lsp_hover_simulation() -> Result<(), cellang::Error> {
 }
 
 /// Use Case 3: Extract all identifiers from an expression
-fn extract_identifiers() -> Result<(), cellang::Error> {
+fn extract_identifiers() -> Result<(), RuntimeError> {
     println!("--- Use Case 3: Extract All Identifiers ---");
 
     let source = "user.name == 'Alice' && user.age >= 18 && user.role in roles";
     println!("Source: {}\n", source);
 
-    let green = parse(source)?;
+    let green = parse(source).map_err(|err| RuntimeError::new(err.message))?;
     let root = CelNode::new_root(green);
 
     let mut identifiers = Vec::new();
@@ -123,13 +124,13 @@ fn extract_identifiers() -> Result<(), cellang::Error> {
 }
 
 /// Use Case 4: Analyze binary operations and their structure
-fn analyze_binary_operations() -> Result<(), cellang::Error> {
+fn analyze_binary_operations() -> Result<(), RuntimeError> {
     println!("--- Use Case 4: Analyze Binary Operations ---");
 
     let source = "(a + b) * c - d / e";
     println!("Source: {}\n", source);
 
-    let green = parse(source)?;
+    let green = parse(source).map_err(|err| RuntimeError::new(err.message))?;
     let root = CelNode::new_root(green);
 
     println!("Binary operations (in evaluation order):");
@@ -164,14 +165,14 @@ fn analyze_binary_operations() -> Result<(), cellang::Error> {
 }
 
 /// Use Case 5: Demonstrate error-tolerant parsing
-fn error_tolerant_parsing() -> Result<(), cellang::Error> {
+fn error_tolerant_parsing() -> Result<(), RuntimeError> {
     println!("--- Use Case 5: Error-Tolerant Parsing ---");
 
     let source = "foo(bar,"; // intentionally malformed (unclosed paren)
     println!("Source: {} (malformed - unclosed paren)\n", source);
 
     // Rowan's error recovery means we still get a tree
-    let green = parse(source)?;
+    let green = parse(source).map_err(|err| RuntimeError::new(err.message))?;
     let root = CelNode::new_root(green);
 
     println!("Tree built successfully despite errors:");
@@ -180,15 +181,15 @@ fn error_tolerant_parsing() -> Result<(), cellang::Error> {
 
     for node in root.descendants_with_tokens() {
         node_count += 1;
-        if let Some(token) = node.as_token() {
-            if token.kind() == SyntaxKind::Error {
-                error_count += 1;
-                println!(
-                    "  Error token at offset {:?}: '{}'",
-                    token.text_range().start(),
-                    token.text()
-                );
-            }
+        if let Some(token) = node.as_token()
+            && token.kind() == SyntaxKind::Error
+        {
+            error_count += 1;
+            println!(
+                "  Error token at offset {:?}: '{}'",
+                token.text_range().start(),
+                token.text()
+            );
         }
     }
 

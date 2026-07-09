@@ -1,4 +1,6 @@
-use crate::lexer::{Token, TokenType};
+use crate::lexer::TokenType;
+#[cfg(test)]
+use crate::lexer::Token;
 use crate::syntax::SyntaxKind;
 
 /// Converts a lexer token kind into the corresponding Rowan syntax kind.
@@ -77,6 +79,7 @@ impl From<TokenType> for SyntaxKind {
 ///
 /// This keeps the migration bridge byte-for-byte compatible with the lexer's
 /// `offset` and `span_len` fields.
+#[cfg(test)]
 pub fn token_to_syntax_span(token: &Token<'_>) -> (usize, usize) {
     (token.offset, token.span_len)
 }

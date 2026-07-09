@@ -31,7 +31,7 @@ Cellang uses a **Rowan-based parser** with a clean semantic boundary:
 4. **Type Checking** (`parser::type_check`) - Validates types and builds typed expression graph
 5. **Interpreter** (`parser::eval`) - Evaluates expressions against a runtime
 
-**Note**: Existing code using nested module paths (`cellang::syntax::parser`, `cellang::hir::lower`, etc.) continues to work. Both canonical and compatibility paths coexist for additive migration.
+Use only the canonical parser facade paths (`cellang::parser::*`) for parse/lower/type-check/eval pipeline access.
 
 The separation between CST (syntax layer) and HIR (semantic layer) provides:
 - **CST**: Perfect for IDE tooling (preserves all source details, supports incremental parsing)

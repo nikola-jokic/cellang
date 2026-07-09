@@ -13,17 +13,17 @@
 //! | Eval from source  | `cellang::parser::eval`         | `fn eval(runtime: &Runtime, source: &str) -> Result<Value, RuntimeError>`| Parse, lower, type-check, and evaluate source string     |
 //! | Eval HIR AST      | `cellang::parser::eval_ast`     | `fn eval_ast(runtime: &Runtime, expr: &Expr) -> Result<Value, RuntimeError>` | Evaluate HIR expression directly                    |
 
-pub mod ast;
+mod ast;
 mod builtins;
 mod derive;
 pub mod env;
 pub mod error;
-pub mod hir;
-pub mod interpreter;
+mod hir;
+mod interpreter;
 pub mod lexer;
 pub mod macros;
 pub mod runtime;
-pub mod syntax;
+mod syntax;
 pub mod types;
 pub mod value;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]
@@ -32,9 +32,7 @@ pub mod wasm;
 /// Canonical parser facade providing intuitive access to the full parsing pipeline.
 ///
 /// This module re-exports the complete parse → lower → type-check → eval pipeline
-/// as a unified API surface. New code should prefer these canonical paths over
-/// the nested module paths (e.g., `cellang::parser::parse` instead of
-/// `cellang::syntax::parser::parse`).
+/// as a unified API surface.
 ///
 /// ## Pipeline Overview
 ///
@@ -68,15 +66,21 @@ pub mod parser {
     pub use crate::syntax::parser::parse;
 }
 
+/// Syntax-tree inspection helpers for IDE/LSP and analysis tooling.
+pub mod inspection {
+    pub use crate::syntax::inspection::{
+        children_by_kind, node_at_offset, text_at_offset, text_range,
+    };
+}
+
+pub use crate::syntax::kind::SyntaxKind;
+
 pub use crate::env::*;
-pub use ast::*;
 pub use derive::CelType;
 pub use error::*;
-pub use interpreter::*;
 pub use lexer::*;
 pub use macros::*;
 pub use runtime::*;
-pub use syntax::*;
 pub use types::*;
 pub use value::*;
 #[cfg(all(feature = "wasm", target_arch = "wasm32"))]

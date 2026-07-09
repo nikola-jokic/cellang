@@ -1,8 +1,8 @@
-//! Regression tests proving canonical and compatibility import paths produce identical results.
+//! Regression tests for canonical parser facade behavior.
 //!
 //! This test suite validates:
-//! 1. Both import styles compile and execute (canonical vs compatibility)
-//! 2. Parse/lower/eval parity between paths
+//! 1. Canonical parser facade functions compile and execute
+//! 2. Parse/lower/eval behavior remains stable
 //! 3. Edge case regression coverage (precedence, ternary, chaining, errors)
 
 use cellang::Runtime;
@@ -78,114 +78,28 @@ fn canonical_eval_ast_compiles() {
 }
 
 // ============================================================================
-// SECTION 2: Compatibility Import Tests
-// ============================================================================
-
-#[test]
-fn compatibility_parse_compiles() {
-    use cellang::syntax::parser::parse;
-
-    let result = parse("1 + 2");
-    assert!(
-        result.is_ok(),
-        "compatibility parse failed: {:?}",
-        result.err()
-    );
-}
-
-#[test]
-fn compatibility_lower_compiles() {
-    use cellang::hir::lower;
-    use cellang::syntax::parser::parse;
-
-    let cst = parse("1 + 2").expect("parse failed");
-    let result = lower(cst);
-    assert!(
-        result.is_ok(),
-        "compatibility lower failed: {:?}",
-        result.err()
-    );
-}
-
-#[test]
-fn compatibility_lower_source_compiles() {
-    use cellang::hir::lower_source;
-
-    let result = lower_source("1 + 2");
-    assert!(
-        result.is_ok(),
-        "compatibility lower_source failed: {:?}",
-        result.err()
-    );
-}
-
-#[test]
-fn compatibility_eval_compiles() {
-    use cellang::interpreter::eval;
-
-    let runtime = Runtime::builder().build();
-    let result = eval(&runtime, "1 + 2");
-    assert!(
-        result.is_ok(),
-        "compatibility eval failed: {:?}",
-        result.err()
-    );
-}
-
-#[test]
-fn compatibility_eval_ast_compiles() {
-    use cellang::hir::lower_source;
-    use cellang::interpreter::eval_ast;
-
-    let runtime = Runtime::builder().build();
-    let hir = lower_source("1 + 2").expect("lower_source failed");
-    let result = eval_ast(&runtime, &hir);
-    assert!(
-        result.is_ok(),
-        "compatibility eval_ast failed: {:?}",
-        result.err()
-    );
-}
-
-// ============================================================================
-// SECTION 3: Functional Parity Tests
+// SECTION 2: Functional Behavior Tests
 // ============================================================================
 
 #[test]
 fn parse_lower_eval_parity_simple() {
-    use cellang::interpreter::eval as compat_eval;
-    use cellang::parser::eval as canonical_eval;
+    use cellang::parser::eval;
+    use cellang::Value;
 
     let runtime = Runtime::builder().build();
 
-    let canonical_result =
-        canonical_eval(&runtime, "1 + 2").expect("canonical eval failed");
-    let compat_result =
-        compat_eval(&runtime, "1 + 2").expect("compat eval failed");
-
-    assert_eq!(
-        canonical_result, compat_result,
-        "canonical and compat eval diverged on simple expression"
-    );
+    let result = eval(&runtime, "1 + 2").expect("eval failed");
+    assert_eq!(result, Value::Int(3));
 }
 
 #[test]
 fn parse_lower_eval_parity_precedence() {
     use cellang::Value;
-    use cellang::interpreter::eval as compat_eval;
-    use cellang::parser::eval as canonical_eval;
+    use cellang::parser::eval;
 
     let runtime = Runtime::builder().build();
 
-    let canonical_result =
-        canonical_eval(&runtime, "1 + 2 * 3").expect("canonical eval failed");
-    let compat_result =
-        compat_eval(&runtime, "1 + 2 * 3").expect("compat eval failed");
-
-    assert_eq!(
-        canonical_result, compat_result,
-        "canonical and compat eval diverged on precedence expression"
-    );
+    let canonical_result = eval(&runtime, "1 + 2 * 3").expect("eval failed");
 
     // Verify precedence: 1 + (2 * 3) = 7, not (1 + 2) * 3 = 9
     assert_eq!(
@@ -198,20 +112,11 @@ fn parse_lower_eval_parity_precedence() {
 #[test]
 fn parse_lower_eval_parity_ternary() {
     use cellang::Value;
-    use cellang::interpreter::eval as compat_eval;
-    use cellang::parser::eval as canonical_eval;
+    use cellang::parser::eval;
 
     let runtime = Runtime::builder().build();
 
-    let canonical_result = canonical_eval(&runtime, "true ? 1 : 2")
-        .expect("canonical eval failed");
-    let compat_result =
-        compat_eval(&runtime, "true ? 1 : 2").expect("compat eval failed");
-
-    assert_eq!(
-        canonical_result, compat_result,
-        "canonical and compat eval diverged on ternary expression"
-    );
+    let canonical_result = eval(&runtime, "true ? 1 : 2").expect("eval failed");
 
     assert_eq!(
         canonical_result,
@@ -222,8 +127,7 @@ fn parse_lower_eval_parity_ternary() {
 
 #[test]
 fn parse_lower_eval_parity_chaining() {
-    use cellang::interpreter::eval as compat_eval;
-    use cellang::parser::eval as canonical_eval;
+    use cellang::parser::eval;
     use cellang::{StructValue, Value};
 
     let mut alice = StructValue::new("User");
@@ -235,15 +139,7 @@ fn parse_lower_eval_parity_chaining() {
         .expect("set_variable failed");
     let runtime = builder.build();
 
-    let canonical_result = canonical_eval(&runtime, "users[0].name")
-        .expect("canonical eval failed");
-    let compat_result =
-        compat_eval(&runtime, "users[0].name").expect("compat eval failed");
-
-    assert_eq!(
-        canonical_result, compat_result,
-        "canonical and compat eval diverged on chaining expression"
-    );
+    let canonical_result = eval(&runtime, "users[0].name").expect("eval failed");
 
     assert_eq!(
         canonical_result,
@@ -253,13 +149,12 @@ fn parse_lower_eval_parity_chaining() {
 }
 
 // ============================================================================
-// SECTION 4: Regression Edge Cases
+// SECTION 3: Regression Edge Cases
 // ============================================================================
 
 #[test]
 fn regression_precedence_structure() {
-    use cellang::hir::{Atom, BinaryOp, Expr};
-    use cellang::parser::lower_source;
+    use cellang::parser::{Atom, BinaryOp, Expr, lower_source};
 
     let hir = lower_source("1 + 2 * 3").expect("lower_source failed");
 
@@ -399,7 +294,7 @@ fn regression_malformed_eval_errors() {
 }
 
 // ============================================================================
-// SECTION 5: Pipeline Equivalence (parse → lower → type_check → eval)
+// SECTION 4: Pipeline Equivalence (parse → lower → type_check → eval)
 // ============================================================================
 
 #[test]
@@ -419,29 +314,5 @@ fn pipeline_equivalence_full() {
     assert_eq!(
         result, shortcut_result,
         "full pipeline diverged from eval shortcut"
-    );
-}
-
-#[test]
-fn pipeline_equivalence_compat() {
-    use cellang::hir::lower as compat_lower;
-    use cellang::interpreter::eval_ast as compat_eval_ast;
-    use cellang::syntax::parser::parse as compat_parse;
-
-    let runtime = Runtime::builder().build();
-    let input = "1 + 2 * 3";
-
-    let cst = compat_parse(input).expect("compat parse failed");
-    let hir = compat_lower(cst).expect("compat lower failed");
-    let result =
-        compat_eval_ast(&runtime, &hir).expect("compat eval_ast failed");
-
-    use cellang::parser::eval;
-    let canonical_result =
-        eval(&runtime, input).expect("canonical eval failed");
-
-    assert_eq!(
-        result, canonical_result,
-        "compatibility pipeline diverged from canonical eval"
     );
 }

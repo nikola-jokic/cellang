@@ -16,4 +16,4 @@ pub mod expr;
 pub mod lower;
 
 pub use expr::{Atom, BinaryOp, Expr, UnaryOp};
-pub use lower::{LowerError, LowerErrorKind, lower, lower_source};
+pub use lower::{LowerError, lower, lower_source};

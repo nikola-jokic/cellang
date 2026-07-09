@@ -57,6 +57,7 @@ impl AstNode for BinaryOpNode {
 impl BinaryOpNode {
     /// Returns the left operand node, if it's a complex expression.
     /// Returns None for atom operands (which are tokens, not nodes).
+    #[cfg(test)]
     pub fn lhs(&self) -> Option<CelNode> {
         // LHS is before the operator token
         let op = self.operator()?;
@@ -69,6 +70,7 @@ impl BinaryOpNode {
 
     /// Returns the right operand node, if it's a complex expression.
     /// Returns None for atom operands (which are tokens, not nodes).
+    #[cfg(test)]
     pub fn rhs(&self) -> Option<CelNode> {
         // RHS is after the operator token
         let op = self.operator()?;

@@ -22,9 +22,7 @@ pub mod parser;
 #[cfg(test)]
 mod parity_tests;
 
-pub use self::ast::*;
 pub use self::error::Error;
-pub use self::inspection::*;
 pub use self::kind::SyntaxKind;
 pub use self::language::CelLanguage;
 pub use self::parse::ParseResult;

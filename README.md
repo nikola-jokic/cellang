@@ -74,7 +74,7 @@ Cellang uses a Rowan-based parser for robust syntax tree construction with error
 4. **Type Checking** (`parser::type_check`) - Validates types and builds typed expression graph
 5. **Interpreter** (`parser::eval`) - Evaluates typed expressions
 
-**Note**: Existing code using nested module paths (`syntax/parser.rs`, `hir/lower.rs`, etc.) continues to work. Both canonical and compatibility paths coexist for additive migration.
+Use only the canonical parser facade paths (`cellang::parser::*`) for parse/lower/type-check/eval pipeline access.
 
 The Rowan CST preserves all source information (whitespace, comments, error tokens) making it ideal for IDE/LSP tooling. The HIR provides a clean semantic boundary for runtime evaluation.
 
