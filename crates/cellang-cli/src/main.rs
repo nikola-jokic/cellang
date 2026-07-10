@@ -1,6 +1,6 @@
 use cellang::{
     lexer::{Lexer, Token},
-    parser::Parser,
+    parser::{CelNode, eval, parse},
     runtime::Runtime,
     value::{ListValue, MapValue, Value},
 };
@@ -249,9 +249,15 @@ fn lex_source(source: &str) -> Result<Vec<LexToken>, Error> {
 }
 
 fn print_ast(source: &str, format: Format) -> Result<(), Error> {
-    let mut parser = Parser::new(source);
-    let ast = parser.parse()?;
-    format.print(&ast);
+    let green = parse(source).into_diagnostic()?;
+    let root = CelNode::new_root(green);
+    match format {
+        Format::Debug => println!("{:#?}", root),
+        Format::Json => {
+            // CST doesn't implement Serialize, so just use Debug output
+            println!("{:#?}", root);
+        }
+    }
     Ok(())
 }
 
@@ -260,7 +266,7 @@ fn evaluate(expr: &str, env_path: &Path, format: Format) -> Result<(), Error> {
     let mut builder = Runtime::builder();
     builder.set_variables(entries)?;
     let runtime = builder.build();
-    let value = runtime.eval(expr)?;
+    let value = eval(&runtime, expr)?;
     format.print(&value);
     Ok(())
 }

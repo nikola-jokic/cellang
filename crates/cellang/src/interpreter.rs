@@ -1,6 +1,22 @@
+//! Evaluation layer: Runtime execution of typed expressions.
+//!
+//! This module forms the **fourth and final stage** of the CEL pipeline:
+//! CST (`crate::syntax`) → HIR (`crate::hir`) → Type Check (`crate::ast`) → Eval (this module)
+//!
+//! The evaluator consumes fully typed `TypedExpr` graphs produced by the type checker and
+//! executes them within a runtime context, producing `Value` results. The runtime context
+//! provides variable bindings, native function implementations, and environment for evaluation.
+//!
+//! **Module boundary**: This module is internal to the parser pipeline. External code should use
+//! the public API facade at `crate::parser::eval` or `crate::parser::eval_ast` rather than
+//! importing directly from this module.
+
 use crate::error::RuntimeError;
+use crate::hir::expr::{
+    Atom as HirAtom, BinaryOp as HirBinaryOp, Expr as HirExpr,
+    UnaryOp as HirUnaryOp,
+};
 use crate::macros::{self, ComprehensionKind, MacroInvocation};
-use crate::parser::{Atom, Op, Parser, TokenTree};
 use crate::runtime::{CallContext, Runtime};
 use crate::value::{Key, ListValue, MapValue, TryFromValue, Value, ValueError};
 use std::cmp::Ordering;
@@ -8,19 +24,18 @@ use std::cmp::Ordering;
 /// Evaluates the given source string in the context of the provided runtime,
 /// returning the resulting value.
 pub fn eval(runtime: &Runtime, source: &str) -> Result<Value, RuntimeError> {
-    let mut parser = Parser::new(source);
-    let ast = parser.parse().map_err(RuntimeError::from)?;
-    eval_ast(runtime, &ast)
+    let hir_expr = crate::hir::lower_source(source)?;
+    eval_ast(runtime, &hir_expr)
 }
 
-/// Evaluates the given AST node in the context of the provided runtime,
+/// Evaluates the given HIR expression in the context of the provided runtime,
 /// returning the resulting value.
-pub fn eval_ast<'src>(
+pub fn eval_ast(
     runtime: &Runtime,
-    node: &TokenTree<'src>,
+    expr: &HirExpr,
 ) -> Result<Value, RuntimeError> {
     let mut ctx = EvalContext::new(runtime);
-    eval_expr(&mut ctx, node)
+    eval_expr(&mut ctx, expr)
 }
 
 struct EvalContext<'a> {
@@ -68,99 +83,76 @@ impl<'a> EvalContext<'a> {
     }
 }
 
-fn eval_expr<'src>(
+fn eval_expr(
     ctx: &mut EvalContext<'_>,
-    node: &TokenTree<'src>,
+    expr: &HirExpr,
 ) -> Result<Value, RuntimeError> {
-    match node {
-        TokenTree::Atom(atom) => eval_atom(ctx, atom),
-        TokenTree::Cons(op, args) => eval_cons(ctx, *op, args),
-        TokenTree::Call {
+    match expr {
+        HirExpr::Atom(atom) => eval_atom(ctx, atom),
+        HirExpr::Unary { op, expr: inner } => eval_unary(ctx, *op, inner),
+        HirExpr::Binary { op, lhs, rhs } => eval_binary(ctx, *op, lhs, rhs),
+        HirExpr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => eval_ternary(ctx, cond, then_expr, else_expr),
+        HirExpr::Call {
             func,
             args,
             is_method,
         } => eval_call(ctx, func, args, *is_method),
+        HirExpr::Field { target, field } => eval_field(ctx, target, field),
+        HirExpr::Index { target, index } => eval_index_expr(ctx, target, index),
+        HirExpr::List(elements) => eval_list(ctx, elements),
+        HirExpr::Map(entries) => eval_map(ctx, entries),
+        HirExpr::Group(inner) | HirExpr::Dyn(inner) => eval_expr(ctx, inner),
     }
 }
 
 fn eval_atom(
     ctx: &mut EvalContext<'_>,
-    atom: &Atom<'_>,
+    atom: &HirAtom,
 ) -> Result<Value, RuntimeError> {
     Ok(match atom {
-        Atom::Bool(value) => Value::Bool(*value),
-        Atom::Int(value) => Value::Int(*value),
-        Atom::Uint(value) => Value::Uint(*value),
-        Atom::Double(value) => Value::Double(*value),
-        Atom::String(value) => Value::String(value.to_string()),
-        Atom::Bytes(value) => Value::Bytes(value.to_vec()),
-        Atom::Null => Value::Null,
-        Atom::Ident(name) => ctx
+        HirAtom::Bool(value) => Value::Bool(*value),
+        HirAtom::Int(value) => Value::Int(*value),
+        HirAtom::Uint(value) => Value::Uint(*value),
+        HirAtom::Double(value) => Value::Double(*value),
+        HirAtom::String(value) => Value::String(value.clone()),
+        HirAtom::Bytes(value) => Value::Bytes(value.clone()),
+        HirAtom::Null => Value::Null,
+        HirAtom::Ident(name) => ctx
             .resolve_identifier(name)
             .ok_or_else(|| RuntimeError::missing_identifier(name))?,
     })
 }
 
-fn eval_cons(
+fn eval_unary(
     ctx: &mut EvalContext<'_>,
-    op: Op,
-    args: &[TokenTree<'_>],
+    op: HirUnaryOp,
+    expr: &HirExpr,
 ) -> Result<Value, RuntimeError> {
+    let value = eval_expr(ctx, expr)?;
     match op {
-        Op::Group => {
-            ensure_arity(op, args, 1).and_then(|_| eval_expr(ctx, &args[0]))
-        }
-        Op::List => eval_list(ctx, args),
-        Op::Map => eval_map(ctx, args),
-        Op::Dyn => {
-            ensure_arity(op, args, 1).and_then(|_| eval_expr(ctx, &args[0]))
-        }
-        Op::Not => {
-            ensure_arity(op, args, 1)?;
-            let value = eval_expr(ctx, &args[0])?;
+        HirUnaryOp::Not => {
             let flag = <bool as TryFromValue>::try_from_value(&value).map_err(
                 |err| RuntimeError::with_source("expected bool", err),
             )?;
             Ok(Value::Bool(!flag))
         }
-        Op::Minus => {
-            if args.len() == 1 {
-                let value = eval_expr(ctx, &args[0])?;
-                negate_value(&value)
-            } else {
-                ensure_arity(op, args, 2)?;
-                let left = eval_expr(ctx, &args[0])?;
-                let right = eval_expr(ctx, &args[1])?;
-                subtract_values(&left, &right)
-            }
-        }
-        Op::Plus => {
-            ensure_arity(op, args, 2)?;
-            let left = eval_expr(ctx, &args[0])?;
-            let right = eval_expr(ctx, &args[1])?;
-            add_values(&left, &right)
-        }
-        Op::Multiply => {
-            ensure_arity(op, args, 2)?;
-            let left = eval_expr(ctx, &args[0])?;
-            let right = eval_expr(ctx, &args[1])?;
-            multiply_values(&left, &right)
-        }
-        Op::Devide => {
-            ensure_arity(op, args, 2)?;
-            let left = eval_expr(ctx, &args[0])?;
-            let right = eval_expr(ctx, &args[1])?;
-            divide_values(&left, &right)
-        }
-        Op::Mod => {
-            ensure_arity(op, args, 2)?;
-            let left = eval_expr(ctx, &args[0])?;
-            let right = eval_expr(ctx, &args[1])?;
-            modulo_values(&left, &right)
-        }
-        Op::And => {
-            ensure_arity(op, args, 2)?;
-            let left = eval_expr(ctx, &args[0])?;
+        HirUnaryOp::Neg => negate_value(&value),
+    }
+}
+
+fn eval_binary(
+    ctx: &mut EvalContext<'_>,
+    op: HirBinaryOp,
+    lhs: &HirExpr,
+    rhs: &HirExpr,
+) -> Result<Value, RuntimeError> {
+    match op {
+        HirBinaryOp::And => {
+            let left = eval_expr(ctx, lhs)?;
             let left_flag = <bool as TryFromValue>::try_from_value(&left)
                 .map_err(|err| {
                     RuntimeError::with_source("expected bool", err)
@@ -168,16 +160,15 @@ fn eval_cons(
             if !left_flag {
                 return Ok(Value::Bool(false));
             }
-            let right = eval_expr(ctx, &args[1])?;
+            let right = eval_expr(ctx, rhs)?;
             let right_flag = <bool as TryFromValue>::try_from_value(&right)
                 .map_err(|err| {
                     RuntimeError::with_source("expected bool", err)
                 })?;
             Ok(Value::Bool(right_flag))
         }
-        Op::Or => {
-            ensure_arity(op, args, 2)?;
-            let left = eval_expr(ctx, &args[0])?;
+        HirBinaryOp::Or => {
+            let left = eval_expr(ctx, lhs)?;
             let left_flag = <bool as TryFromValue>::try_from_value(&left)
                 .map_err(|err| {
                     RuntimeError::with_source("expected bool", err)
@@ -185,83 +176,69 @@ fn eval_cons(
             if left_flag {
                 return Ok(Value::Bool(true));
             }
-            let right = eval_expr(ctx, &args[1])?;
+            let right = eval_expr(ctx, rhs)?;
             let right_flag = <bool as TryFromValue>::try_from_value(&right)
                 .map_err(|err| {
                     RuntimeError::with_source("expected bool", err)
                 })?;
             Ok(Value::Bool(right_flag))
         }
-        Op::EqualEqual | Op::NotEqual => {
-            ensure_arity(op, args, 2)?;
-            let left = eval_expr(ctx, &args[0])?;
-            let right = eval_expr(ctx, &args[1])?;
-            let eq = left == right;
-            Ok(Value::Bool(if matches!(op, Op::EqualEqual) {
-                eq
-            } else {
-                !eq
-            }))
-        }
-        Op::Less | Op::LessEqual | Op::Greater | Op::GreaterEqual => {
-            ensure_arity(op, args, 2)?;
-            let left = eval_expr(ctx, &args[0])?;
-            let right = eval_expr(ctx, &args[1])?;
-            let ordering = compare_values(&left, &right)?;
-            let result = match op {
-                Op::Less => ordering == Ordering::Less,
-                Op::LessEqual => ordering != Ordering::Greater,
-                Op::Greater => ordering == Ordering::Greater,
-                Op::GreaterEqual => ordering != Ordering::Less,
-                _ => unreachable!(),
-            };
-            Ok(Value::Bool(result))
-        }
-        Op::IfTernary => {
-            if args.len() != 3 {
-                return Err(RuntimeError::new(
-                    "ternary operator requires condition and two branches",
-                ));
-            }
-            let condition = eval_expr(ctx, &args[0])?;
-            let flag = <bool as TryFromValue>::try_from_value(&condition)
-                .map_err(|err| {
-                    RuntimeError::with_source("expected bool", err)
-                })?;
-            if flag {
-                eval_expr(ctx, &args[1])
-            } else {
-                eval_expr(ctx, &args[2])
+        _ => {
+            let left = eval_expr(ctx, lhs)?;
+            let right = eval_expr(ctx, rhs)?;
+            match op {
+                HirBinaryOp::Add => add_values(&left, &right),
+                HirBinaryOp::Sub => subtract_values(&left, &right),
+                HirBinaryOp::Mul => multiply_values(&left, &right),
+                HirBinaryOp::Div => divide_values(&left, &right),
+                HirBinaryOp::Mod => modulo_values(&left, &right),
+                HirBinaryOp::Eq => Ok(Value::Bool(left == right)),
+                HirBinaryOp::Ne => Ok(Value::Bool(left != right)),
+                HirBinaryOp::Lt => {
+                    let ordering = compare_values(&left, &right)?;
+                    Ok(Value::Bool(ordering == Ordering::Less))
+                }
+                HirBinaryOp::Le => {
+                    let ordering = compare_values(&left, &right)?;
+                    Ok(Value::Bool(ordering != Ordering::Greater))
+                }
+                HirBinaryOp::Gt => {
+                    let ordering = compare_values(&left, &right)?;
+                    Ok(Value::Bool(ordering == Ordering::Greater))
+                }
+                HirBinaryOp::Ge => {
+                    let ordering = compare_values(&left, &right)?;
+                    Ok(Value::Bool(ordering != Ordering::Less))
+                }
+                HirBinaryOp::In => eval_in_operator(&left, &right),
+                HirBinaryOp::And | HirBinaryOp::Or => unreachable!(),
             }
         }
-        Op::In => {
-            ensure_arity(op, args, 2)?;
-            let needle = eval_expr(ctx, &args[0])?;
-            let haystack = eval_expr(ctx, &args[1])?;
-            eval_in_operator(&needle, &haystack)
-        }
-        Op::Index => {
-            ensure_arity(op, args, 2)?;
-            let target = eval_expr(ctx, &args[0])?;
-            let index = eval_expr(ctx, &args[1])?;
-            eval_index(&target, &index)
-        }
-        Op::Field => {
-            ensure_arity(op, args, 2)?;
-            eval_field(ctx, &args[0], &args[1])
-        }
-        Op::Call | Op::For | Op::Var | Op::While => Err(RuntimeError::new(
-            format!("Operator '{op:?}' is not supported in this context"),
-        )),
+    }
+}
+
+fn eval_ternary(
+    ctx: &mut EvalContext<'_>,
+    cond: &HirExpr,
+    then_expr: &HirExpr,
+    else_expr: &HirExpr,
+) -> Result<Value, RuntimeError> {
+    let condition = eval_expr(ctx, cond)?;
+    let flag = <bool as TryFromValue>::try_from_value(&condition)
+        .map_err(|err| RuntimeError::with_source("expected bool", err))?;
+    if flag {
+        eval_expr(ctx, then_expr)
+    } else {
+        eval_expr(ctx, else_expr)
     }
 }
 
 fn eval_list(
     ctx: &mut EvalContext<'_>,
-    args: &[TokenTree<'_>],
+    elements: &[HirExpr],
 ) -> Result<Value, RuntimeError> {
     let mut list = ListValue::new();
-    for expr in args {
+    for expr in elements {
         list.push(eval_expr(ctx, expr)?);
     }
     Ok(Value::List(list))
@@ -269,18 +246,18 @@ fn eval_list(
 
 fn eval_map(
     ctx: &mut EvalContext<'_>,
-    args: &[TokenTree<'_>],
+    entries: &[(HirExpr, HirExpr)],
 ) -> Result<Value, RuntimeError> {
-    if !args.len().is_multiple_of(2) {
-        return Err(RuntimeError::new(
-            "map literal expects key/value pairs but received odd number of expressions",
-        ));
-    }
     let mut map = MapValue::new();
-    for chunk in args.chunks(2) {
-        let key_value = eval_expr(ctx, &chunk[0])?;
-        let key = Key::try_from(&key_value).map_err(RuntimeError::from)?;
-        let value = eval_expr(ctx, &chunk[1])?;
+    for (key_expr, value_expr) in entries {
+        let key_value = eval_expr(ctx, key_expr)?;
+        let key = Key::try_from(&key_value).map_err(|err| {
+            RuntimeError::with_source(
+                "cannot use non-primitive value as map key",
+                err,
+            )
+        })?;
+        let value = eval_expr(ctx, value_expr)?;
         map.insert(key, value);
     }
     Ok(Value::Map(map))
@@ -288,16 +265,17 @@ fn eval_map(
 
 fn eval_call(
     ctx: &mut EvalContext<'_>,
-    func: &TokenTree<'_>,
-    args: &[TokenTree<'_>],
+    func: &HirExpr,
+    args: &[HirExpr],
     is_method: bool,
 ) -> Result<Value, RuntimeError> {
-    let name = resolve_function_name(func).ok_or_else(|| {
+    let name = resolve_hir_function_name(func).ok_or_else(|| {
+        eprintln!("DEBUG: Failed to resolve function name from: {:#?}", func);
         RuntimeError::new("function calls must reference an identifier")
     })?;
     if let Some(invocation) = macros::detect_macro_call(
         ctx.runtime().macros(),
-        &name,
+        func,
         args,
         is_method,
     )? {
@@ -314,25 +292,25 @@ fn eval_call(
     handler(&context)
 }
 
-fn resolve_function_name(expr: &TokenTree<'_>) -> Option<String> {
+fn resolve_hir_function_name(expr: &HirExpr) -> Option<String> {
     match expr {
-        TokenTree::Atom(Atom::Ident(name)) => Some((*name).to_string()),
-        TokenTree::Cons(Op::Field, nodes) if nodes.len() == 2 => {
-            let left = resolve_function_name(&nodes[0])?;
-            let right = resolve_function_name(&nodes[1])?;
-            Some(format!("{left}.{right}"))
+        HirExpr::Atom(HirAtom::Ident(name)) => Some(name.clone()),
+        HirExpr::Field { target, field } => {
+            let left = resolve_hir_function_name(target)?;
+            Some(format!("{}.{}", left, field))
         }
+        HirExpr::Group(inner) => resolve_hir_function_name(inner),
         _ => None,
     }
 }
 
 fn eval_macro(
     ctx: &mut EvalContext<'_>,
-    invocation: MacroInvocation<'_>,
+    invocation: MacroInvocation,
 ) -> Result<Value, RuntimeError> {
     match invocation {
         MacroInvocation::Has { target, field } => {
-            eval_has_macro(ctx, target, field)
+            eval_has_macro(ctx, &target, &field)
         }
         MacroInvocation::Comprehension {
             kind,
@@ -342,24 +320,24 @@ fn eval_macro(
             transform,
         } => match kind {
             ComprehensionKind::All => {
-                let predicate = predicate.expect("predicate validated");
-                eval_all_macro(ctx, range, var, predicate)
+                let pred = predicate.as_ref().expect("predicate validated");
+                eval_all_macro(ctx, &range, &var, pred)
             }
             ComprehensionKind::Exists => {
-                let predicate = predicate.expect("predicate validated");
-                eval_exists_macro(ctx, range, var, predicate)
+                let pred = predicate.as_ref().expect("predicate validated");
+                eval_exists_macro(ctx, &range, &var, pred)
             }
             ComprehensionKind::ExistsOne => {
-                let predicate = predicate.expect("predicate validated");
-                eval_exists_one_macro(ctx, range, var, predicate)
+                let pred = predicate.as_ref().expect("predicate validated");
+                eval_exists_one_macro(ctx, &range, &var, pred)
             }
             ComprehensionKind::Map => {
-                let transform = transform.expect("transform validated");
-                eval_map_macro(ctx, range, var, predicate, transform)
+                let trans = transform.as_ref().expect("transform validated");
+                eval_map_macro(ctx, &range, &var, predicate.as_ref(), trans)
             }
             ComprehensionKind::Filter => {
-                let predicate = predicate.expect("predicate validated");
-                eval_filter_macro(ctx, range, var, predicate)
+                let pred = predicate.as_ref().expect("predicate validated");
+                eval_filter_macro(ctx, &range, &var, pred)
             }
         },
     }
@@ -367,7 +345,7 @@ fn eval_macro(
 
 fn eval_has_macro(
     ctx: &mut EvalContext<'_>,
-    target_expr: &TokenTree<'_>,
+    target_expr: &HirExpr,
     field: &str,
 ) -> Result<Value, RuntimeError> {
     let target = eval_expr(ctx, target_expr)?;
@@ -391,9 +369,9 @@ fn eval_has_macro(
 
 fn eval_all_macro(
     ctx: &mut EvalContext<'_>,
-    range_expr: &TokenTree<'_>,
+    range_expr: &HirExpr,
     var: &str,
-    predicate: &TokenTree<'_>,
+    predicate: &HirExpr,
 ) -> Result<Value, RuntimeError> {
     let range = eval_expr(ctx, range_expr)?;
     let outcome = match range {
@@ -413,9 +391,9 @@ fn eval_all_macro(
 
 fn eval_exists_macro(
     ctx: &mut EvalContext<'_>,
-    range_expr: &TokenTree<'_>,
+    range_expr: &HirExpr,
     var: &str,
-    predicate: &TokenTree<'_>,
+    predicate: &HirExpr,
 ) -> Result<Value, RuntimeError> {
     let range = eval_expr(ctx, range_expr)?;
     let outcome = match range {
@@ -435,9 +413,9 @@ fn eval_exists_macro(
 
 fn eval_exists_one_macro(
     ctx: &mut EvalContext<'_>,
-    range_expr: &TokenTree<'_>,
+    range_expr: &HirExpr,
     var: &str,
-    predicate: &TokenTree<'_>,
+    predicate: &HirExpr,
 ) -> Result<Value, RuntimeError> {
     let range = eval_expr(ctx, range_expr)?;
     let matches = match range {
@@ -460,10 +438,10 @@ fn eval_exists_one_macro(
 
 fn eval_map_macro(
     ctx: &mut EvalContext<'_>,
-    range_expr: &TokenTree<'_>,
+    range_expr: &HirExpr,
     var: &str,
-    predicate: Option<&TokenTree<'_>>,
-    transform: &TokenTree<'_>,
+    predicate: Option<&HirExpr>,
+    transform: &HirExpr,
 ) -> Result<Value, RuntimeError> {
     let range = eval_expr(ctx, range_expr)?;
     match range {
@@ -487,9 +465,9 @@ fn eval_map_macro(
 
 fn eval_filter_macro(
     ctx: &mut EvalContext<'_>,
-    range_expr: &TokenTree<'_>,
+    range_expr: &HirExpr,
     var: &str,
-    predicate: &TokenTree<'_>,
+    predicate: &HirExpr,
 ) -> Result<Value, RuntimeError> {
     let range = eval_expr(ctx, range_expr)?;
     match range {
@@ -510,7 +488,7 @@ fn eval_all_over_iter<I>(
     ctx: &mut EvalContext<'_>,
     iter: I,
     var: &str,
-    predicate: &TokenTree<'_>,
+    predicate: &HirExpr,
 ) -> Result<bool, RuntimeError>
 where
     I: IntoIterator<Item = Value>,
@@ -531,7 +509,7 @@ fn eval_exists_over_iter<I>(
     ctx: &mut EvalContext<'_>,
     iter: I,
     var: &str,
-    predicate: &TokenTree<'_>,
+    predicate: &HirExpr,
 ) -> Result<bool, RuntimeError>
 where
     I: IntoIterator<Item = Value>,
@@ -552,7 +530,7 @@ fn eval_exists_one_over_iter<I>(
     ctx: &mut EvalContext<'_>,
     iter: I,
     var: &str,
-    predicate: &TokenTree<'_>,
+    predicate: &HirExpr,
 ) -> Result<usize, RuntimeError>
 where
     I: IntoIterator<Item = Value>,
@@ -574,8 +552,8 @@ fn eval_map_over_iter<I>(
     ctx: &mut EvalContext<'_>,
     iter: I,
     var: &str,
-    predicate: Option<&TokenTree<'_>>,
-    transform: &TokenTree<'_>,
+    predicate: Option<&HirExpr>,
+    transform: &HirExpr,
 ) -> Result<Value, RuntimeError>
 where
     I: IntoIterator<Item = Value>,
@@ -603,7 +581,7 @@ fn eval_filter_over_iter<I>(
     ctx: &mut EvalContext<'_>,
     iter: I,
     var: &str,
-    predicate: &TokenTree<'_>,
+    predicate: &HirExpr,
 ) -> Result<Value, RuntimeError>
 where
     I: IntoIterator<Item = Value>,
@@ -635,36 +613,20 @@ fn invalid_range(name: &str, value: &Value) -> RuntimeError {
 
 fn eval_field(
     ctx: &mut EvalContext<'_>,
-    target_expr: &TokenTree<'_>,
-    field_expr: &TokenTree<'_>,
+    target_expr: &HirExpr,
+    field: &str,
 ) -> Result<Value, RuntimeError> {
     let target = eval_expr(ctx, target_expr)?;
-    let field_name = match field_expr {
-        TokenTree::Atom(Atom::Ident(name)) => name.to_string(),
-        TokenTree::Atom(Atom::String(value)) => value.to_string(),
-        _ => {
-            let value = eval_expr(ctx, field_expr)?;
-            <String as TryFromValue>::try_from_value(&value).map_err(|err| {
-                RuntimeError::with_source(
-                    "field access expects identifier",
-                    err,
-                )
-            })?
-        }
-    };
-
     match target {
-        Value::Struct(strct) => {
-            strct.get(&field_name).cloned().ok_or_else(|| {
-                RuntimeError::new(format!(
-                    "Struct '{}' does not contain field '{field_name}'",
-                    strct.type_name
-                ))
-            })
-        }
-        Value::Map(map) => map.get_str(&field_name).cloned().ok_or_else(|| {
+        Value::Struct(strct) => strct.get(field).cloned().ok_or_else(|| {
             RuntimeError::new(format!(
-                "Map value does not contain key '{field_name}'"
+                "Struct '{}' does not contain field '{field}'",
+                strct.type_name
+            ))
+        }),
+        Value::Map(map) => map.get_str(field).cloned().ok_or_else(|| {
+            RuntimeError::new(format!(
+                "Map value does not contain key '{field}'"
             ))
         }),
         Value::Null => Err(RuntimeError::new("Cannot access fields on null")),
@@ -709,6 +671,16 @@ fn eval_in_operator(
         }
     };
     Ok(Value::Bool(result))
+}
+
+fn eval_index_expr(
+    ctx: &mut EvalContext<'_>,
+    target_expr: &HirExpr,
+    index_expr: &HirExpr,
+) -> Result<Value, RuntimeError> {
+    let target = eval_expr(ctx, target_expr)?;
+    let index = eval_expr(ctx, index_expr)?;
+    eval_index(&target, &index)
 }
 
 fn eval_index(target: &Value, index: &Value) -> Result<Value, RuntimeError> {
@@ -976,21 +948,6 @@ impl Number {
     }
 }
 
-fn ensure_arity(
-    op: Op,
-    args: &[TokenTree<'_>],
-    expected: usize,
-) -> Result<(), RuntimeError> {
-    if args.len() != expected {
-        Err(RuntimeError::new(format!(
-            "Operator '{op:?}' expected {expected} arguments but received {}",
-            args.len()
-        )))
-    } else {
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1094,10 +1051,7 @@ mod tests {
         let mut record = MapValue::new();
         record.insert("name", name);
         record.insert("risk", risk);
-        record.insert(
-            "tags",
-            ListValue::from(tags.iter().copied().collect::<Vec<_>>()),
-        );
+        record.insert("tags", ListValue::from(tags.to_vec()));
         Value::Map(record)
     }
 }

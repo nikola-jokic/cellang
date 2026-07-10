@@ -943,7 +943,7 @@ mod tests {
             (Value::Bool(true), json!(true)),
             (Value::Int(-42), json!(-42)),
             (Value::Uint(7), json!(7)),
-            (Value::Double(3.14), json!(3.14)),
+            (Value::Double(2.5), json!(2.5)),
             (Value::String("hi".into()), json!("hi")),
             (Value::Bytes(vec![1, 2, 3]), json!([1, 2, 3])),
             (Value::Duration(Duration::seconds(5)), json!("5s")),

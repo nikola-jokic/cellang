@@ -63,9 +63,9 @@ jobs:
         run: cargo test --locked --all-features --doc
       - name: cargo run examples
         run: |
+          shopt -s nullglob
           for example in examples/*.rs; do
-            name=$(basename "$example" .rs)
-            echo "Testing example: $name"
-            cargo run --locked --all-features --example $name
+            name=$(basename "${example%.rs}")
+            cargo run --locked --all-features -p cellang --example "$name"
           done
         working-directory: ./crates/cellang

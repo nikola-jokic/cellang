@@ -54,9 +54,6 @@ fn asset(name: &str, risk: i64, tags: &[&str]) -> Value {
     record.insert("name", name);
     record.insert("risk", risk);
     record.insert("owner", "platform");
-    record.insert(
-        "tags",
-        ListValue::from(tags.iter().copied().collect::<Vec<_>>()),
-    );
+    record.insert("tags", ListValue::from(tags.to_vec()));
     Value::Map(record)
 }

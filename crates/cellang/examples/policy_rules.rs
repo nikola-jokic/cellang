@@ -64,10 +64,7 @@ fn request(action: &str, risk_score: i64, groups: &[&str]) -> Value {
     let mut request = MapValue::new();
     request.insert("action", action);
     request.insert("risk_score", risk_score);
-    request.insert(
-        "groups",
-        ListValue::from(groups.iter().copied().collect::<Vec<_>>()),
-    );
+    request.insert("groups", ListValue::from(groups.to_vec()));
     Value::Map(request)
 }
 

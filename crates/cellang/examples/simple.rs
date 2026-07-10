@@ -4,7 +4,7 @@ use miette::Result;
 fn main() -> Result<()> {
     let runtime = Runtime::builder().build();
 
-    let value = cellang::eval(&runtime, "1 + 2 * 3")?;
+    let value = cellang::parser::eval(&runtime, "1 + 2 * 3")?;
     assert_eq!(value, Value::Int(7));
 
     let grouped = runtime.eval("(1 + 2) * 3")?;
@@ -22,7 +22,7 @@ fn main() -> Result<()> {
     let mut child = runtime.child_builder();
     child.set_variable("x", 2_i64)?;
     let runtime = child.build();
-    let value = cellang::eval(&runtime, "x >= 2")?;
+    let value = cellang::parser::eval(&runtime, "x >= 2")?;
     assert_eq!(value, Value::Bool(true));
 
     let decision = runtime.eval("x in [1, 2, 3] && x != 4")?;
