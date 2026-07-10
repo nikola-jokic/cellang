@@ -11,6 +11,7 @@ use cellang::{
     parser::{CelNode, parse},
 };
 use rowan::TextSize;
+use std::collections::BTreeSet;
 
 fn main() -> Result<(), RuntimeError> {
     println!("=== CEL Syntax Tree Inspection Examples ===\n");
@@ -108,13 +109,16 @@ fn extract_identifiers() -> Result<(), RuntimeError> {
     let green = parse(source).map_err(|err| RuntimeError::new(err.message))?;
     let root = CelNode::new_root(green);
 
-    let mut identifiers = Vec::new();
-    for node in root.descendants() {
-        if node.kind() == SyntaxKind::Ident {
-            identifiers.push(node.text().to_string());
+    let mut identifiers = BTreeSet::new();
+    for element in root.descendants_with_tokens() {
+        if let Some(token) = element.as_token()
+            && token.kind() == SyntaxKind::Ident
+        {
+            identifiers.insert(token.text().to_string());
         }
     }
 
+    let identifiers: Vec<_> = identifiers.into_iter().collect();
     println!("Identifiers found: {:?}", identifiers);
     println!("Total: {} unique identifiers", identifiers.len());
 
@@ -170,8 +174,19 @@ fn error_tolerant_parsing() -> Result<(), RuntimeError> {
     let source = "foo(bar,"; // intentionally malformed (unclosed paren)
     println!("Source: {} (malformed - unclosed paren)\n", source);
 
-    // Rowan's error recovery means we still get a tree
-    let green = parse(source).map_err(|err| RuntimeError::new(err.message))?;
+    let green = match parse(source) {
+        Ok(green) => green,
+        Err(err) => {
+            println!("Parser reported error (expected): {}", err.message);
+            println!(
+                "Current `cellang::parser::parse` facade is strict and returns Err on malformed input."
+            );
+            println!(
+                "Use valid input to inspect a full tree through this facade.\n"
+            );
+            return Ok(());
+        }
+    };
     let root = CelNode::new_root(green);
 
     println!("Tree built successfully despite errors:");
