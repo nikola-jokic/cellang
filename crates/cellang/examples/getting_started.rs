@@ -15,7 +15,7 @@ fn main() -> Result<()> {
     // Native functions need a CEL declaration before they can be registered.
     // This gives the type checker enough information to validate calls.
     builder.add_function_decl(full_name_decl())?;
-    builder.register_function("full_name", full_name)?;
+    builder.set_function("full_name", full_name)?;
 
     let runtime = builder.build();
 

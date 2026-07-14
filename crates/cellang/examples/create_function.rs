@@ -25,7 +25,7 @@ fn split(
 fn main() -> Result<()> {
     let mut builder = Runtime::builder();
     builder.add_function_decl(split_decl())?;
-    builder.register_function("split", split)?;
+    builder.set_function("split", split)?;
     let runtime = builder.build();
 
     let expected = Value::List(ListValue::from(vec!["a", "b", "c"]));

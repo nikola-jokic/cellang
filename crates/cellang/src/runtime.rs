@@ -7,6 +7,7 @@ use crate::types::{
 };
 use crate::value::{IntoValue, TryFromValue, Value, ValueError};
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::Arc;
 
 pub type NativeFunction = Arc<
@@ -22,6 +23,16 @@ pub struct Runtime {
     env: Env,
     variables: Arc<BTreeMap<String, Value>>,
     functions: Arc<BTreeMap<String, NativeFunction>>,
+}
+
+impl fmt::Debug for Runtime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Runtime")
+            .field("env", &self.env)
+            .field("variables", &self.variables)
+            .field("functions", &self.functions.keys().collect::<Vec<_>>())
+            .finish()
+    }
 }
 
 impl Runtime {
@@ -229,7 +240,7 @@ impl RuntimeBuilder {
         Ok(self)
     }
 
-    pub fn register_function<F, Args, Out>(
+    pub fn set_function<F, Args, Out>(
         &mut self,
         name: impl Into<String>,
         function: F,
@@ -240,14 +251,6 @@ impl RuntimeBuilder {
         let name = name.into();
         let (native, arity) = function.into_native(name.clone());
         self.insert_function(name, native, arity)
-    }
-
-    pub fn register_native_function(
-        &mut self,
-        name: impl Into<String>,
-        function: NativeFunction,
-    ) -> Result<&mut Self, RuntimeError> {
-        self.insert_function(name.into(), function, None)
     }
 
     fn insert_function(
@@ -542,7 +545,7 @@ mod tests {
     #[test]
     fn register_function_requires_declaration() {
         let mut builder = Runtime::builder();
-        let err = builder.register_function("custom", |v: i64| v);
+        let err = builder.set_function("custom", |v: i64| v);
         assert!(err.is_err());
 
         let mut decl = FunctionDecl::new("custom");
@@ -557,7 +560,7 @@ mod tests {
             .expect("function decl to register");
 
         builder
-            .register_function("custom", |v: i64| v)
+            .set_function("custom", |v: i64| v)
             .expect("function to register once declaration exists");
     }
 
@@ -573,11 +576,11 @@ mod tests {
         .expect("overload");
         builder.add_function_decl(decl).expect("decl to register");
 
-        let err = builder.register_function("adder", |value: i64| value);
+        let err = builder.set_function("adder", |value: i64| value);
         assert!(err.is_err());
 
         builder
-            .register_function("adder", |lhs: i64, rhs: i64| lhs + rhs)
+            .set_function("adder", |lhs: i64, rhs: i64| lhs + rhs)
             .expect("matching arity should register");
     }
 }
