@@ -7,17 +7,17 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 pub(crate) fn register(
     builder: &mut RuntimeBuilder,
 ) -> Result<(), RuntimeError> {
-    builder.register_function("size", size)?;
-    builder.register_function("contains", contains)?;
-    builder.register_function("startsWith", starts_with)?;
-    builder.register_function("endsWith", ends_with)?;
-    builder.register_function("matches", matches)?;
-    builder.register_function("type", cel_type)?;
-    builder.register_function("string", to_string_value)?;
-    builder.register_function("int", to_int)?;
-    builder.register_function("uint", to_uint)?;
-    builder.register_function("timestamp", to_timestamp)?;
-    builder.register_function("duration", to_duration)?;
+    builder.set_function("size", size)?;
+    builder.set_function("contains", contains)?;
+    builder.set_function("startsWith", starts_with)?;
+    builder.set_function("endsWith", ends_with)?;
+    builder.set_function("matches", matches)?;
+    builder.set_function("type", cel_type)?;
+    builder.set_function("string", to_string_value)?;
+    builder.set_function("int", to_int)?;
+    builder.set_function("uint", to_uint)?;
+    builder.set_function("timestamp", to_timestamp)?;
+    builder.set_function("duration", to_duration)?;
     Ok(())
 }
 

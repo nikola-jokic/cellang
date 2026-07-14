@@ -17,7 +17,7 @@ fn main() -> Result<()> {
         let env: Env = serde_json::from_slice(&env_cache).into_diagnostic()?;
         let mut builder = Runtime::builder();
         builder.import_env_owned(env)?;
-        builder.register_function("same_tenant", same_tenant)?;
+        builder.set_function("same_tenant", same_tenant)?;
         builder.set_variable("request", request_value())?;
         builder.set_variable("resource_owner", owner)?;
         builder.set_variable("desired_access", desired_access)?;
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
     let env: Env = serde_json::from_slice(&env_cache).into_diagnostic()?;
     let mut builder = Runtime::builder();
     builder.import_env_owned(env)?;
-    builder.register_function("same_tenant", same_tenant)?;
+    builder.set_function("same_tenant", same_tenant)?;
     builder.set_variable("request", request_value())?;
     builder.set_variable("resource_owner", "analytics")?;
     builder.set_variable("desired_access", "read")?;

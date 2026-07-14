@@ -23,7 +23,7 @@ mod example {
         let mut builder = Runtime::builder();
         register_user_schema(&mut builder)?;
         builder.set_variable("users", load_users())?;
-        builder.register_function("has_role", has_role)?;
+        builder.set_function("has_role", has_role)?;
 
         builder.set_variable("role", "admin")?;
         let runtime = builder.build();

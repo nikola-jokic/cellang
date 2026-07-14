@@ -245,7 +245,7 @@ fn regression_chaining_field_index_call() {
         .add_function_decl(upper_decl)
         .expect("add_function_decl failed");
     builder
-        .register_function("upper", |s: String| s.to_uppercase())
+        .set_function("upper", |s: String| s.to_uppercase())
         .expect("register_function failed");
     builder
         .set_variable("users", vec![alice, bob])

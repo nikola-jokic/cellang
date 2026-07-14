@@ -6,7 +6,7 @@ use std::thread;
 fn main() -> Result<()> {
     let mut builder = Runtime::builder();
     builder.add_function_decl(plus_two_decl())?;
-    builder.register_function("plus_two", |value: i64| value + 2)?;
+    builder.set_function("plus_two", |value: i64| value + 2)?;
     builder.set_variable("base", 2_i64)?;
 
     let (tx, rx) = std::sync::mpsc::channel();
