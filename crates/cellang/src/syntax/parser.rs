@@ -15,7 +15,14 @@ pub fn parse(input: &str) -> Result<ParseResult, Error> {
     for next in lexer {
         match next {
             Ok(token) => tokens.push(token),
-            Err(err) => return Err(Error::new(err.message().to_string())),
+            Err(err) => {
+                let span = err.span();
+                return Err(Error::with_span(
+                    err.message().to_string(),
+                    span.offset(),
+                    span.len(),
+                ));
+            }
         }
     }
 
@@ -44,14 +51,23 @@ pub fn parse(input: &str) -> Result<ParseResult, Error> {
     if parser.errors.is_empty() {
         Ok(green)
     } else {
-        Err(Error::new(parser.errors.join(" | ")))
+        let messages: Vec<_> =
+            parser.errors.iter().map(|(msg, _)| msg.as_str()).collect();
+        let full_message = messages.join(" | ");
+        let first_span = parser.errors[0].1;
+
+        if let Some((offset, len)) = first_span {
+            Err(Error::with_span(full_message, offset, len))
+        } else {
+            Err(Error::new(full_message))
+        }
     }
 }
 
 struct RowanParser<'src> {
     tokens: Vec<Token<'src>>,
     pos: usize,
-    errors: Vec<String>,
+    errors: Vec<(String, Option<(usize, usize)>)>,
     builder: GreenNodeBuilder<'static>,
 }
 
@@ -377,7 +393,8 @@ impl<'src> RowanParser<'src> {
     }
 
     fn record_error(&mut self, message: impl Into<String>) {
-        self.errors.push(message.into());
+        let span = self.current().map(|token| (token.offset, token.span_len));
+        self.errors.push((message.into(), span));
     }
 
     fn at(&self, mut check: impl FnMut(TokenType) -> bool) -> bool {
@@ -596,5 +613,27 @@ mod tests {
 
         let list_eof = parse_err("[1, 2");
         assert!(list_eof.contains("continuing list"));
+    }
+
+    #[test]
+    fn preserves_spans_in_parser_errors() {
+        let err = parse("1 + * 2").expect_err("expected parse failure");
+        assert!(
+            err.message.contains("Unexpected token"),
+            "error message should mention unexpected token"
+        );
+        assert!(err.span.is_some(), "parser error should preserve span");
+        let (offset, len) = err.span.unwrap();
+        assert!(offset > 0, "span offset should point to error location");
+        assert!(len > 0, "span length should be non-zero");
+    }
+
+    #[test]
+    fn preserves_spans_in_lexer_errors() {
+        let err = parse("\"unclosed").expect_err("expected lexer failure");
+        assert!(err.span.is_some(), "lexer error should preserve span");
+        let (offset, len) = err.span.unwrap();
+        assert_eq!(offset, 0, "lexer error span should point to string start");
+        assert!(len > 0, "span length should cover invalid token");
     }
 }

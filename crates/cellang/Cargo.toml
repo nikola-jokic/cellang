@@ -23,13 +23,13 @@ base64 = "^0.22"
 cellang-macros = { path = "../cellang-macros/", version = "0.6.0", optional = true }
 miette = { version = "^7" }
 regex = "^1"
-rowan = "0.15"
-serde = { version = "^1", features = ["derive", "rc"] }
-serde_json = "^1"
+rowan = { workspace = true }
+serde = { workspace = true, features = ["derive", "rc"] }
+serde_json = { workspace = true }
 serde-wasm-bindgen = { version = "^0.6", optional = true }
 thiserror = "^2"
 time = { version = "^0.3", features = ["serde", "formatting", "parsing"] }
-wasm-bindgen = { version = "^0.2.95", optional = true, features = ["spans"] }
+wasm-bindgen = { workspace = true, optional = true, features = ["spans"] }
 
 [dev-dependencies]
 miette = { version = "^7", features = ["fancy"] }
