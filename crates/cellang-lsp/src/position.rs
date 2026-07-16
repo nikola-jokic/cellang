@@ -70,6 +70,47 @@ pub fn lsp_range_to_byte_range(text: &str, range: Range) -> (usize, usize) {
     )
 }
 
+#[must_use]
+pub fn translate_local_range_by_host_start_position(
+    host_text: &str,
+    host_start: Position,
+    local_text: &str,
+    local_range: Range,
+) -> Range {
+    let host_start_byte = position_to_byte_offset(host_text, host_start);
+    translate_local_range_by_host_start_offset(
+        host_text,
+        host_start_byte,
+        local_text,
+        local_range,
+    )
+}
+
+#[must_use]
+pub fn translate_local_range_by_host_start_offset(
+    host_text: &str,
+    host_start_byte: usize,
+    local_text: &str,
+    local_range: Range,
+) -> Range {
+    let (local_start, local_end) =
+        lsp_range_to_byte_range(local_text, local_range);
+    let absolute_start = clamp_to_char_boundary(
+        host_text,
+        host_start_byte
+            .saturating_add(local_start)
+            .min(host_text.len()),
+    );
+    let absolute_end = clamp_to_char_boundary(
+        host_text,
+        host_start_byte
+            .saturating_add(local_end)
+            .min(host_text.len()),
+    );
+
+    byte_range_to_lsp_range(host_text, absolute_start, absolute_end)
+}
+
 fn clamp_to_char_boundary(text: &str, mut offset: usize) -> usize {
     offset = offset.min(text.len());
     while offset > 0 && !text.is_char_boundary(offset) {
@@ -172,6 +213,67 @@ mod tests {
         let roundtrip = lsp_range_to_byte_range(text, lsp);
 
         assert_eq!(roundtrip, source);
+    }
+
+    #[test]
+    fn translates_local_range_by_host_start_position() {
+        let host = "rule:\n  when: principal == 'alice'";
+        let local = "principal == 'alice'";
+        let start = Position::new(1, 8);
+        let local_range = Range::new(Position::new(0, 0), Position::new(0, 9));
+
+        let translated = translate_local_range_by_host_start_position(
+            host,
+            start,
+            local,
+            local_range,
+        );
+
+        assert_eq!(
+            translated,
+            Range::new(Position::new(1, 8), Position::new(1, 17))
+        );
+    }
+
+    #[test]
+    fn translates_multiline_local_range_by_host_start_offset() {
+        let host = "rule:\n  when: |\n    roles.exists(role,\n      role == principal)";
+        let local = "roles.exists(role,\n      role == principal)";
+        let start = host.find(local.lines().next().unwrap()).unwrap();
+        let local_range =
+            Range::new(Position::new(1, 14), Position::new(1, 23));
+
+        let translated = translate_local_range_by_host_start_offset(
+            host,
+            start,
+            local,
+            local_range,
+        );
+
+        assert_eq!(
+            translated,
+            Range::new(Position::new(3, 14), Position::new(3, 23))
+        );
+    }
+
+    #[test]
+    fn translates_local_range_with_utf16_host_columns() {
+        let host = "rule:\n  when: 🦀 principal";
+        let local = "principal";
+        let start = host.find(local).unwrap();
+        let local_range = Range::new(Position::new(0, 0), Position::new(0, 9));
+
+        let translated = translate_local_range_by_host_start_offset(
+            host,
+            start,
+            local,
+            local_range,
+        );
+
+        assert_eq!(
+            translated,
+            Range::new(Position::new(1, 11), Position::new(1, 20))
+        );
     }
 
     fn char_boundary_offsets(text: &str) -> Vec<usize> {
