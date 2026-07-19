@@ -76,7 +76,15 @@ impl std::error::Error for LowerError {}
 
 pub fn lower_source(input: &str) -> Result<Expr, LowerError> {
     let parsed = parser::parse(input).map_err(|err| {
-        LowerError::new(LowerErrorKind::ParseFailure, err.message)
+        if let Some((offset, len)) = err.span {
+            LowerError {
+                kind: LowerErrorKind::ParseFailure,
+                message: err.message,
+                span: Some((offset, offset + len)),
+            }
+        } else {
+            LowerError::new(LowerErrorKind::ParseFailure, err.message)
+        }
     })?;
     lower(parsed)
 }
@@ -1016,6 +1024,19 @@ mod tests {
         let err = lower_source("foo(").expect_err("lowering should fail");
         assert_eq!(err.kind, LowerErrorKind::ParseFailure);
         assert!(err.message.contains("continuing argument list"));
+    }
+
+    #[test]
+    fn parse_failure_preserves_spans_from_parser() {
+        let err = lower_source("1 + * 2").expect_err("lowering should fail");
+        assert_eq!(err.kind, LowerErrorKind::ParseFailure);
+        assert!(
+            err.span.is_some(),
+            "lowering should preserve parser error spans"
+        );
+        let (start, end) = err.span.unwrap();
+        assert!(start > 0, "span should point to error location");
+        assert!(end > start, "span should have positive length");
     }
 
     #[test]
