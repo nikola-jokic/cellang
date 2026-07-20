@@ -259,11 +259,20 @@ pub fn completions_for_text_with_env(
     let mut items =
         Vec::with_capacity(env.idents().len() + env.functions().len());
 
+    let md_doc = |doc: Option<String>| {
+        doc.map(|d| {
+            Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: d,
+            })
+        })
+    };
+
     for (name, decl) in env.idents() {
         items.push(CompletionItem {
             label: name.clone(),
             kind: Some(CompletionItemKind::VARIABLE),
-            documentation: decl.doc.clone().map(Documentation::String),
+            documentation: md_doc(decl.doc.clone()),
             ..Default::default()
         });
     }
@@ -272,7 +281,7 @@ pub fn completions_for_text_with_env(
         items.push(CompletionItem {
             label: name.clone(),
             kind: Some(CompletionItemKind::FUNCTION),
-            documentation: decl.doc.clone().map(Documentation::String),
+            documentation: md_doc(decl.doc.clone()),
             ..Default::default()
         });
     }

@@ -38,6 +38,8 @@ fn custom_policy_env() -> Env {
 mod completion_symbols_protocol {
     use std::str::FromStr;
 
+    use lsp_types::MarkupContent;
+
     use super::*;
 
     #[test]
@@ -196,9 +198,10 @@ mod completion_symbols_protocol {
         assert_eq!(principal.kind, Some(CompletionItemKind::VARIABLE));
         assert_eq!(
             principal.documentation,
-            Some(lsp_types::Documentation::String(
-                "The authenticated principal".to_string()
-            ))
+            Some(lsp_types::Documentation::MarkupContent(MarkupContent {
+                kind: lsp_types::MarkupKind::Markdown,
+                value: "The authenticated principal".to_string()
+            }))
         );
 
         let allowed = items
@@ -208,10 +211,11 @@ mod completion_symbols_protocol {
         assert_eq!(allowed.kind, Some(CompletionItemKind::FUNCTION));
         assert_eq!(
             allowed.documentation,
-            Some(lsp_types::Documentation::String(
-                "Checks whether the principal can access the resource"
+            Some(lsp_types::Documentation::MarkupContent(MarkupContent {
+                kind: lsp_types::MarkupKind::Markdown,
+                value: "Checks whether the principal can access the resource"
                     .to_string()
-            ))
+            }))
         );
     }
 
