@@ -16,6 +16,8 @@ license = "MIT"
 authors = ["Nikola Jokic <jokicnikola07@gmail.com>"]
 
 [workspace.dependencies]
+cellang = { version = "0.7.0", path = "crates/cellang" }
+cellang-macros = { version = "0.7.0", path = "crates/cellang-macros" }
 rowan = "0.16.1"
 serde = "1.0.228"
 serde_json = "^1.0.150"
