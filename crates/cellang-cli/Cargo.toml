@@ -9,10 +9,11 @@ repository = "https://github.com/nikola-jokic/cellang"
 readme = "README.md"
 keywords = ["cli", "cel", "expression", "language", "interpreter", "rust"]
 categories = ["cli", "programming-language"]
+publish = false
 
 [dependencies]
 clap = { version = "^4", features = ["derive"] }
 miette = { version = "^7", features = ["fancy"] }
-cellang = { path = "../cellang" }
+cellang = { workspace = true }
 serde_json = "^1"
 serde = { version = "^1" }

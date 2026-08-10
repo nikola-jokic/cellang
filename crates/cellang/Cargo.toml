@@ -20,7 +20,7 @@ wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
 
 [dependencies]
 base64 = "^0.23"
-cellang-macros = { path = "../cellang-macros/", optional = true, workspace.version = true }
+cellang-macros = { workspace = true, optional = true }
 miette = { version = "^7" }
 regex = "^1"
 rowan = { workspace = true }
